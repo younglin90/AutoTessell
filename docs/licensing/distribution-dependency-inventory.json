@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "id": "python-wheel-core",
+      "source": "pyproject.toml:[project].dependencies",
+      "dependencies": [
+        {
+          "id": "pypi:click",
+          "kind": "python_direct",
+          "requirement": "click>=8.1",
+          "declared_at": "pyproject.toml:[project].dependencies",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "pypi:rich",
+          "kind": "python_direct",
+          "requirement": "rich>=13.0",
+          "declared_at": "pyproject.toml:[project].dependencies",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "pypi:pydantic",
+          "kind": "python_direct",
+          "requirement": "pydantic>=2.0",
+          "declared_at": "pyproject.toml:[project].dependencies",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "pypi:structlog",
+          "kind": "python_direct",
+          "requirement": "structlog>=24.0",
+          "declared_at": "pyproject.toml:[project].dependencies",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "pypi:numpy",
+          "kind": "python_direct",
+          "requirement": "numpy>=2.0",
+          "declared_at": "pyproject.toml:[project].dependencies",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "pypi:scipy",
+          "kind": "python_direct",
+          "requirement": "scipy>=1.13",
+          "declared_at": "pyproject.toml:[project].dependencies",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "pypi:trimesh",
+          "kind": "python_direct",
+          "requirement": "trimesh>=4.5",
+          "declared_at": "pyproject.toml:[project].dependencies",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "pypi:meshio",
+          "kind": "python_direct",
+          "requirement": "meshio>=5.3",
+          "declared_at": "pyproject.toml:[project].dependencies",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "pypi:pyvista",
+          "kind": "python_direct",
+          "requirement": "pyvista>=0.44",
+          "declared_at": "pyproject.toml:[project].dependencies",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        }
+      ]
+    },
+    {
+      "id": "cmake-native-direct",
+      "source": "auto_tessell_core/CMakeLists.txt",
+      "dependencies": [
+        {
+          "id": "cmake:pybind11",
+          "kind": "cmake_direct",
+          "declaration": "find_package(pybind11 CONFIG REQUIRED)",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:26",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "cmake:Eigen3",
+          "kind": "cmake_direct",
+          "declaration": "find_package(Eigen3 3.3 REQUIRED NO_MODULE)",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:29",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "source:cinolib",
+          "kind": "cmake_direct",
+          "declaration": "target_include_directories(cinolib_hex PRIVATE \"${CINOLIB_DIR}/include\")",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:47",
+          "distribution_condition": "always",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "external_adapter_excluded"
+        },
+        {
+          "id": "source:robusthex",
+          "kind": "cmake_direct",
+          "declaration": "if(BUILD_ROBUSTHEX AND EXISTS \"${ROBUSTHEX_DIR}/src/meshio.cpp\")",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:97",
+          "distribution_condition": "BUILD_ROBUSTHEX and ROBUSTHEX_DIR source present",
+          "license_assertion": {
+            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "spdx_expression": null,
+            "local_evidence": []
+          },
+          "core_boundary": "external_adapter_excluded"
+        },
+        {
+          "id": "source:fTetWild",
+          "kind": "cmake_direct",
+          "declaration": "if(BUILD_FTETWILD AND EXISTS \"${FTETWILD_SRC_DIR}/CMakeLists.txt\")",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:182",
+          "distribution_condition": "BUILD_FTETWILD and FTETWILD_SRC_DIR present",
+          "license_assertion": {
+            "status": "LOCAL_EVIDENCE_RECORDED_NOT_RESOLVED",
+            "spdx_expression": null,
+            "local_evidence": [
+              "third_party/fTetWild/LICENSE.MPL2"
+            ]
+          },
+          "core_boundary": "external_adapter_excluded"
+        },
+        {
+          "id": "source:cfMesh",
+          "kind": "cmake_direct",
+          "declaration": "if(BUILD_CFMESH AND EXISTS \"${CFMESH_SRC_DIR}/CMakeLists.txt\")",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:203",
+          "distribution_condition": "BUILD_CFMESH and CFMESH_SRC_DIR present",
+          "license_assertion": {
+            "status": "LOCAL_EVIDENCE_RECORDED_NOT_RESOLVED",
+            "spdx_expression": null,
+            "local_evidence": [
+              "third_party/cfmesh/LICENSE.GPL3"
+            ]
+          },
+          "core_boundary": "external_adapter_excluded"
+        }
+      ]
+    }
+  ]
+}
