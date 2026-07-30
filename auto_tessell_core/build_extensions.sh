@@ -61,7 +61,7 @@ cmake "${cmake_args[@]}"
 
 # Core kernels have no external mesher dependency. Keep this list explicit so a
 # successful build proves every Python hot-path wrapper remains buildable.
-native_targets=(native_metrics native_polymesh native_snap native_hex_quality)
+native_targets=(native_metrics native_polymesh native_snap native_surface_padding native_hex_quality)
 for target in "${native_targets[@]}"; do
     cmake --build . --target "$target" -j"$(nproc)"
     echo "$target built: $BUILD_DIR/$target*.so"
