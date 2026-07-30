@@ -6,9 +6,9 @@
 - state: `CAMPAIGN_ACTIVE`
 - cycle: `1`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- current_master: `b27f02d867d38ac900275d381214b4b85cc5c0b3`
+- current_master: `6e2b40611d3e638c56c2a871698ac7f4074e4048`
 - allowed_to_stop: `false`
-- next_action: `TET-WRITER-INCIDENCE-1: eliminate native tet writer incidence defects on NACA without changing boundary provenance.`
+- next_action: `TET-MANIFOLD-TOPOLOGY-1: remove native tet 3+-cell face incidence before writer acceptance without changing boundary provenance.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. A later Git state supersedes the repository checkpoint below.
@@ -35,6 +35,10 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
 - Native tet L2 NACA diagnostic (`--native-primal --target-cells 2000`): output
   reported `3` cells without tetrahedron vertex incidence and `13` four-vertex
   cells without complete tetrahedron face encoding. Primary validity defect count: `16`.
+- Native tet now fails closed before `polyMesh` creation on a 3+-cell face:
+  NACA strict count `13`, cylinder strict count `10`; focused writer/result
+  tests `6 passed` in `14.04 s`. This removes false-success output, not the
+  upstream manifold-topology limitation.
 - Same NACA baseline emitted `1827` cells for target `2000`; campaign-wide target
   tolerance is not yet declared or verified.
 - Previous full `python tests/verify_goal.py` timed out after `124 s`; no full-suite claim.
@@ -47,12 +51,12 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
 | 2 Build | UNVERIFIED | Fresh clean release build missing. |
 | 3 Automated tests | UNVERIFIED | Full suite timed out; all engine/routing/UI coverage missing. |
 | 4 Shape preservation | UNVERIFIED | No campaign corpus result. |
-| 5 Mesh validity | FAIL | Native tet NACA writer incidence defects: `16`. |
+| 5 Mesh validity | UNVERIFIED | Native tet false-success removed; full valid-output corpus missing. |
 | 6 Cell count | UNVERIFIED | Poly BL=0 forward L0 passes; NACA `1827/2000`; engine corpus/monotonicity missing. |
 | 7 Boundary layer | UNVERIFIED | Focused state tests pass; engine corpus missing. |
 | 8 Quality | UNVERIFIED | Campaign quality specifications and corpus missing. |
 | 9 Reproducibility | UNVERIFIED | Three-run engine corpus missing. |
-| 10 Robustness | UNVERIFIED | Hard-fixture matrix missing. |
+| 10 Robustness | UNVERIFIED | NACA/cylinder now explicit topology failure, not silent invalid output; matrix missing. |
 | 11 Performance | UNVERIFIED | Baselines and budgets missing. |
 | 12 Packaging | UNVERIFIED | Fresh-install smoke evidence missing. |
 | 13 License/provenance | UNVERIFIED | GPL policy present; campaign inventory/evidence missing. |
@@ -61,7 +65,7 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
 
 ## Active research queue
 
-1. `TET-WRITER-INCIDENCE-1` — primary metric: native tet NACA incidence defects, lower is better, target `0`.
+1. `TET-MANIFOLD-TOPOLOGY-1` — primary metric: native tet 3+-cell face incidences, lower is better, target `0`.
 2. `POLY-TARGET-CONTRACT-1` — establish observable target-cell response while preserving source topology.
 3. `TRI-QUAD-RELEASE-CARD-1` — select after independent source/test audit.
 4. `FULL-VALIDATION-BASELINE-1` — split full-suite timeout into reproducible subsystem evidence.
