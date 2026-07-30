@@ -18,9 +18,7 @@ _POLYMESH_FILES = ("points", "faces", "owner", "neighbour", "boundary")
 _CUBE_SEED_DENSITY_6_POLYMESH_SHA256 = (
     "d30ab5470929ae6d7594d6b13a259f2c008889ad69c2e9008066ee0c450efaa9"
 )
-_TETRA_POINTS = np.array(
-    ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
-)
+_TETRA_POINTS = np.array(((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)))
 _TETRA_FACES = np.array(((0, 2, 1), (0, 1, 3), (0, 3, 2), (1, 2, 3)), dtype=np.int64)
 
 
@@ -110,3 +108,60 @@ def test_native_hex_preflight_preserves_valid_cube_input_and_output(tmp_path: Pa
         assert first_file.read_bytes() == second_file.read_bytes(), name
     assert _polymesh_sha256(first_dir) == _CUBE_SEED_DENSITY_6_POLYMESH_SHA256
     assert _polymesh_sha256(second_dir) == _CUBE_SEED_DENSITY_6_POLYMESH_SHA256
+
+
+def test_native_hex_never_substitutes_a_remeshed_source_surface(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Volume meshing keeps the caller's mixed-scale surface authoritative."""
+    import trimesh
+
+    from core.preprocessor import native_remesh
+
+    surface = trimesh.creation.icosphere(subdivisions=2, radius=1.0)
+    vertices = np.asarray(surface.vertices, dtype=np.float64).copy()
+    faces = np.asarray(surface.faces, dtype=np.int64).copy()
+    edge_a, edge_b = (int(index) for index in faces[0, :2])
+    vertices[edge_b] = vertices[edge_a] + 1.0e-6 * (vertices[edge_b] - vertices[edge_a])
+    vertices_before = vertices.copy()
+    faces_before = faces.copy()
+
+    def _forbidden_source_remesh(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("native_hex substituted a remeshed source surface")
+
+    monkeypatch.setattr(native_remesh, "isotropic_remesh", _forbidden_source_remesh)
+    monkeypatch.delenv("AUTO_TESSELL_PRE3_HEX_OFF", raising=False)
+    default_dir = tmp_path / "default"
+    default = generate_native_hex(
+        vertices,
+        faces,
+        default_dir,
+        seed_density=6,
+        max_cells_per_axis=10,
+        snap_boundary=False,
+    )
+
+    monkeypatch.setenv("AUTO_TESSELL_PRE3_HEX_OFF", "1")
+    legacy_off_dir = tmp_path / "legacy_off"
+    legacy_off = generate_native_hex(
+        vertices,
+        faces,
+        legacy_off_dir,
+        seed_density=6,
+        max_cells_per_axis=10,
+        snap_boundary=False,
+    )
+
+    assert default.success, default.message
+    assert legacy_off.success, legacy_off.message
+    assert np.array_equal(vertices, vertices_before)
+    assert np.array_equal(faces, faces_before)
+    assert default.n_cells == legacy_off.n_cells
+    assert default.n_points == legacy_off.n_points
+    assert default.untangle_beta_pass is True
+    assert legacy_off.untangle_beta_pass is True
+    for name in _POLYMESH_FILES:
+        default_file = default_dir / "constant" / "polyMesh" / name
+        legacy_off_file = legacy_off_dir / "constant" / "polyMesh" / name
+        assert default_file.read_bytes() == legacy_off_file.read_bytes(), name
