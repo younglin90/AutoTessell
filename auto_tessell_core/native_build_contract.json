@@ -45,6 +45,7 @@
         "parse_foam_faces_file",
         "parse_foam_faces_topology_file",
         "parse_foam_labels_file",
+        "prepare_quad_pairs",
         "select_quad_pairs",
         "triangle_intersections_interval",
         "triangle_intersections_segment",

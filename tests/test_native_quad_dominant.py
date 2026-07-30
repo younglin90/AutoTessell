@@ -15,6 +15,8 @@ from core.preprocessor.native_remesh import (
     native_quad_dominant_remesh,
 )
 from core.preprocessor.native_remesh.quad_dominant import (
+    _prepare_quad_pairs,
+    _prepare_quad_pairs_python,
     _quad_quality,
     _select_quad_pairs,
     _select_quad_pairs_python,
@@ -27,6 +29,13 @@ def _native_quad_selector():
     native = load_native_metrics()
     if native is None or not hasattr(native, "select_quad_pairs"):
         pytest.skip("native_metrics.select_quad_pairs is not built")
+    return native
+
+
+def _native_quad_preparer():
+    native = _native_quad_selector()
+    if not hasattr(native, "prepare_quad_pairs"):
+        pytest.skip("native_metrics.prepare_quad_pairs is not built")
     return native
 
 
@@ -348,6 +357,92 @@ def test_disconnected_manifold_components_remain_valid_and_independent() -> None
     np.testing.assert_array_equal(result.vertices, vertices)
 
 
+def test_native_quad_preparer_matches_oracle_with_duplicate_wall_and_repeats() -> None:
+    native = _native_quad_preparer()
+    vertices, triangles, _ = _regular_grid(8)
+    wall_edges = [(0, 10), (10, 0)]
+    expected = _prepare_quad_pairs_python(vertices, triangles, wall_edges, 45.0)
+    wall_array = np.asarray(wall_edges, dtype=np.int64)
+
+    observed = [native.prepare_quad_pairs(vertices, triangles, wall_array, 45.0) for _ in range(3)]
+
+    for face_pairs, diagnostics in observed:
+        np.testing.assert_array_equal(face_pairs, expected[0])
+        np.testing.assert_array_equal(diagnostics, expected[1])
+    for index in range(1, len(observed)):
+        np.testing.assert_array_equal(observed[index][0], observed[0][0])
+        np.testing.assert_array_equal(observed[index][1], observed[0][1])
+
+
+def test_native_quad_preparer_preserves_open_boundary_and_threshold_comparison() -> None:
+    native = _native_quad_preparer()
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, -0.5, np.sqrt(3.0) / 2.0],
+        ],
+        dtype=np.float64,
+    )
+    triangles = np.array([[0, 1, 2], [1, 0, 3]], dtype=np.int64)
+    walls = np.empty((0, 2), dtype=np.int64)
+    expected = _prepare_quad_pairs_python(vertices, triangles, [], 60.0)
+    observed = native.prepare_quad_pairs(vertices, triangles, walls, 60.0)
+
+    np.testing.assert_array_equal(observed[0], expected[0])
+    np.testing.assert_array_equal(observed[1], expected[1])
+    assert int(observed[1][0]) == 4
+    assert int(observed[1][3]) == 1
+
+
+def test_native_quad_preparer_supports_empty_surface() -> None:
+    native = _native_quad_preparer()
+    result = native.prepare_quad_pairs(
+        np.empty((0, 3), dtype=np.float64),
+        np.empty((0, 3), dtype=np.int64),
+        np.empty((0, 2), dtype=np.int64),
+        45.0,
+    )
+
+    assert result[0].shape == (0, 2)
+    np.testing.assert_array_equal(result[1], np.zeros(5, dtype=np.int64))
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("vertices", lambda value: value.astype(np.float32)),
+        ("vertices", np.asfortranarray),
+        ("triangles", lambda value: value.astype(np.int32)),
+        ("triangles", np.asfortranarray),
+        ("wall_edges", lambda value: value.astype(np.int32)),
+        (
+            "wall_edges",
+            lambda _value: np.array([[0, 9, 2, 9], [0, 9, 2, 9]], dtype=np.int64)[:, ::2],
+        ),
+    ],
+)
+def test_native_quad_preparer_requires_exact_contiguous_arrays(
+    field: str,
+    replacement: Callable[[np.ndarray], np.ndarray],
+) -> None:
+    native = _native_quad_preparer()
+    inputs = {
+        "vertices": np.array(
+            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+            dtype=np.float64,
+        ),
+        "triangles": np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64),
+        "wall_edges": np.array([[0, 2]], dtype=np.int64),
+    }
+    inputs[field] = replacement(inputs[field])
+    with pytest.raises(TypeError):
+        native.prepare_quad_pairs(
+            inputs["vertices"], inputs["triangles"], inputs["wall_edges"], 45.0
+        )
+
+
 def test_native_pair_selector_matches_oracle_and_is_order_deterministic() -> None:
     native = _native_quad_selector()
     vertices, triangles, face_pairs = _regular_grid(6)
@@ -639,3 +734,139 @@ def test_native_pair_selector_rejects_malformed_backend_without_fallback(
             max_warpage=0.05,
         )
     assert calls == 1
+
+
+@pytest.mark.parametrize(
+    ("malformed_result", "message"),
+    [
+        ("not-a-tuple", "invalid result"),
+        (
+            (
+                np.array([[0, 1]], dtype=np.int32),
+                np.array([4, 0, 0, 1, 0], dtype=np.int64),
+            ),
+            "invalid face_pairs",
+        ),
+        (
+            (
+                np.array([[0, 1]], dtype=np.int64),
+                np.array([4, 0, 0, 1], dtype=np.int64),
+            ),
+            "invalid diagnostics",
+        ),
+    ],
+)
+def test_native_quad_preparer_rejects_malformed_arrays_without_fallback(
+    malformed_result: object,
+    message: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    vertices = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+        dtype=np.float64,
+    )
+    triangles = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
+    calls = 0
+
+    def malformed_backend(*_args: object) -> object:
+        nonlocal calls
+        calls += 1
+        return malformed_result
+
+    from core.utils import native_extensions
+
+    monkeypatch.setattr(
+        native_extensions,
+        "load_native_metrics",
+        lambda: SimpleNamespace(prepare_quad_pairs=malformed_backend),
+    )
+    with pytest.raises(RuntimeError, match=message):
+        _prepare_quad_pairs(vertices, triangles, [], 45.0)
+    assert calls == 1
+
+
+@pytest.mark.parametrize(
+    ("vertices", "triangles", "walls", "face_pairs", "diagnostics", "message"),
+    [
+        (
+            np.array(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [3.0, 0.0, 0.0],
+                    [4.0, 0.0, 0.0],
+                    [3.0, 1.0, 0.0],
+                ]
+            ),
+            np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int64),
+            [],
+            np.array([[0, 1]], dtype=np.int64),
+            np.array([6, 0, 0, 1, 0], dtype=np.int64),
+            "non-adjacent",
+        ),
+        (
+            np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]),
+            np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64),
+            [(0, 2)],
+            np.array([[0, 1]], dtype=np.int64),
+            np.array([4, 0, 1, 1, 0], dtype=np.int64),
+            "protected wall",
+        ),
+        (
+            np.array(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                ]
+            ),
+            np.array([[0, 1, 2], [1, 0, 3]], dtype=np.int64),
+            [],
+            np.array([[0, 1]], dtype=np.int64),
+            np.array([4, 1, 0, 1, 0], dtype=np.int64),
+            "protected feature",
+        ),
+    ],
+)
+def test_native_quad_preparer_rejects_invented_or_protected_pairs(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+    walls: list[tuple[int, int]],
+    face_pairs: np.ndarray,
+    diagnostics: np.ndarray,
+    message: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.utils import native_extensions
+
+    monkeypatch.setattr(
+        native_extensions,
+        "load_native_metrics",
+        lambda: SimpleNamespace(prepare_quad_pairs=lambda *_args: (face_pairs, diagnostics)),
+    )
+    with pytest.raises(RuntimeError, match=message):
+        _prepare_quad_pairs(vertices, triangles, walls, 45.0)
+
+
+def test_native_quad_preparer_preserves_non_iterable_wall_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.utils import native_extensions
+
+    monkeypatch.setattr(
+        native_extensions,
+        "load_native_metrics",
+        lambda: SimpleNamespace(prepare_quad_pairs=lambda *_args: None),
+    )
+    with pytest.raises(
+        ValueError,
+        match="protected_wall_edges must contain pairs of exact signed int64 indices",
+    ):
+        _prepare_quad_pairs(
+            np.empty((0, 3), dtype=np.float64),
+            np.empty((0, 3), dtype=np.int64),
+            "not-an-edge-list",
+            45.0,
+        )

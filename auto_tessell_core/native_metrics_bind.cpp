@@ -2283,6 +2283,361 @@ py::dict validate_triangle_surface_and_build_edge_faces(
     return result;
 }
 
+struct QuadPreparationEdge {
+    std::array<long long, 2> key;
+    long long face;
+    signed char direction;
+    size_t encounter_order;
+};
+
+struct QuadPreparationLink {
+    long long centre;
+    std::array<long long, 2> edge;
+};
+
+struct QuadPreparationPair {
+    std::array<long long, 2> faces;
+    size_t encounter_order;
+};
+
+[[nodiscard]] bool quad_preparation_edge_less(
+    const QuadPreparationEdge& left,
+    const QuadPreparationEdge& right) noexcept
+{
+    if (left.key != right.key) {
+        return left.key < right.key;
+    }
+    return left.encounter_order < right.encounter_order;
+}
+
+[[nodiscard]] bool quad_preparation_link_less(
+    const QuadPreparationLink& left,
+    const QuadPreparationLink& right) noexcept
+{
+    if (left.centre != right.centre) {
+        return left.centre < right.centre;
+    }
+    return left.edge < right.edge;
+}
+
+[[nodiscard]] bool canonical_face_less(
+    const std::array<long long, 3>& left,
+    const std::array<long long, 3>& right) noexcept
+{
+    return left < right;
+}
+
+[[nodiscard]] size_t disjoint_find(
+    std::vector<size_t>& parent, size_t index) noexcept
+{
+    size_t root = index;
+    while (parent[root] != root) {
+        root = parent[root];
+    }
+    while (parent[index] != index) {
+        const size_t next = parent[index];
+        parent[index] = root;
+        index = next;
+    }
+    return root;
+}
+
+void disjoint_union(
+    std::vector<size_t>& parent, size_t first, size_t second) noexcept
+{
+    first = disjoint_find(parent, first);
+    second = disjoint_find(parent, second);
+    if (first != second) {
+        parent[second] = first;
+    }
+}
+
+py::tuple prepare_quad_pairs(
+    const py::array_t<double, py::array::c_style>& vertices_array,
+    const py::array_t<long long, py::array::c_style>& triangles_array,
+    const py::array_t<long long, py::array::c_style>& wall_edges_array,
+    const double feature_angle_deg)
+{
+    if (vertices_array.ndim() != 2 || vertices_array.shape(1) != 3) {
+        throw std::invalid_argument(
+            "vertices must be a C-contiguous float64 array with shape (N, 3)");
+    }
+    if (triangles_array.ndim() != 2 || triangles_array.shape(1) != 3) {
+        throw std::invalid_argument(
+            "triangles must be a C-contiguous int64 array with shape (M, 3)");
+    }
+    if (wall_edges_array.ndim() != 2 || wall_edges_array.shape(1) != 2) {
+        throw std::invalid_argument(
+            "wall_edges must be a C-contiguous int64 array with shape (K, 2)");
+    }
+    if (!std::isfinite(feature_angle_deg)
+        || feature_angle_deg <= 0.0 || feature_angle_deg >= 180.0) {
+        throw std::invalid_argument(
+            "feature_angle_deg must be finite and in (0, 180)");
+    }
+
+    const auto vertices = vertices_array.unchecked<2>();
+    const auto triangles = triangles_array.unchecked<2>();
+    const auto wall_edges = wall_edges_array.unchecked<2>();
+    const size_t vertex_count = static_cast<size_t>(vertices.shape(0));
+    const size_t face_count = static_cast<size_t>(triangles.shape(0));
+    const size_t wall_edge_count = static_cast<size_t>(wall_edges.shape(0));
+    if (vertex_count > static_cast<size_t>(std::numeric_limits<long long>::max())
+        || face_count > static_cast<size_t>(std::numeric_limits<long long>::max())
+        || face_count > std::numeric_limits<size_t>::max() / 3U) {
+        throw std::invalid_argument("surface is too large for signed int64 topology");
+    }
+    std::vector<QuadPreparationEdge> edges;
+    edges.reserve(face_count * 3U);
+    std::vector<QuadPreparationLink> links;
+    links.reserve(face_count * 3U);
+    std::vector<std::array<long long, 3>> canonical_faces;
+    canonical_faces.reserve(face_count);
+    std::vector<Point3> normals(face_count);
+    std::vector<std::array<long long, 2>> canonical_walls;
+    canonical_walls.reserve(wall_edge_count);
+    std::vector<QuadPreparationPair> face_pairs;
+    long long boundary_count = 0;
+    long long feature_count = 0;
+    long long candidate_count = 0;
+    long long rejected_protected = 0;
+
+    {
+        py::gil_scoped_release release;
+        for (size_t vertex = 0; vertex < vertex_count; ++vertex) {
+            for (size_t coordinate = 0; coordinate < 3; ++coordinate) {
+                if (!std::isfinite(vertices(
+                        static_cast<py::ssize_t>(vertex),
+                        static_cast<py::ssize_t>(coordinate)))) {
+                    throw std::invalid_argument("surface contains non-finite vertices");
+                }
+            }
+        }
+
+        constexpr std::array<std::array<size_t, 2>, 3> local_edges{{
+            {{0, 1}}, {{1, 2}}, {{2, 0}},
+        }};
+        for (size_t face = 0; face < face_count; ++face) {
+            std::array<long long, 3> triangle{};
+            for (size_t local = 0; local < triangle.size(); ++local) {
+                const long long vertex = triangles(
+                    static_cast<py::ssize_t>(face),
+                    static_cast<py::ssize_t>(local));
+                if (vertex < 0 || vertex >= static_cast<long long>(vertex_count)) {
+                    throw std::invalid_argument(
+                        "triangle indices are outside the input vertex range");
+                }
+                triangle[local] = vertex;
+            }
+            std::array<long long, 3> face_key = triangle;
+            std::sort(face_key.begin(), face_key.end());
+            if (std::adjacent_find(face_key.begin(), face_key.end())
+                != face_key.end()) {
+                throw std::invalid_argument("surface contains a degenerate triangle");
+            }
+            canonical_faces.push_back(face_key);
+
+            const auto point = [&](const size_t local) -> Point3 {
+                const auto vertex = static_cast<py::ssize_t>(triangle[local]);
+                return {vertices(vertex, 0), vertices(vertex, 1), vertices(vertex, 2)};
+            };
+            const Point3 first = point(0);
+            const Point3 normal = cross(sub(point(1), first), sub(point(2), first));
+            const double normal_length = norm3(normal);
+            if (normal_length <= 1e-30) {
+                throw std::invalid_argument("surface contains a zero-area triangle");
+            }
+            normals[face] = {
+                normal[0] / normal_length,
+                normal[1] / normal_length,
+                normal[2] / normal_length,
+            };
+
+            for (size_t local = 0; local < local_edges.size(); ++local) {
+                long long start = triangle[local_edges[local][0]];
+                long long end = triangle[local_edges[local][1]];
+                signed char direction = 1;
+                if (end < start) {
+                    std::swap(start, end);
+                    direction = -1;
+                }
+                edges.push_back(QuadPreparationEdge{
+                    {start, end}, static_cast<long long>(face), direction,
+                    face * 3U + local});
+            }
+            links.push_back(QuadPreparationLink{
+                triangle[0], {triangle[1], triangle[2]}});
+            links.push_back(QuadPreparationLink{
+                triangle[1], {triangle[2], triangle[0]}});
+            links.push_back(QuadPreparationLink{
+                triangle[2], {triangle[0], triangle[1]}});
+        }
+
+        std::sort(canonical_faces.begin(), canonical_faces.end(), canonical_face_less);
+        if (std::adjacent_find(canonical_faces.begin(), canonical_faces.end())
+            != canonical_faces.end()) {
+            throw std::invalid_argument("surface contains a duplicate triangle");
+        }
+
+        std::sort(links.begin(), links.end(), quad_preparation_link_less);
+        std::vector<long long> link_vertices;
+        std::vector<size_t> parent;
+        for (size_t begin = 0; begin < links.size();) {
+            size_t end = begin + 1U;
+            while (end < links.size() && links[end].centre == links[begin].centre) {
+                ++end;
+            }
+            link_vertices.clear();
+            link_vertices.reserve((end - begin) * 2U);
+            for (size_t index = begin; index < end; ++index) {
+                link_vertices.push_back(links[index].edge[0]);
+                link_vertices.push_back(links[index].edge[1]);
+            }
+            std::sort(link_vertices.begin(), link_vertices.end());
+            link_vertices.erase(
+                std::unique(link_vertices.begin(), link_vertices.end()),
+                link_vertices.end());
+            parent.resize(link_vertices.size());
+            std::iota(parent.begin(), parent.end(), size_t{0});
+            for (size_t index = begin; index < end; ++index) {
+                const size_t first = static_cast<size_t>(std::lower_bound(
+                    link_vertices.begin(), link_vertices.end(), links[index].edge[0])
+                    - link_vertices.begin());
+                const size_t second = static_cast<size_t>(std::lower_bound(
+                    link_vertices.begin(), link_vertices.end(), links[index].edge[1])
+                    - link_vertices.begin());
+                disjoint_union(parent, first, second);
+            }
+            const size_t root = disjoint_find(parent, 0U);
+            for (size_t index = 1; index < parent.size(); ++index) {
+                if (disjoint_find(parent, index) != root) {
+                    throw std::invalid_argument(
+                        "surface contains non-manifold vertex "
+                        + std::to_string(links[begin].centre));
+                }
+            }
+            begin = end;
+        }
+
+        for (size_t index = 0; index < wall_edge_count; ++index) {
+            long long first = wall_edges(static_cast<py::ssize_t>(index), 0);
+            long long second = wall_edges(static_cast<py::ssize_t>(index), 1);
+            if (first == second) {
+                throw std::invalid_argument(
+                    "protected wall edge must have distinct endpoints");
+            }
+            if (second < first) {
+                std::swap(first, second);
+            }
+            canonical_walls.push_back({first, second});
+        }
+        std::sort(canonical_walls.begin(), canonical_walls.end());
+        canonical_walls.erase(
+            std::unique(canonical_walls.begin(), canonical_walls.end()),
+            canonical_walls.end());
+
+        std::sort(edges.begin(), edges.end(), quad_preparation_edge_less);
+        const double cosine_limit = std::cos(
+            feature_angle_deg * std::numbers::pi_v<double> / 180.0);
+        size_t wall_cursor = 0;
+        for (size_t begin = 0; begin < edges.size();) {
+            size_t end = begin + 1U;
+            while (end < edges.size() && edges[end].key == edges[begin].key) {
+                ++end;
+            }
+            const size_t incidence = end - begin;
+            if (incidence > 2U) {
+                throw std::invalid_argument(
+                    "surface contains non-manifold edge ("
+                    + std::to_string(edges[begin].key[0]) + ", "
+                    + std::to_string(edges[begin].key[1]) + ")");
+            }
+            if (incidence == 2U
+                && edges[begin].direction == edges[begin + 1U].direction) {
+                throw std::invalid_argument(
+                    "surface contains inconsistent orientation at edge ("
+                    + std::to_string(edges[begin].key[0]) + ", "
+                    + std::to_string(edges[begin].key[1]) + ")");
+            }
+
+            while (wall_cursor < canonical_walls.size()
+                   && canonical_walls[wall_cursor] < edges[begin].key) {
+                throw std::invalid_argument(
+                    "protected wall edge ("
+                    + std::to_string(canonical_walls[wall_cursor][0]) + ", "
+                    + std::to_string(canonical_walls[wall_cursor][1])
+                    + ") is not an input surface edge");
+            }
+            const bool is_wall = wall_cursor < canonical_walls.size()
+                && canonical_walls[wall_cursor] == edges[begin].key;
+            if (is_wall) {
+                ++wall_cursor;
+            }
+            if (incidence == 1U) {
+                ++boundary_count;
+            } else {
+                ++candidate_count;
+                const Point3& first_normal = normals[
+                    static_cast<size_t>(edges[begin].face)];
+                const Point3& second_normal = normals[
+                    static_cast<size_t>(edges[begin + 1U].face)];
+                const double normal_dot =
+                    first_normal[0] * second_normal[0]
+                    + first_normal[1] * second_normal[1]
+                    + first_normal[2] * second_normal[2];
+                const bool is_feature = normal_dot < cosine_limit;
+                if (is_feature) {
+                    ++feature_count;
+                }
+                if (is_feature || is_wall) {
+                    ++rejected_protected;
+                } else {
+                    std::array<long long, 2> pair{
+                        edges[begin].face, edges[begin + 1U].face};
+                    if (pair[1] < pair[0]) {
+                        std::swap(pair[0], pair[1]);
+                    }
+                    face_pairs.push_back(QuadPreparationPair{
+                        pair,
+                        std::min(
+                            edges[begin].encounter_order,
+                            edges[begin + 1U].encounter_order)});
+                }
+            }
+            begin = end;
+        }
+        if (wall_cursor != canonical_walls.size()) {
+            throw std::invalid_argument(
+                "protected wall edge ("
+                + std::to_string(canonical_walls[wall_cursor][0]) + ", "
+                + std::to_string(canonical_walls[wall_cursor][1])
+                + ") is not an input surface edge");
+        }
+        std::sort(
+            face_pairs.begin(), face_pairs.end(),
+            [](const QuadPreparationPair& left, const QuadPreparationPair& right) {
+                return left.encounter_order < right.encounter_order;
+            });
+    }
+
+    py::array_t<long long> pairs_array({
+        static_cast<py::ssize_t>(face_pairs.size()), py::ssize_t{2}});
+    auto pairs_out = pairs_array.mutable_unchecked<2>();
+    for (py::ssize_t index = 0;
+         index < static_cast<py::ssize_t>(face_pairs.size()); ++index) {
+        pairs_out(index, 0) = face_pairs[static_cast<size_t>(index)].faces[0];
+        pairs_out(index, 1) = face_pairs[static_cast<size_t>(index)].faces[1];
+    }
+    py::array_t<long long> diagnostics_array({py::ssize_t{5}});
+    auto diagnostics = diagnostics_array.mutable_unchecked<1>();
+    diagnostics(0) = boundary_count;
+    diagnostics(1) = feature_count;
+    diagnostics(2) = static_cast<long long>(canonical_walls.size());
+    diagnostics(3) = candidate_count;
+    diagnostics(4) = rejected_protected;
+    return py::make_tuple(std::move(pairs_array), std::move(diagnostics_array));
+}
+
 struct QuadPairCandidate {
     double score;
     std::array<long long, 2> face_pair;
@@ -3199,6 +3554,11 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("validate_triangle_surface_and_build_edge_faces",
           &validate_triangle_surface_and_build_edge_faces,
           py::arg("vertices"), py::arg("triangles"));
+    m.def("prepare_quad_pairs", &prepare_quad_pairs,
+          py::arg("vertices").noconvert(),
+          py::arg("triangles").noconvert(),
+          py::arg("wall_edges").noconvert(),
+          py::arg("feature_angle_deg"));
     m.def("estimate_triangle_curvature_sizing",
           &estimate_triangle_curvature_sizing,
           py::arg("vertices"), py::arg("triangles"), py::arg("epsilon"),
