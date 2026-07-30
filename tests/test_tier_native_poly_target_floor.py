@@ -35,6 +35,34 @@ def test_target_vertex_floor_failure_bypasses_voronoi_and_keeps_source(
     np.testing.assert_array_equal(seen["faces"], faces)
 
 
+def test_target_budget_refusal_bypasses_voronoi_and_keeps_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vertices = np.asarray([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+    faces = np.asarray([[0, 1, 2]])
+    seen: dict[str, np.ndarray] = {}
+
+    def refused_harness(v, f, *_args, **_kwargs):
+        seen["vertices"] = v.copy()
+        seen["faces"] = f.copy()
+        return SimpleNamespace(
+            success=False,
+            message="target_poly_budget_unreachable: requested=50",
+        )
+
+    monkeypatch.setattr(tier, "run_native_poly_harness", refused_harness)
+    monkeypatch.setattr(
+        tier,
+        "generate_native_poly_voronoi",
+        lambda *_args, **_kwargs: pytest.fail("fallback called"),
+    )
+    result = tier._runner(vertices, faces, tmp_path, target_cells=50, bl_layers=0)
+
+    assert result.success is False
+    np.testing.assert_array_equal(seen["vertices"], vertices)
+    np.testing.assert_array_equal(seen["faces"], faces)
+
+
 def test_generic_harness_failure_keeps_existing_voronoi_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -38,3 +38,22 @@ def test_empty_input_skips_preflight_and_reaches_tet(
     )
     assert r.success is False
     assert "target_poly_budget_unreachable" not in r.message
+
+
+def test_ragged_input_skips_preflight(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(
+        harness,
+        "generate_native_tet",
+        lambda *_a, **_k: type(
+            "R", (), {"success": False, "tets": None, "message": "native validation"}
+        )(),
+    )
+    r = harness.run_native_poly_harness(
+        [[0, 0, 0], [1, 0]],
+        [[0, 1, 0]],
+        tmp_path,
+        target_cells=50,
+        target_edge_length=0.02,
+        max_iter=1,
+    )
+    assert "target_poly_budget_unreachable" not in r.message

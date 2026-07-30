@@ -135,11 +135,13 @@ def run_native_poly_harness(
     # Explicit BL=0 poly targets must not enter a known-unbounded tet path.
     # The uniform floor-grid requires interior work in addition to its nodes;
     # reserve a conservative 2x overhead before generation starts.
-    vertex_array = np.asarray(vertices)
-    face_array = np.asarray(faces)
     try:
+        vertex_array = np.asarray(vertices)
+        face_array = np.asarray(faces)
         finite_vertices = bool(np.isfinite(vertex_array).all())
     except (TypeError, ValueError):
+        vertex_array = np.asarray(())
+        face_array = np.asarray(())
         finite_vertices = False
     preflight_eligible = (
         vertex_array.ndim == 2
@@ -204,8 +206,8 @@ def run_native_poly_harness(
     tet_cells_by_iteration: list[int] = []
     floor_failures: list[str] = []
     min_final_vertices = (
-        max(int(np.asarray(vertices).shape[0]) + 1, int(ceil(int(target_cells) * 0.5)))
-        if target_cells is not None and int(target_cells) > 0
+        max(int(vertex_array.shape[0]) + 1, int(ceil(int(target_cells) * 0.5)))
+        if preflight_eligible and target_cells is not None and int(target_cells) > 0
         else None
     )
 
