@@ -289,6 +289,15 @@ class MeshGenerator:
         # 사용자가 단일 tier 를 강제하려면 strict_tier=True — 이때 상위
         # orchestrator 가 strategy.fallback_tiers 를 비우므로 동작 동일.)
         auto_mode = strategy.selected_tier.lower() in ("auto", "")
+        boolean_input_paths = (getattr(strategy, "tier_specific_params", {}) or {}).get(
+            "boolean_input_paths"
+        )
+        if boolean_input_paths:
+            if auto_mode:
+                logger.error("boolean_pipeline_requires_explicit_selected_tier")
+                return []
+            return [_resolve_tier(strategy.selected_tier)]
+
         if not auto_mode:
             return [_resolve_tier(strategy.selected_tier)] + [
                 _resolve_tier(fb)

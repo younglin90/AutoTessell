@@ -1031,6 +1031,91 @@ class TestPipeline:
         assert called_tiers == ["tier1_snappy", "tier15_cfmesh", "tier2_tetwild"]
         assert log.execution_summary.tiers_attempted[0].status == "failed"
 
+    @pytest.mark.parametrize("operation", ["union", "intersection", "difference"])
+    def test_pipeline_boolean_contract_fails_closed_without_generic_fallback(
+        self,
+        operation: str,
+        mesh_strategy: MeshStrategy,
+        tmp_path: Path,
+        dummy_stl: Path,
+    ) -> None:
+        """Multi-input Boolean provenance must not cross an incapable tier."""
+        from core.generator.pipeline import MeshGenerator
+
+        mesh_strategy.selected_tier = "tier_native_tet"
+        mesh_strategy.fallback_tiers = ["tier0_2d_meshpy", "tier05_netgen"]
+        mesh_strategy.tier_specific_params = {
+            "boolean_input_paths": ["a.stl", "b.stl"],
+            "boolean_operation": operation,
+        }
+        called_tiers: list[str] = []
+
+        def fail_selected_tier(tier, strategy, path, case):
+            called_tiers.append(tier)
+            return TierAttempt(
+                tier=tier,
+                status="failed",
+                time_seconds=0.01,
+                error_message="native Boolean mock fail",
+            )
+
+        with patch("core.generator.pipeline._run_tier", side_effect=fail_selected_tier):
+            log = MeshGenerator().run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert called_tiers == ["tier_native_tet"]
+        assert [attempt.tier for attempt in log.execution_summary.tiers_attempted] == [
+            "tier_native_tet"
+        ]
+        assert log.execution_summary.tiers_attempted[0].status == "failed"
+        assert not (tmp_path / "constant" / "polyMesh").exists()
+
+    def test_pipeline_boolean_selected_tier_success_path_is_exact(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """A successful native Boolean route keeps its selected-tier result."""
+        from core.generator.pipeline import MeshGenerator
+
+        mesh_strategy.selected_tier = "tier_native_tet"
+        mesh_strategy.fallback_tiers = ["tier0_2d_meshpy", "tier05_netgen"]
+        mesh_strategy.tier_specific_params = {
+            "boolean_input_paths": ["a.stl", "b.stl"],
+            "boolean_operation": "union",
+        }
+        selected_result = TierAttempt(
+            tier="tier_native_tet",
+            status="success",
+            time_seconds=0.25,
+            route="native_tet",
+        )
+
+        with patch("core.generator.pipeline._run_tier", return_value=selected_result) as mock_run:
+            log = MeshGenerator().run(mesh_strategy, dummy_stl, tmp_path)
+
+        mock_run.assert_called_once()
+        assert mock_run.call_args.args[0] == "tier_native_tet"
+        assert log.execution_summary.selected_tier == "tier_native_tet"
+        assert log.execution_summary.tiers_attempted == [selected_result]
+
+    def test_pipeline_boolean_contract_rejects_auto_without_attempt(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """A Boolean contract without an explicit capable tier fails closed."""
+        from core.generator.pipeline import MeshGenerator
+
+        mesh_strategy.selected_tier = "auto"
+        mesh_strategy.fallback_tiers = ["tier0_2d_meshpy", "tier05_netgen"]
+        mesh_strategy.tier_specific_params = {
+            "boolean_input_paths": ["a.stl", "b.stl"],
+            "boolean_operation": "union",
+        }
+
+        with patch("core.generator.pipeline._run_tier") as mock_run:
+            log = MeshGenerator().run(mesh_strategy, dummy_stl, tmp_path)
+
+        mock_run.assert_not_called()
+        assert log.execution_summary.tiers_attempted == []
+        assert not (tmp_path / "constant" / "polyMesh").exists()
+
     def test_pipeline_explicit_tier_strict_no_fallback(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
     ) -> None:
