@@ -202,6 +202,36 @@ current behavior: the pre-repair non-manifold incidence is observed, two group
 members are removed, the exterior boundary is unchanged, and the final audit
 is strict-valid.  No topology threshold was relaxed.
 
+## Poly primal-tet incidence card
+
+`native_poly.dual._build_tet_topology` created vertex-to-tet,
+edge-to-tet, and face-to-tet maps by allocating six NumPy gather arrays,
+converting them to Python lists, and appending one owner at a time in Python.
+The compatibility-stage C++23 route now scans the `(T,4)` connectivity once,
+releases the GIL, reserves incidence storage, and canonicalizes the six edges
+and four faces with `constexpr std::array` local tables.  First-seen key order
+is stored separately from hash lookup order, preserving existing deterministic
+dict traversal, face classification, and provenance behavior exactly.
+
+On a structured `24,389`-vertex / `131,712`-tet corpus, runtime changed from
+`11.105566 s` to `7.890530 s` (`1.41x`).  Traced Python heap changed from
+`335.47 MiB` to `159.19 MiB` (`52.55%` reduction).  All `24,389` vertex keys,
+`160,804` edge keys, `268,128` face keys, their insertion order, and every
+owner list match the Python oracle.  Native extension parity reports `9
+passed`; focused dual contracts report `13 passed`; the representative sphere
+dual reports `1 passed in 51.68 s`.  A combined wider Poly batch exceeded the
+`124 s` command budget and remains full-validation work.
+
+This stage deliberately preserves Python dictionaries because downstream dual
+cell construction still consumes them.  The next data-layout card should keep
+incidence as flat native CSR and port ring/fan traversal together; otherwise
+the remaining `159.19 MiB` Python-object boundary cannot be removed.  The
+implementation is first-party and independently written.  CGAL documentation
+was used only to confirm the standard tetrahedral representation: four cell
+vertices and four opposite-cell adjacency slots, with edges/facets represented
+as cell-local subfaces.  OpenVolumeMesh documentation was reviewed only as an
+architectural reference for a separate topology kernel; no source was copied.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:
@@ -218,3 +248,7 @@ is strict-valid.  No topology threshold was relaxed.
   <https://www.research-collection.ethz.ch/entities/publication/f29bfb28-ee5f-4a7e-9905-f787e138bb81>
 - SciPy radius-pair query contract used by the optional fallback:
   <https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.KDTree.query_pairs.html>
+- CGAL 6.2 3D triangulation representation:
+  <https://doc.cgal.org/latest/Periodic_3_triangulation_3/>
+- OpenVolumeMesh topology-kernel documentation:
+  <https://www.graphics.rwth-aachen.de/media/openvolumemesh_static/Documentation/OpenVolumeMesh-Doc-Latest/index.html>

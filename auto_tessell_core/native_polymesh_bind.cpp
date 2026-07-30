@@ -5,6 +5,7 @@
 #include <pybind11/stl.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
@@ -32,6 +33,25 @@ struct FaceHash {
         }
         return seed;
     }
+};
+
+template <size_t Size>
+struct ArrayHash {
+    size_t operator()(const std::array<Label, Size>& values) const noexcept
+    {
+        size_t seed = Size;
+        for (const Label value : values) {
+            const auto hash = std::hash<Label>{}(value);
+            seed ^= hash + 0x9e3779b97f4a7c15ULL + (seed << 6U) + (seed >> 2U);
+        }
+        return seed;
+    }
+};
+
+template <size_t Size>
+struct IncidenceBucket {
+    std::array<Label, Size> key;
+    std::vector<Label> owners;
 };
 
 struct FaceRef {
@@ -230,6 +250,110 @@ py::tuple build_topology(
         std::move(result.non_manifold));
 }
 
+py::tuple build_tet_incidence_maps(
+    const py::array_t<Label, py::array::c_style | py::array::forcecast>& tets_array,
+    const Label num_vertices)
+{
+    if (tets_array.ndim() != 2 || tets_array.shape(1) != 4) {
+        throw std::invalid_argument("tets must have shape (N, 4)");
+    }
+    if (num_vertices < 0) {
+        throw std::invalid_argument("num_vertices must be non-negative");
+    }
+
+    const auto tets = tets_array.unchecked<2>();
+    const size_t tet_count = static_cast<size_t>(tets.shape(0));
+    const size_t vertex_count = static_cast<size_t>(num_vertices);
+    std::vector<std::vector<Label>> vertex_owners(vertex_count);
+    std::vector<unsigned char> vertex_seen(vertex_count, 0);
+    std::vector<Label> vertex_order;
+    vertex_order.reserve(std::min(vertex_count, tet_count * 4U));
+    std::vector<IncidenceBucket<2>> edge_buckets;
+    edge_buckets.reserve(tet_count * 3U);
+    std::unordered_map<std::array<Label, 2>, size_t, ArrayHash<2>> edge_indices;
+    edge_indices.reserve(tet_count * 3U);
+    std::vector<IncidenceBucket<3>> face_buckets;
+    face_buckets.reserve(tet_count * 2U);
+    std::unordered_map<std::array<Label, 3>, size_t, ArrayHash<3>> face_indices;
+    face_indices.reserve(tet_count * 2U);
+
+    constexpr std::array<std::array<size_t, 2>, 6> local_edges{{
+        {{0, 1}}, {{0, 2}}, {{0, 3}}, {{1, 2}}, {{1, 3}}, {{2, 3}},
+    }};
+    constexpr std::array<std::array<size_t, 3>, 4> local_faces{{
+        {{1, 2, 3}}, {{0, 3, 2}}, {{0, 1, 3}}, {{0, 2, 1}},
+    }};
+
+    {
+        py::gil_scoped_release release;
+        for (size_t tet_index = 0; tet_index < tet_count; ++tet_index) {
+            std::array<Label, 4> tet{};
+            for (size_t local = 0; local < 4; ++local) {
+                const Label vertex = tets(
+                    static_cast<py::ssize_t>(tet_index),
+                    static_cast<py::ssize_t>(local));
+                if (vertex < 0 || vertex >= num_vertices) {
+                    throw std::invalid_argument("tet vertex index out of range");
+                }
+                tet[local] = vertex;
+                const size_t vertex_index = static_cast<size_t>(vertex);
+                if (vertex_seen[vertex_index] == 0) {
+                    vertex_seen[vertex_index] = 1;
+                    vertex_order.push_back(vertex);
+                }
+                vertex_owners[vertex_index].push_back(
+                    static_cast<Label>(tet_index));
+            }
+
+            for (const auto& local_edge : local_edges) {
+                std::array<Label, 2> key{
+                    tet[local_edge[0]], tet[local_edge[1]]};
+                if (key[1] < key[0]) {
+                    std::swap(key[0], key[1]);
+                }
+                const auto [position, inserted] = edge_indices.emplace(
+                    key, edge_buckets.size());
+                if (inserted) {
+                    edge_buckets.push_back(IncidenceBucket<2>{key, {}});
+                }
+                edge_buckets[position->second].owners.push_back(
+                    static_cast<Label>(tet_index));
+            }
+
+            for (const auto& local_face : local_faces) {
+                std::array<Label, 3> key{
+                    tet[local_face[0]], tet[local_face[1]], tet[local_face[2]]};
+                std::sort(key.begin(), key.end());
+                const auto [position, inserted] = face_indices.emplace(
+                    key, face_buckets.size());
+                if (inserted) {
+                    face_buckets.push_back(IncidenceBucket<3>{key, {}});
+                }
+                face_buckets[position->second].owners.push_back(
+                    static_cast<Label>(tet_index));
+            }
+        }
+    }
+
+    py::dict vertex_map;
+    for (const Label vertex : vertex_order) {
+        vertex_map[py::int_(vertex)] = py::cast(
+            std::move(vertex_owners[static_cast<size_t>(vertex)]));
+    }
+    py::dict edge_map;
+    for (auto& bucket : edge_buckets) {
+        edge_map[py::make_tuple(bucket.key[0], bucket.key[1])] =
+            py::cast(std::move(bucket.owners));
+    }
+    py::dict face_map;
+    for (auto& bucket : face_buckets) {
+        face_map[py::make_tuple(bucket.key[0], bucket.key[1], bucket.key[2])] =
+            py::cast(std::move(bucket.owners));
+    }
+    return py::make_tuple(
+        std::move(vertex_map), std::move(edge_map), std::move(face_map));
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_polymesh, module)
@@ -241,4 +365,9 @@ PYBIND11_MODULE(native_polymesh, module)
         py::arg("vertices"),
         py::arg("cell_faces"),
         py::arg("area_eps"));
+    module.def(
+        "build_tet_incidence_maps",
+        &build_tet_incidence_maps,
+        py::arg("tets"),
+        py::arg("num_vertices"));
 }

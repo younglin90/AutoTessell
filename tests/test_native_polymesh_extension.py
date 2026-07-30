@@ -310,3 +310,39 @@ def test_native_call_failure_uses_python_fallback_exactly(
 
     assert failed_stats == expected_stats
     assert _case_snapshot(failed_dir) == _case_snapshot(expected_dir)
+
+
+def test_native_tet_incidence_maps_match_python_order_exactly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native = _native_or_skip()
+    assert hasattr(native, "build_tet_incidence_maps")
+    from core.generator.native_poly import dual
+    from core.utils import native_extensions
+
+    tets = np.array(
+        [
+            [4, 2, 1, 0],
+            [4, 1, 2, 3],
+            [4, 5, 2, 0],
+            [4, 3, 2, 6],
+        ],
+        dtype=np.int64,
+    )
+    native_maps = native.build_tet_incidence_maps(tets, 7)
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: None)
+    python_maps = dual._build_tet_topology(tets, 7)
+
+    for native_map, python_map in zip(native_maps, python_maps, strict=True):
+        assert list(native_map.items()) == list(python_map.items())
+
+
+def test_native_tet_incidence_maps_reject_invalid_input() -> None:
+    native = _native_or_skip()
+    with pytest.raises(ValueError, match="shape"):
+        native.build_tet_incidence_maps(np.array([0, 1, 2, 3]), 4)
+    with pytest.raises(ValueError, match="index out of range"):
+        native.build_tet_incidence_maps(
+            np.array([[0, 1, 2, 4]], dtype=np.int64),
+            4,
+        )

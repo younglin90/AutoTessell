@@ -407,7 +407,13 @@ def _build_tet_topology(
     dict[tuple[int, int], list[int]],  # edge (sorted) → list of tet indices
     dict[tuple[int, int, int], list[int]],  # face (sorted triple) → list of tet indices
 ]:
-    """tet 배열에서 vertex/edge/face 기반 topology map 생성 (vectorized)."""
+    """Build ordered tet incidence maps through C++23, with NumPy fallback."""
+    from core.utils.native_extensions import load_native_polymesh
+
+    native = load_native_polymesh()
+    if native is not None and hasattr(native, "build_tet_incidence_maps"):
+        return native.build_tet_incidence_maps(T, int(n_verts))
+
     vert_tets: dict[int, list[int]] = defaultdict(list)
     edge_tets: dict[tuple[int, int], list[int]] = defaultdict(list)
     face_tets: dict[tuple[int, int, int], list[int]] = defaultdict(list)
