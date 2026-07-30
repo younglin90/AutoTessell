@@ -87,7 +87,7 @@ def test_degenerate_tet_is_rejected() -> None:
     assert audit.n_degenerate_tets == 1
 
 
-def test_disconnected_tet_components_require_source_aware_acceptance() -> None:
+def test_disconnected_tet_components_are_locally_manifold() -> None:
     points = np.array(
         [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
         dtype=np.float64,
@@ -96,7 +96,7 @@ def test_disconnected_tet_components_require_source_aware_acceptance() -> None:
     all_points = np.vstack([points, shifted])
     tets = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int64)
     audit = audit_tet_boundary(all_points, tets)
-    assert not audit.valid
+    assert audit.valid
     assert audit.n_boundary_components == 2
 
 

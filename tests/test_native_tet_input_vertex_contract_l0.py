@@ -111,7 +111,7 @@ def test_p4c_acceptance_supports_two_reordered_source_components() -> None:
     assert accepted
     assert missing == 0
     assert topology.n_boundary_components == 2
-    assert not topology.valid  # Standalone audit has no source topology context.
+    assert topology.valid
 
 
 def test_p4c_acceptance_rejects_duplicate_tet_topology() -> None:
