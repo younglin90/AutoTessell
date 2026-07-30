@@ -821,6 +821,14 @@ def _ray_triangle_min_distance(
     240 GB 요구하던 문제). chunk_size=512 는 512×T×3×8 bytes 메모리 상한.
     """
     eps = 1e-12
+    native_bl = load_native_bl()
+    if native_bl is not None and hasattr(native_bl, "ray_triangle_min_distance"):
+        return np.asarray(
+            native_bl.ray_triangle_min_distance(
+                origins, directions, tri_verts, exclude_mask, eps
+            ),
+            dtype=np.float64,
+        )
     R = int(origins.shape[0])
     T = int(tri_verts.shape[0])
     if R == 0 or T == 0:

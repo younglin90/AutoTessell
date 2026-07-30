@@ -449,6 +449,39 @@ geometry mutation, `third_party/` edit, or external source was introduced.
 The C++ functions are independently derived from the existing project Python
 oracles and verified against them.
 
+## Boundary-layer ray--triangle narrow-phase card
+
+Boundary-layer front collision checking previously evaluated exhaustive
+Moller--Trumbore intersections through chunked NumPy broadcasts.  It preserved
+the required nearest-hit policy, but each chunk allocated several
+`(ray, triangle, 3)` temporaries in addition to a dense exclusion mask.
+
+The first-party `native_bl` C++23 module now exposes
+`ray_triangle_min_distance`.  It validates POD NumPy shapes and finite input
+before releasing the GIL, precomputes each triangle's two edges once, and
+traverses rays and triangles in their original fixed order using stack-resident
+three-double values.  The existing `1e-12` determinant, barycentric, positive
+distance, exclusion, and nearest-hit rules are unchanged.  Misses remain
+positive infinity.  The Python implementation remains the extension-absent
+fallback.
+
+The card deliberately keeps `O(RT)` arithmetic so its behavior can be checked
+directly against the Python oracle.  Its native working storage is `O(T + R)`
+apart from the caller-owned exclusion mask, rather than broadcast temporaries
+proportional to the current ray chunk times `T`.  On a deterministic
+`512`-ray / `2,048`-triangle corpus, the native path changes from
+`0.199042844 s` to `0.018527825 s` (`10.743x`).  Finite-hit masks are identical
+and maximum absolute distance error is zero.  The focused native boundary-layer
+suite reports `54 passed`.
+
+Non-finite native ABI input now raises a validation error instead of allowing
+NaNs to flow through the geometric predicate.  No direction normalization,
+epsilon change, fast-math, parallel reduction, geometry mutation, external
+code, or `third_party/` change was introduced.  A following production card
+will replace the still-quadratic incident-face mask and the legacy
+`20,000`-triangle fail-open cap with an indexed conservative broad phase; that
+semantic change is intentionally not mixed into this parity card.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

@@ -41,6 +41,40 @@ struct GridKeyHash {
     }
 };
 
+using Point3 = std::array<double, 3>;
+
+struct RayTriangle {
+    Point3 vertex0;
+    Point3 edge1;
+    Point3 edge2;
+};
+
+[[nodiscard]] constexpr Point3 subtract(
+    const Point3& left, const Point3& right) noexcept
+{
+    return {
+        left[0] - right[0],
+        left[1] - right[1],
+        left[2] - right[2],
+    };
+}
+
+[[nodiscard]] constexpr Point3 cross(
+    const Point3& left, const Point3& right) noexcept
+{
+    return {
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    };
+}
+
+[[nodiscard]] constexpr double dot(
+    const Point3& left, const Point3& right) noexcept
+{
+    return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
 std::int64_t grid_coordinate(double value, double inverse_cell_size)
 {
     if (!std::isfinite(value)) {
@@ -149,6 +183,123 @@ py::array_t<bool> nearby_opposite_front_mask(
     return result;
 }
 
+py::array_t<double> ray_triangle_min_distance(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& origins,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& directions,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& triangle_vertices,
+    const py::object& exclude_mask,
+    const double epsilon)
+{
+    if (origins.ndim() != 2 || origins.shape(1) != 3
+        || directions.ndim() != 2 || directions.shape(1) != 3
+        || origins.shape(0) != directions.shape(0)) {
+        throw std::invalid_argument(
+            "origins and directions must have shape (R, 3)");
+    }
+    if (triangle_vertices.ndim() != 3
+        || triangle_vertices.shape(1) != 3
+        || triangle_vertices.shape(2) != 3) {
+        throw std::invalid_argument("triangle_vertices must have shape (T, 3, 3)");
+    }
+    if (!std::isfinite(epsilon) || epsilon < 0.0) {
+        throw std::invalid_argument("epsilon must be finite and non-negative");
+    }
+
+    const size_t ray_count = static_cast<size_t>(origins.shape(0));
+    const size_t triangle_count = static_cast<size_t>(triangle_vertices.shape(0));
+    const double* const origin_data = origins.data();
+    const double* const direction_data = directions.data();
+    const double* const triangle_data = triangle_vertices.data();
+    for (py::ssize_t index = 0; index < origins.size(); ++index) {
+        if (!std::isfinite(origin_data[index])
+            || !std::isfinite(direction_data[index])) {
+            throw std::invalid_argument("ray origins and directions must be finite");
+        }
+    }
+    for (py::ssize_t index = 0; index < triangle_vertices.size(); ++index) {
+        if (!std::isfinite(triangle_data[index])) {
+            throw std::invalid_argument("triangle vertices must be finite");
+        }
+    }
+
+    py::array exclude_owner;
+    const bool* exclude_data = nullptr;
+    if (!exclude_mask.is_none()) {
+        auto typed_exclude = py::array_t<
+            bool, py::array::c_style | py::array::forcecast>::ensure(exclude_mask);
+        if (!typed_exclude) {
+            throw std::invalid_argument("exclude_mask must be a boolean array");
+        }
+        if (typed_exclude.ndim() != 2
+            || static_cast<size_t>(typed_exclude.shape(0)) != ray_count
+            || static_cast<size_t>(typed_exclude.shape(1)) != triangle_count) {
+            throw std::invalid_argument("exclude_mask must have shape (R, T)");
+        }
+        exclude_owner = typed_exclude;
+        exclude_data = typed_exclude.data();
+    }
+
+    py::array_t<double> result({static_cast<py::ssize_t>(ray_count)});
+    double* const output = result.mutable_data();
+    std::vector<RayTriangle> triangles(triangle_count);
+    {
+        py::gil_scoped_release release;
+        for (size_t triangle = 0U; triangle < triangle_count; ++triangle) {
+            const double* const values = triangle_data + triangle * 9U;
+            const Point3 vertex0{values[0], values[1], values[2]};
+            const Point3 vertex1{values[3], values[4], values[5]};
+            const Point3 vertex2{values[6], values[7], values[8]};
+            triangles[triangle] = {
+                vertex0,
+                subtract(vertex1, vertex0),
+                subtract(vertex2, vertex0),
+            };
+        }
+
+        for (size_t ray = 0U; ray < ray_count; ++ray) {
+            const double* const origin_values = origin_data + ray * 3U;
+            const double* const direction_values = direction_data + ray * 3U;
+            const Point3 origin{
+                origin_values[0], origin_values[1], origin_values[2]};
+            const Point3 direction{
+                direction_values[0], direction_values[1], direction_values[2]};
+            double best = std::numeric_limits<double>::infinity();
+            for (size_t triangle = 0U; triangle < triangle_count; ++triangle) {
+                if (exclude_data != nullptr
+                    && exclude_data[ray * triangle_count + triangle]) {
+                    continue;
+                }
+                const RayTriangle& candidate = triangles[triangle];
+                const Point3 pvec = cross(direction, candidate.edge2);
+                const double determinant = dot(candidate.edge1, pvec);
+                if (!(std::abs(determinant) > epsilon)) {
+                    continue;
+                }
+                const double inverse_determinant = 1.0 / determinant;
+                const Point3 tvec = subtract(origin, candidate.vertex0);
+                const double u = dot(tvec, pvec) * inverse_determinant;
+                // Match the long-standing Python oracle exactly.  The
+                // u + v test below supplies the upper barycentric bound.
+                if (u < -epsilon) {
+                    continue;
+                }
+                const Point3 qvec = cross(tvec, candidate.edge1);
+                const double v = dot(direction, qvec) * inverse_determinant;
+                if (v < -epsilon || u + v > 1.0 + epsilon) {
+                    continue;
+                }
+                const double distance = dot(candidate.edge2, qvec)
+                    * inverse_determinant;
+                if (distance > epsilon && distance < best) {
+                    best = distance;
+                }
+            }
+            output[ray] = best;
+        }
+    }
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_bl, module)
@@ -161,4 +312,12 @@ PYBIND11_MODULE(native_bl, module)
         py::arg("front_points"),
         py::arg("search_radius"),
         py::arg("normal_dot_threshold") = -0.5);
+    module.def(
+        "ray_triangle_min_distance",
+        &ray_triangle_min_distance,
+        py::arg("origins"),
+        py::arg("directions"),
+        py::arg("triangle_vertices"),
+        py::arg("exclude_mask") = py::none(),
+        py::arg("epsilon") = 1e-12);
 }
