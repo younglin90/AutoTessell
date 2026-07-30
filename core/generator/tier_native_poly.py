@@ -98,6 +98,12 @@ def _runner(
     )
     if hres.success:
         return hres
+    if hres.message.startswith("target_primal_vertex_floor_unmet:"):
+        log.warning(
+            "native_poly_target_primal_vertex_floor_unmet",
+            message=hres.message,
+        )
+        return hres
     log.warning(
         "native_poly_harness_fail_falling_back_to_voronoi",
         message=hres.message,
