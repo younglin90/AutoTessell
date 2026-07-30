@@ -1481,3 +1481,65 @@ scope. Future MIT-core boundary follows
   counts, first non-manifold edge, feature classification, deterministic order,
   wall topology, and full generate-native-BL polyMesh hashes.  Keep Python as
   parity oracle/fallback.
+
+## Cycle 27 checkpoint -- 2026-07-30
+
+### C++23 compact boundary-layer front summary evidence
+
+- `67154481` adds first-party `native_bl.layer_front_summary`.  It consumes
+  contiguous face ids, triangle connectivity, and points; validates the ABI;
+  releases the GIL; and uses reserved flat edge and vertex-face records plus
+  dense byte flags instead of Python dict/set/dataclass graphs.
+- Edge grouping is canonical and deterministic.  Equal-edge references retain
+  candidate-face order.  The first non-manifold edge remains lexicographically
+  first and its incident face ids retain original order.  Feature cosine `0.9`
+  and blocked-vertex semantics are unchanged.
+- Complexity is `O(F log F + sum(d_v^2))` time and `O(F + V + E)` storage.  The
+  degree-squared feature test is deliberately retained for exact oracle parity.
+- Planar 45,000-triangle benchmark: Python `12.833594212 s`, native median
+  `0.025557641 s`, `502.14x`.  Traced Python heap `85.27 -> 3.50 MiB`, `95.90%`
+  reduction; C++ allocator memory is not included in this traced-heap metric.
+  Counts match exactly: faces `45,000`, vertices `22,801`, edges `67,800`,
+  boundary `600`, non-manifold `0`, feature `0`, blocked `600`.
+- Open, cube-feature, shuffled/non-contiguous face id, ordered non-manifold,
+  empty, degenerate, seeded soup, invalid ABI, extension-disabled fallback, and
+  full generated polyMesh five-file byte parity pass.  Wider production BL
+  validation passes `124`; post-merge focused validation passes `26`.
+- `f255ca78` fixes extension search order found during post-merge verification:
+  explicit `AUTOTESSELL_EXT_BUILD_DIR` now outranks a stale repo-local build.
+  This closes a false-skip risk in isolated native ABI validation.
+- GCC 13.3 strict C++23 build is warning-free; compiler extensions are disabled.
+  No topology threshold, wall geometry, dependency, external source, or
+  `third_party/` file changed.
+- Full two-commit bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-front-summary-2-f255ca78.bundle`,
+  SHA-256 `b1e1c6b55200218ec0393ccf9c14693465b3cc1fcc69fb744910fa900569c090`.
+  Worktree, branch, and isolated builds were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-27 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | GCC 13.3 strict C++23 target warning-free; supported OS/compiler matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Native/fallback/wider BL suites pass; immutable-head full suite remains. |
+| 4 Shape preservation | UNVERIFIED | Generated polyMesh byte parity passes; full corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Exact non-manifold rejection preserved; all-engine corpus remains. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology/validity; Poly target unresolved. |
+| 7 Boundary layer | UNVERIFIED | Front topology, BL0, provenance, persistence pass; full wall corpus remains. |
+| 8 Quality | UNVERIFIED | Feature/blocked classification parity passes; complete fixture matrix remains. |
+| 9 Reproducibility | FAIL | Edge and face order deterministic; external P4C topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Invalid ABI and non-manifold fixtures fail explicitly; adverse corpus incomplete. |
+| 11 Performance | UNVERIFIED | Front-summary bottleneck closed with 502.14x measured gain; frozen all-engine budgets remain. |
+| 12 Packaging | UNVERIFIED | Explicit build override fixed; wheel/native artifact evidence incomplete. |
+| 13 License/provenance | UNVERIFIED | Independent first-party C++23; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 evidence and loader contract documented; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Port the remaining `_build_edge_to_wall_faces` production cache to C++23 or
+  fuse it with front-summary output so the same `3F` edge scan is not repeated.
+  Preserve sorted edge keys, owner-face order, layer-side connectivity, and full
+  polyMesh byte hashes; reject the card if an extra Python materialization erases
+  the end-to-end gain.
