@@ -18,6 +18,24 @@ option(BUILD_NATIVE_SURFACE_PADDING "Build native planar surface padding kernel"
 option(BUILD_NATIVE_HEX_QUALITY "Build native hex quality kernel" ON)
 option(BUILD_NATIVE_TET_PREDICATES "Build native exact tetrahedral predicate kernel" ON)
 option(BUILD_NATIVE_TET_QOPT "Build native tetrahedral quality-optimizer kernel" ON)
+option(AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE
+  "Install only the first-party native extension wheel profile" OFF)
+
+if(AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE)
+  # Keep binary wheels independent of optional external adapter sources.
+  set(BUILD_CINOLIB_HEX OFF CACHE BOOL "" FORCE)
+  set(BUILD_ROBUSTHEX OFF CACHE BOOL "" FORCE)
+  set(BUILD_FTETWILD OFF CACHE BOOL "" FORCE)
+  set(BUILD_CFMESH OFF CACHE BOOL "" FORCE)
+  set(BUILD_NATIVE_METRICS ON CACHE BOOL "" FORCE)
+  set(BUILD_NATIVE_BL ON CACHE BOOL "" FORCE)
+  set(BUILD_NATIVE_POLYMESH ON CACHE BOOL "" FORCE)
+  set(BUILD_NATIVE_SNAP ON CACHE BOOL "" FORCE)
+  set(BUILD_NATIVE_SURFACE_PADDING ON CACHE BOOL "" FORCE)
+  set(BUILD_NATIVE_HEX_QUALITY ON CACHE BOOL "" FORCE)
+  set(BUILD_NATIVE_TET_PREDICATES ON CACHE BOOL "" FORCE)
+  set(BUILD_NATIVE_TET_QOPT ON CACHE BOOL "" FORCE)
+endif()
 
 # ── Paths to cloned repos (define first — used by subdirectory builds) ───────
 set(CINOLIB_DIR     "/tmp/hexmesh_build/cinolib"                    CACHE PATH "")
@@ -33,7 +51,33 @@ find_package(Python 3.12 COMPONENTS Interpreter Development.Module REQUIRED)
 find_package(pybind11 3.0 CONFIG REQUIRED)
 
 # ── Eigen3 ──────────────────────────────────────────────────────────────────
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+if(BUILD_CINOLIB_HEX OR BUILD_ROBUSTHEX OR BUILD_FTETWILD)
+  find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+endif()
+
+set(_AUTOTESSELL_FIRST_PARTY_NATIVE_TARGETS
+  native_metrics
+  native_bl
+  native_polymesh
+  native_snap
+  native_surface_padding
+  native_hex_quality
+  native_tet_predicates
+  native_tet_qopt)
+
+function(autotessell_configure_first_party_native target_name)
+  target_compile_features(${target_name} PRIVATE cxx_std_23)
+  set_target_properties(${target_name} PROPERTIES CXX_EXTENSIONS OFF)
+  if(MSVC)
+    target_compile_options(${target_name} PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:/O2;/W4>
+      $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<BOOL:${AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE}>>:/WX>)
+  else()
+    target_compile_options(${target_name} PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:-O3;-Wall;-Wextra;-Wpedantic>
+      $<$<AND:$<COMPILE_LANGUAGE:CXX>,$<BOOL:${AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE}>>:-Werror>)
+  endif()
+endfunction()
 
 # ── Compiler flag helpers ────────────────────────────────────────────────────
 # Use MSVC-compatible flags on Windows, GCC/Clang flags elsewhere
@@ -68,69 +112,37 @@ endif()
 # ── native metric kernels ────────────────────────────────────────────────────
 if(BUILD_NATIVE_METRICS)
   pybind11_add_module(native_metrics native_metrics_bind.cpp)
-  target_compile_features(native_metrics PRIVATE cxx_std_23)
-  if(MSVC)
-    target_compile_options(native_metrics PRIVATE /O2 /W4)
-  else()
-    target_compile_options(native_metrics PRIVATE -O3 -Wall -Wextra -Wpedantic)
-  endif()
+  autotessell_configure_first_party_native(native_metrics)
 endif()
 
 # ── native polyMesh topology kernel ───────────────────────────────────────
 # Native boundary-layer search kernels.
 if(BUILD_NATIVE_BL)
   pybind11_add_module(native_bl native_bl_bind.cpp)
-  target_compile_features(native_bl PRIVATE cxx_std_23)
-  set_target_properties(native_bl PROPERTIES CXX_EXTENSIONS OFF)
-  if(MSVC)
-    target_compile_options(native_bl PRIVATE /O2 /W4)
-  else()
-    target_compile_options(native_bl PRIVATE -O3 -Wall -Wextra -Wpedantic)
-  endif()
+  autotessell_configure_first_party_native(native_bl)
 endif()
 
 if(BUILD_NATIVE_POLYMESH)
   pybind11_add_module(native_polymesh native_polymesh_bind.cpp)
-  target_compile_features(native_polymesh PRIVATE cxx_std_23)
-  set_target_properties(native_polymesh PROPERTIES CXX_EXTENSIONS OFF)
-  if(MSVC)
-    target_compile_options(native_polymesh PRIVATE /O2 /W4)
-  else()
-    target_compile_options(native_polymesh PRIVATE -O3 -Wall -Wextra -Wpedantic)
-  endif()
+  autotessell_configure_first_party_native(native_polymesh)
 endif()
 
 # ── native surface snap candidate kernel ──────────────────────────────────
 if(BUILD_NATIVE_SNAP)
   pybind11_add_module(native_snap native_snap_bind.cpp)
-  target_compile_features(native_snap PRIVATE cxx_std_23)
-  if(MSVC)
-    target_compile_options(native_snap PRIVATE /O2 /W3)
-  else()
-    target_compile_options(native_snap PRIVATE -O3)
-  endif()
+  autotessell_configure_first_party_native(native_snap)
 endif()
 
 # ── native planar surface padding kernel ──────────────────────────────────
 if(BUILD_NATIVE_SURFACE_PADDING)
   pybind11_add_module(native_surface_padding native_surface_padding_bind.cpp)
-  target_compile_features(native_surface_padding PRIVATE cxx_std_23)
-  if(MSVC)
-    target_compile_options(native_surface_padding PRIVATE /O2 /W3)
-  else()
-    target_compile_options(native_surface_padding PRIVATE -O3)
-  endif()
+  autotessell_configure_first_party_native(native_surface_padding)
 endif()
 
 # ── native hex quality kernel ──────────────────────────────────────────────
 if(BUILD_NATIVE_HEX_QUALITY)
   pybind11_add_module(native_hex_quality native_hex_quality_bind.cpp)
-  target_compile_features(native_hex_quality PRIVATE cxx_std_23)
-  if(MSVC)
-    target_compile_options(native_hex_quality PRIVATE /O2 /W3)
-  else()
-    target_compile_options(native_hex_quality PRIVATE -O3)
-  endif()
+  autotessell_configure_first_party_native(native_hex_quality)
 endif()
 
 # ── native exact tetrahedral predicates ───────────────────────────────────
@@ -138,6 +150,9 @@ endif()
 # already used by AutoTessell's Python predicate wrapper.  It is compiled into
 # this module without modifying or depending on third_party/ source.
 if(BUILD_NATIVE_TET_PREDICATES)
+  # cpp_int is header-only.  Require an explicit development package so a
+  # fresh source build fails at configure time instead of during compilation.
+  find_package(Boost REQUIRED)
   set(_SHEWCHUK_PREDICATES
       "${CMAKE_CURRENT_SOURCE_DIR}/../core/utils/_shewchuk/predicates.c")
   if(NOT EXISTS "${_SHEWCHUK_PREDICATES}")
@@ -147,16 +162,12 @@ if(BUILD_NATIVE_TET_PREDICATES)
   pybind11_add_module(native_tet_predicates
       native_tet_predicates_bind.cpp
       "${_SHEWCHUK_PREDICATES}")
-  target_compile_features(native_tet_predicates PRIVATE cxx_std_23)
-  set_target_properties(native_tet_predicates PROPERTIES CXX_EXTENSIONS OFF)
+  target_link_libraries(native_tet_predicates PRIVATE Boost::headers)
+  autotessell_configure_first_party_native(native_tet_predicates)
   if(MSVC)
-    target_compile_options(native_tet_predicates PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:/O2;/W4>)
     set_source_files_properties("${_SHEWCHUK_PREDICATES}"
         PROPERTIES COMPILE_OPTIONS "/O2;/fp:precise")
   else()
-    target_compile_options(native_tet_predicates PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:-O3;-Wall;-Wextra;-Wpedantic>)
     set_source_files_properties("${_SHEWCHUK_PREDICATES}"
         PROPERTIES COMPILE_OPTIONS "-O3;-fno-fast-math")
   endif()
@@ -165,13 +176,7 @@ endif()
 # ── native tetrahedral quality optimizer ──────────────────────────────────
 if(BUILD_NATIVE_TET_QOPT)
   pybind11_add_module(native_tet_qopt native_tet_qopt_bind.cpp)
-  target_compile_features(native_tet_qopt PRIVATE cxx_std_23)
-  set_target_properties(native_tet_qopt PROPERTIES CXX_EXTENSIONS OFF)
-  if(MSVC)
-    target_compile_options(native_tet_qopt PRIVATE /O2 /W4)
-  else()
-    target_compile_options(native_tet_qopt PRIVATE -O3 -Wall -Wextra -Wpedantic)
-  endif()
+  autotessell_configure_first_party_native(native_tet_qopt)
 endif()
 
 # ── robusthex module (optional) ──────────────────────────────────────────────
@@ -292,4 +297,16 @@ else()
   if(BUILD_CFMESH)
     message(STATUS "cfmesh_native: '${CFMESH_SRC_DIR}' not found — skipping.")
   endif()
+endif()
+
+if(AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE)
+  foreach(target_name IN LISTS _AUTOTESSELL_FIRST_PARTY_NATIVE_TARGETS)
+    if(NOT TARGET ${target_name})
+      message(FATAL_ERROR
+        "First-party native wheel target '${target_name}' was not created")
+    endif()
+  endforeach()
+  install(TARGETS ${_AUTOTESSELL_FIRST_PARTY_NATIVE_TARGETS}
+    LIBRARY DESTINATION .
+    RUNTIME DESTINATION .)
 endif()

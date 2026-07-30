@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=1.0,<2", "pybind11>=3.0.4,<4"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "auto-tessell"
@@ -104,9 +104,75 @@ full = [
 auto-tessell = "cli.main:cli"
 auto-tessell-qt = "desktop.qt_main:main"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["cli*", "core*", "desktop*"]
+[tool.scikit-build]
+cmake.source-dir = "auto_tessell_core"
+cmake.build-type = "Release"
+wheel.packages = ["cli", "core", "desktop"]
+wheel.license-files = ["LICENSE", "NOTICE"]
+wheel.exclude = [
+    "core/generator/native_tet/_native/libtet_kernels.so",
+    "core/utils/_shewchuk/*.so",
+    "**/__pycache__/**",
+    "**/*.pyc",
+]
+sdist.include = [
+    "LICENSE",
+    "NOTICE",
+    "auto_tessell_core/CMakeLists.txt",
+    "auto_tessell_core/native_*_bind.cpp",
+    "core/utils/_shewchuk/predicates.c",
+    "docs/licensing/distribution-dependency-inventory.json",
+    "docs/licensing/first-party-native-wheel-profile.md",
+    "docs/licensing/mit-core-transition-policy.md",
+    "docs/licensing/native-core-provenance-manifest.json",
+]
+sdist.exclude = [
+    ".autoresearch/**",
+    ".cache/**",
+    ".claude/**",
+    ".gstack/**",
+    "third_party/**",
+    "AlgoHex/**",
+    "Feature-Preserving-Octree-Hex-Meshing/**",
+    "HOHQMesh/**",
+    "agents/**",
+    "backend/**",
+    "b_aYczSLScZNH/**",
+    "frontend/**",
+    "godot/**",
+    "harness/**",
+    "installer/**",
+    "models/**",
+    "papers/**",
+    "pdmt/**",
+    "tessell-mesh/**",
+    "voro/**",
+    "auto_tessell_core/cfmesh_bind.cpp",
+    "auto_tessell_core/cinolib_hex_bind.cpp",
+    "auto_tessell_core/fake_nanogui/**",
+    "auto_tessell_core/ftetwild_bind.cpp",
+    "auto_tessell_core/robusthex_bind.cpp",
+    "auto_tessell_core/build*/**",
+    "**/*.so",
+    "**/*.pyd",
+    "**/__pycache__/**",
+    "**/*.pyc",
+]
+
+[tool.scikit-build.cmake.define]
+AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE = "ON"
+BUILD_NATIVE_METRICS = "ON"
+BUILD_NATIVE_BL = "ON"
+BUILD_NATIVE_POLYMESH = "ON"
+BUILD_NATIVE_SNAP = "ON"
+BUILD_NATIVE_SURFACE_PADDING = "ON"
+BUILD_NATIVE_HEX_QUALITY = "ON"
+BUILD_NATIVE_TET_PREDICATES = "ON"
+BUILD_NATIVE_TET_QOPT = "ON"
+BUILD_CINOLIB_HEX = "OFF"
+BUILD_ROBUSTHEX = "OFF"
+BUILD_FTETWILD = "OFF"
+BUILD_CFMESH = "OFF"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

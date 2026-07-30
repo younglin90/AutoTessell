@@ -36,6 +36,17 @@
       "tests": ["tests/test_native_tet.py"]
     },
     {
+      "path": "auto_tessell_core/native_bl_bind.cpp",
+      "module": "native_bl",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell native implementation; no external engine source copied.",
+      "algorithm_source": "AutoTessell boundary-layer search and front-summary kernels; literature informs design but no implementation source is copied.",
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_native_bl_extension.py"]
+    },
+    {
       "path": "auto_tessell_core/native_hex_quality_bind.cpp",
       "module": "native_hex_quality",
       "classification": "native_core",
@@ -96,7 +107,7 @@
       "classification": "native_core",
       "implementation_provenance": "Independent AutoTessell native implementation; no external engine source copied.",
       "algorithm_source": "AutoTessell tetrahedral predicate kernel; numerical references are documented separately from implementation provenance.",
-      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
+      "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library", "Boost.Multiprecision headers (BSL-1.0)", "Shewchuk predicates.c (public domain)"],
       "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
       "mit_core_eligible": true,
       "tests": ["tests/test_native_tet_predicates_extension.py"]
