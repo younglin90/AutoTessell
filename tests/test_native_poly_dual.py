@@ -112,7 +112,7 @@ def test_tet_to_poly_dual_preserves_classified_multi_patch_caps(
 def test_tet_to_poly_dual_rejects_partial_boundary_entity_mapping(
     tmp_case_dir: Path,
 ) -> None:
-    """A classified write must not silently relabel an unlabeled source cap."""
+    """L0: a partial explicit map fails before writing, deterministically."""
     V = np.array(
         [
             [0.0, 0.0, 0.0],
@@ -124,6 +124,8 @@ def test_tet_to_poly_dual_rejects_partial_boundary_entity_mapping(
         dtype=np.float64,
     )
     T = np.array([[0, 1, 2, 3], [0, 2, 1, 4]], dtype=np.int64)
+    V_before = V.copy()
+    T_before = T.copy()
     partial_entities = {
         (0, 1, 3): ("source_high", "wall"),
         (1, 2, 3): ("source_high", "wall"),
@@ -132,16 +134,31 @@ def test_tet_to_poly_dual_rejects_partial_boundary_entity_mapping(
         (1, 2, 4): ("source_low", "patch"),
     }
 
+    partial_case = tmp_case_dir / "partial_entities"
     result = tet_to_poly_dual(
         V,
         T,
-        tmp_case_dir / "partial_entities",
+        partial_case,
+        boundary_face_entities=partial_entities,
+    )
+    repeated = tet_to_poly_dual(
+        V,
+        T,
+        tmp_case_dir / "partial_entities_repeat",
         boundary_face_entities=partial_entities,
     )
 
     assert not result.success
-    assert "must cover every extracted boundary triangle" in result.message
-    assert not (tmp_case_dir / "partial_entities" / "constant" / "polyMesh").exists()
+    assert result.message == (
+        "boundary entity classification failed: "
+        "boundary_face_entities must cover every extracted boundary triangle; "
+        "missing canonical triangles: ((0, 2, 4),)"
+    )
+    assert repeated.message == result.message
+    assert not partial_case.exists()
+    assert not (tmp_case_dir / "partial_entities_repeat").exists()
+    assert np.array_equal(V, V_before)
+    assert np.array_equal(T, T_before)
 
 
 def test_tet_to_poly_dual_star_validity_convex_and_nonmanifold(
