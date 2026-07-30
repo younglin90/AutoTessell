@@ -1992,3 +1992,113 @@ scope. Future MIT-core boundary follows
   all-engine validity, full-test, and packaging evidence scan.  Keep target-cell
   optimization deferred until shape, topology, validity, and provenance are
   mechanically stable.
+
+## Cycle 34 checkpoint -- 2026-07-31
+
+### Hex candidate-preparation experiment discarded
+
+- The native candidate-preparation path remained byte-exact and reduced traced
+  Python memory by `54.11%`, but whole-stage speedup was only `1.8166x` against
+  the predeclared `3x` gate.  The code was not merged.
+- The failed hypothesis is archived in
+  `native-hex-wallfit-candidate-prep-failed-2df9ef50-v2.bundle`, SHA-256
+  `37abed717d13f1b0025a00055ef73b0b3c66952959be9e14fef1162d8041808f`.
+
+### Poly orphan-primal refusal
+
+- `ba7b6307` makes orphan primal points fail before dual artifacts are written.
+  False success changes `1 -> 0`; artifact count changes `8 -> 0`; valid output
+  and provenance remain exact.  The 50,000-element path regresses `5.77%`,
+  inside the declared `10%` budget.  Focused validation passes `37`.
+- Bundle: `native-poly-orphan-primal-1-ba7b6307-v2.bundle`, SHA-256
+  `e181cd8f68e8d9e67ce8219a1248eb150193e9873cbfce90cf8a97a4f67a12d6`.
+
+### Tri/Quad fused preflight preparation
+
+- `ab5f386f` fuses the read-only candidate preflight without changing candidate
+  order, topology, thresholds, or output.  Median time changes
+  `0.223395 -> 0.051049 s` (`4.376x`); traced memory falls `11.08%`.
+- Focused/wider/build-contract validation passes `54/88/7`.
+- Bundle: `native-triquad-preflight-prep-1-ab5f386f.bundle`, SHA-256
+  `815254b01aa01c1ff9825ca7ab7fd8d2d3232d15e9f76e271030f4152db476d8`.
+
+## Cycle 35 checkpoint -- 2026-07-31
+
+### Tet metric-sweep source-topology transaction
+
+- `d0204b56` makes every accepted metric sweep pass the existing C++23-backed
+  local-boundary and exact source-component certificate before commit.  A bad
+  candidate is rolled back to the exact pre-sweep arrays; no repair, threshold,
+  target-cell, or surface motion is introduced.
+- The frozen sphere changes from a false failure with thousands of
+  non-manifold boundary edges to `669` points and `1,631` valid tets.  Three
+  runs have identical point/connectivity SHA-256
+  `a87a55050628cf6987b0479cd35ed6b541dbbb52ce3cd94c5d92ee545f42082a`;
+  open edges, non-manifold edges, negative volumes, and zero volumes are all
+  zero.  Post-merge validation passes `37` with one vendor skip.
+- Bundle: `native-tet-cycle35-d0204b56.bundle`, SHA-256
+  `379d498736196205206556610e1d74c37613cc2c9ac4a46f7089b6e636ed5c4d`.
+
+### Hex batched initial wall-fit projection
+
+- `70f59963` uses the existing C++23 closest-triangle-candidate kernel for the
+  initial projection batch under a strict ABI.  Projection order, subsequent
+  candidate checks, validity gates, and output remain exact.
+- Post-merge benchmark changes `0.582053 -> 0.449075 s` (`1.296x`), with
+  identical `5,042,560`-byte traced peak, output SHA, and `1,538` accepted
+  snaps.  Expanded post-merge regression passes `89`.
+- Bundle: `native-hex-cycle35-70f59963.bundle`, SHA-256
+  `7f6314cdd72d9794bbbe83137c748f4d031469404c52df78822c029956c20233`.
+
+### Tri C++23 flip-quality batch
+
+- `923f3bcf` ports the four-triangle flip-quality census to
+  `native_metrics.triangle_quality_batch`.  Flip candidates, ordering,
+  orientation, epsilon, topology, and reports remain exact.
+- Post-merge cylinder median changes `0.747307 -> 0.523409 s` (`1.428x`);
+  the direct 50,000-triangle kernel is `2,765x` faster.  Fresh GCC 13.3 C++23
+  warnings-as-errors build and `199` post-merge tests pass.
+- Bundle: `native-triquad-flip-quality-1-923f3bcf.bundle`, SHA-256
+  `00669912c7badbf891ee1067cb483256056f76acb00a3221fe494dc145533d78`.
+
+### Poly bounded star-kernel witness
+
+- `0aaa19b8` replaces arithmetic-center-only classification with a bounded,
+  deterministic half-space projection used only when the arithmetic witness
+  fails.  The projected witness is never written; the unchanged signed-subtet
+  predicate and `1e-12` tolerance make the final decision.
+- Frozen seed-10 changes `2/14 -> 0/0` invalid star cells/subtets and writes an
+  exact deterministic `698/5737/7072` cell/point/face result in three runs.
+  The residual invalid cube remains `success=false` with zero artifacts; its
+  four feasible false negatives are removed and the true residual is `1/9`.
+  Fresh C++23 build, `32` focused tests, and the Tet-to-Poly sphere route pass.
+  Full checker/harness runs timed out and remain unverified.
+- Bundle: `native-poly-star-kernel-center1-0aaa19b8.bundle`, SHA-256
+  `82f5e08768796978368619d17b5d263fe08873f38bd69f7447da240640bacb00`.
+
+### Cycle-35 gate re-evaluation
+
+| Gate | Status | Cycle-35 evidence / next evidence |
+|---|---|---|
+| 1 Repository | FAIL | `master` is clean, but the tracked installer executable and active Cycle-36 research worktrees remain. |
+| 2 Build | UNVERIFIED | Fresh GCC 13.3 C++23 targeted builds pass; supported Windows/compiler matrix remains incomplete. |
+| 3 Automated tests | UNVERIFIED | Tet `37`, Hex `89`, Tri/Quad `199`, and Poly `32` post-merge checks pass; immutable-head full suite remains. |
+| 4 Shape preservation | UNVERIFIED | Tet source-topology rollback and exact all-lane hashes pass; complete representative corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Frozen Tet and Poly false-failure paths now yield valid outputs; all-engine adverse corpus remains. |
+| 6 Cell count | FAIL | Still deferred behind shape/topology/validity as directed. |
+| 7 Boundary layer | UNVERIFIED | No Cycle-35 layer contract change; 0/1/multiple-layer corpus remains. |
+| 8 Quality | UNVERIFIED | Card-specific quality parity passes; complete engine/fixture specifications remain. |
+| 9 Reproducibility | FAIL | New paths are deterministic; independent wheel bytes and external P4C hashes remain unresolved. |
+| 10 Robustness | UNVERIFIED | New malformed ABI/topology and residual non-star cases fail closed; adverse corpus remains incomplete. |
+| 11 Performance | UNVERIFIED | Hex and Tri card budgets pass; frozen all-engine end-to-end budgets remain. |
+| 12 Packaging | FAIL | Windows wheel/installer/UI/uninstall matrix remains. |
+| 13 License/provenance | UNVERIFIED | Independent first-party C++23 changes and no `third_party/` edits; global inventory still has unresolved rows. |
+| 14 Documentation/operations | UNVERIFIED | Card evidence is current; release/rollback operations remain incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Cycle 36 runs Tet topology-audit profiling, Hex wall-fit local-scale batching,
+  Quad hot-path profiling, and the next Poly card in parallel.  Keep strict
+  shape/topology/validity and provenance ahead of target-cell count.  Full
+  checker timeout evidence remains queued; it is not a pass.
