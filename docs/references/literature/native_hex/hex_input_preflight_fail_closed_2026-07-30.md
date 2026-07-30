@@ -51,6 +51,8 @@ the card.  Post-card representative result is unchanged:
 `_prepare_native_hex_surface_input()` is a read-only ingress conversion.  It
 returns stable `native_hex_invalid_input:<reason>` failures before any
 self-intersection diagnostic, PRE3 remesh, winding/octetree path, or writer.
+It rejects complex vertices and boolean or complex face indices before any
+lossy float conversion; real numeric integral connectivity remains supported.
 Empty input retains its existing `빈 입력 mesh` failure.
 
 No target-cell, boundary-layer, quality threshold, acceptance, routing, or
@@ -64,12 +66,15 @@ Focused L0:
 python3 -m pytest -q tests/test_native_hex_input_preflight.py
 ```
 
-Result: `8 passed` in `2.40s`.
+Initial result: `8 passed` in `2.40s`.  Review follow-up added raw complex and
+boolean rejection; final focused result: `14 passed` in `2.40s`.
 
 Coverage: bad vertex shape, non-finite vertex, bad face shape, non-finite face
 index, non-integral face index, out-of-range face index, repeated face vertex,
-and valid cube caller-array/output-byte preservation.  The malformed tests
-replace winding with a raising sentinel and verify no case directory exists.
+complex vertex, boolean face index, complex face index, and valid cube
+caller-array/output-byte preservation.  Complex and boolean cases cover both
+native NumPy dtypes and `object` scalar arrays.  The malformed tests replace
+winding with a raising sentinel and verify no case directory exists.
 
 Related representative regression:
 

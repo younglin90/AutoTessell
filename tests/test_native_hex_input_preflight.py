@@ -36,7 +36,29 @@ def _polymesh_sha256(case_dir: Path) -> str:
     (
         (_TETRA_POINTS[:, :2], _TETRA_FACES, "vertices_must_have_shape_n_by_3"),
         (np.array(((np.nan, 0.0, 0.0), *(_TETRA_POINTS[1:]))), _TETRA_FACES, "non_finite_vertex"),
+        (
+            _TETRA_POINTS.astype(np.complex128) + 1j,
+            _TETRA_FACES,
+            "complex_vertex",
+        ),
+        (
+            np.asarray(_TETRA_POINTS.astype(np.complex128) + 1j, dtype=object),
+            _TETRA_FACES,
+            "complex_vertex",
+        ),
         (_TETRA_POINTS, _TETRA_FACES[:, :2], "faces_must_have_shape_n_by_3"),
+        (_TETRA_POINTS, np.array(((False, True, True),)), "boolean_face_index"),
+        (
+            _TETRA_POINTS,
+            np.asarray(((False, True, True),), dtype=object),
+            "boolean_face_index",
+        ),
+        (_TETRA_POINTS, np.array(((0.0, 1.0, 2.0j),)), "complex_face_index"),
+        (
+            _TETRA_POINTS,
+            np.asarray(((0.0, 1.0, 2.0j),), dtype=object),
+            "complex_face_index",
+        ),
         (_TETRA_POINTS, np.array(((0, 1, np.nan),)), "non_finite_face_index"),
         (_TETRA_POINTS, np.array(((0.0, 1.5, 2.0),)), "non_integral_face_index"),
         (_TETRA_POINTS, np.array(((0, 1, 8),)), "face_index_out_of_range"),

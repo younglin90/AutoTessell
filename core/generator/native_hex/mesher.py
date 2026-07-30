@@ -194,6 +194,24 @@ class NativeHexResult:
     untangle_beta_pass: bool | None = None
 
 
+def _has_complex_values(values: np.ndarray) -> bool:
+    """Return true before a complex array or object scalar can be cast to float."""
+    return bool(
+        np.iscomplexobj(values)
+        or (values.dtype == object and any(np.iscomplexobj(value) for value in values.flat))
+    )
+
+
+def _has_boolean_values(values: np.ndarray) -> bool:
+    """Return true before boolean connectivity can be coerced to zero or one."""
+    if np.issubdtype(values.dtype, np.bool_):
+        return True
+    return bool(
+        values.dtype == object
+        and any(isinstance(value, (bool, np.bool_)) for value in values.flat)
+    )
+
+
 def _prepare_native_hex_surface_input(
     vertices: object,
     faces: object,
@@ -216,6 +234,12 @@ def _prepare_native_hex_surface_input(
         return None, None, "vertices_must_have_shape_n_by_3"
     if raw_faces.ndim != 2 or raw_faces.shape[1:] != (3,):
         return None, None, "faces_must_have_shape_n_by_3"
+    if _has_complex_values(raw_points):
+        return None, None, "complex_vertex"
+    if _has_boolean_values(raw_faces):
+        return None, None, "boolean_face_index"
+    if _has_complex_values(raw_faces):
+        return None, None, "complex_face_index"
 
     try:
         points = np.asarray(raw_points, dtype=np.float64)
