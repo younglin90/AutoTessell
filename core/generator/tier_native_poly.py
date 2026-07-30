@@ -103,7 +103,7 @@ def _runner(
         "target_poly_budget_unreachable:",
     )):
         log.warning(
-            "native_poly_target_primal_vertex_floor_unmet",
+            "native_poly_target_contract_refused",
             message=hres.message,
         )
         return hres
