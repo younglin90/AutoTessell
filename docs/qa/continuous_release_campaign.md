@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `9`
+- cycle: `10`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `4246cf6f478a69290264862e967a968c2c8124bb`
+- last_verified_master: `fdd93772e7c528d51a3e74856bde8656fe55aa49`
 - allowed_to_stop: `false`
-- next_action: `Rebase the protected Tet worktree onto current master, then run TET-STRICT-TOPOLOGY-CORPUS-PROBE-1 with target count diagnostic-only.`
+- next_action: `Profile representative native boundary-layer and Tet routes, then select one shape-preserving Python kernel for an isolated C++23 port.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -548,3 +548,70 @@ scope. Future MIT-core boundary follows
 - Rebase the protected Tet lane onto current master and execute
   `TET-STRICT-TOPOLOGY-CORPUS-PROBE-1`.  Treat target-cell count as diagnostic;
   retain essential shape, validity, writer, and residual non-manifold gates.
+
+## Cycle 10 checkpoint -- 2026-07-30
+
+### Native C++23 integration evidence
+
+- `8a6b82a3` through `7cd77710` connected the existing first-party exact Tet
+  predicate and quality-optimization sources to the CMake and Python runtime
+  paths.  The native-only Release build now compiles seven explicit targets
+  with Python 3.12 and pybind11 3.0.4.  Tet topology/predicate/QOPT focused
+  validation reports `70 passed`; the full native extension set exposed one
+  pre-existing evaluator topology materialization failure.
+- The Tet optimizer now stores adjacency and incident stars in flat sorted CSR
+  arrays instead of nested vectors and reuses candidate buffers.  On a
+  4,096-point/20,250-tet guarded smoothing fixture, median runtime changed from
+  `0.104483 s` to `0.013313 s` (`7.85x`) with maximum coordinate delta
+  `3.331e-16`.  The fused 80,000-tet quality snapshot changed from
+  `0.103394 s` to `0.015934 s` (`6.49x`) with maximum relative metric delta
+  `3.533e-11`.
+- `fdd93772` ports triangle-only Phase-0 evaluator metrics to a C++23 CSR
+  topology kernel.  It avoids `list[list[int]]`, per-cell Python sets, and
+  repeated NumPy temporaries while retaining the polygon fallback.  All 29
+  report fields match the Python oracle on boundary-only and internal-face
+  tetra fixtures.  The native extension regression now reports `125 passed`
+  with zero skips; the previous topology materialization failure is closed.
+- On a 2,000-cell/8,000-face tetra corpus, Phase-0 median runtime changed from
+  `1.038211 s` to `0.000764 s` (`1359x`), with maximum absolute field delta
+  `1.676e-14`.  The native metrics target builds with
+  `-Wall -Wextra -Wpedantic` and no warning.
+- Strict mypy remains baseline-blocked: the two touched Python files report 43
+  errors, including pre-existing imported-module and untyped-test errors.
+  This is not treated as a passing type gate.
+- The cube Phase-A route remains intermittently non-reproducible in the
+  existing stochastic P4C fallback: repeated baseline and native-disabled runs
+  can preserve only 7 of 8 source corners.  This is not caused by the C++23
+  cards, but it keeps shape/reproducibility release evidence open.
+- Both integrated branches have complete-history bundles under
+  `D:\\AutoTessell-cleanup-backup-20260730\\research-bundles`; the latest
+  SHA-256 values are `c2171ae8bf62f8ad9c44d843007b6fea7bd926d01a49deeed8f11c71600185c3`
+  and `0ff2d85abc6a0b8f6b603d72a01235efc3454d5e9a5bb14ec92b9d162d9d4d0f`.
+  No `third_party/` file changed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-10 evidence / next evidence |
+|---|---|---|
+| 1 Repository | UNVERIFIED | Main is clean before this ledger update; the protected Tet research worktree remains active. |
+| 2 Build | UNVERIFIED | Seven native Release targets build cleanly on Ubuntu/GCC 13; supported-platform matrix is incomplete. |
+| 3 Automated tests | UNVERIFIED | Native extension set is `125 passed`; immutable-head full suite remains missing. |
+| 4 Shape preservation | FAIL | Existing stochastic P4C cube fallback intermittently preserves only 7/8 source corners. |
+| 5 Mesh validity | UNVERIFIED | Tet strict-topology corpus and all-engine validity corpus remain incomplete. |
+| 6 Cell count | FAIL | Tet target remains diagnostic/deferred; poly target following remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | BL0 evidence exists; positive-layer corpus and native profile remain missing. |
+| 8 Quality | UNVERIFIED | Tet quality parity is proven locally; complete engine/fixture matrix is missing. |
+| 9 Reproducibility | FAIL | P4C cube fallback varies across identical repeated runs. |
+| 10 Robustness | UNVERIFIED | Exact predicates and evaluator CSR coverage improved; adverse corpus is incomplete. |
+| 11 Performance | UNVERIFIED | Two native microbenchmarks pass leverage thresholds; frozen end-to-end budgets are missing. |
+| 12 Packaging | UNVERIFIED | Native modules build locally; clean installer and artifact proof remain missing. |
+| 13 License/provenance | UNVERIFIED | First-party sources only and no-third-party policy held; release inventory remains incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration plan exists; complete release operations proof is missing. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Profile representative native boundary-layer and Tet routes.  Select one
+  shape-preserving Python kernel with a measured dominant cost, freeze parity
+  and rollback conditions, then port only that kernel to an isolated C++23
+  target or an existing native module.
