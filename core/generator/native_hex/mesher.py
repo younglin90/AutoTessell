@@ -6,12 +6,17 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
 from core.utils.logging import get_logger
 from core.utils.native_extensions import load_native_metrics
+
+if TYPE_CHECKING:
+    from core.generator.native_hex.source_feature_sidecar_l1 import (
+        AuthoritativeSourceFeatureManifest,
+    )
 
 log = get_logger(__name__)
 
@@ -639,6 +644,8 @@ def _wall_fit_snap(
     tol: float,
     ratio: float,
     iters: int,
+    source_path: str | Path | None = None,
+    source_feature_manifest: AuthoritativeSourceFeatureManifest | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Project boundary verts onto the input surface with a per-vertex guard.
 
@@ -730,17 +737,25 @@ def _wall_fit_snap(
     ).strip().lower() in {"1", "true", "yes"}
     face_area_eps = max((float(target_edge) * 1.0e-12) ** 2, 1.0e-30)
     candidate_quality_audit = None
+    candidate_source_provenance = None
     if os.environ.get("AUTO_TESSELL_HEX_WALLFIT_CANDIDATE_QUALITY_DIAG", "").strip().lower() in {
         "1",
         "true",
         "yes",
     }:
-        from core.generator.native_hex.wallfit_quality import (  # noqa: PLC0415
+        from core.generator.native_hex.wallfit_quality import (  # noqa: PLC0415, I001
             CandidateQualityAudit,
             snapshot as _candidate_quality_snapshot,
+            source_candidate_provenance_context,
         )
 
         candidate_quality_audit = CandidateQualityAudit()
+        candidate_source_provenance = source_candidate_provenance_context(
+            sV,
+            sF,
+            source_path=source_path,
+            manifest=source_feature_manifest,
+        )
 
     def _cell_signs(ci: int) -> tuple[np.ndarray, float]:
         """Per-face centroid-signed tet-sum + total |vol| of cell *ci*."""
@@ -829,6 +844,11 @@ def _wall_fit_snap(
             if float(np.linalg.norm(p0 - pts[vi])) > cap_v:
                 stats["n_reject_envelope"] += 1
                 continue  # outside envelope
+            provenance = (
+                candidate_source_provenance.classify_projection_target(p0)
+                if candidate_source_provenance is not None
+                else None
+            )
             orig = pts[vi].copy()
             candidate_before = (
                 _candidate_quality_snapshot(pts, cell_faces, incident[vi])
@@ -855,6 +875,7 @@ def _wall_fit_snap(
                         after=candidate_before,
                         distance_before=d0,
                         distance_after=d0,
+                        source_provenance=provenance,
                     )
                 continue
             if all(_cell_ok(ci) for ci in incident[vi]):
@@ -870,6 +891,7 @@ def _wall_fit_snap(
                         after=candidate_trial,
                         distance_before=d0,
                         distance_after=d1,
+                        source_provenance=provenance,
                     )
             else:
                 # Full projection flips a face — backtrack to the largest
@@ -903,6 +925,7 @@ def _wall_fit_snap(
                             after=candidate_after,
                             distance_before=d0,
                             distance_after=d_partial,
+                            source_provenance=provenance,
                         )
                 else:
                     pts[vi] = orig
@@ -917,6 +940,7 @@ def _wall_fit_snap(
                             after=candidate_before,
                             distance_before=d0,
                             distance_after=d0,
+                            source_provenance=provenance,
                         )
         if moved == 0:
             break  # cube early-exit: nothing to fit
@@ -982,6 +1006,15 @@ def _wall_fit_snap(
             ],
             combined_quality_nonregressing=candidate_report[
                 "combined_quality_nonregressing"
+            ],
+            source_provenance_authoritative=candidate_report[
+                "n_source_provenance_authoritative"
+            ],
+            source_provenance_unavailable=candidate_report[
+                "n_source_provenance_unavailable"
+            ],
+            source_provenance_ambiguous=candidate_report[
+                "n_source_provenance_ambiguous"
             ],
             pareto_frontier_size=candidate_report["pareto_frontier_size"],
             boundary_key_changes=candidate_report["n_boundary_key_change"],

@@ -31,10 +31,13 @@ The runner also reports an explicit refusal:
 candidate_provenance=UNAVAILABLE
 ```
 
-Candidate records carry only vertex and incident-cell ownership.  They do not
-carry source-patch or sharp-feature provenance, so bracket candidates cannot
-be selected for surgery or shape-adaptive dispatch.  This is intentional
-fail-closed behavior, not evidence that all candidates share `defaultWall`.
+Stock candidate records carry vertex and incident-cell ownership plus explicit
+`UNAVAILABLE` source-provenance status.  They do not carry a source-patch or
+sharp-feature label, so bracket candidates cannot be selected for surgery or
+shape-adaptive dispatch.  `HEX-WALLFIT-CANDIDATE-PROVENANCE-1` may record an
+exact entity only with a source-file and ordered-triangle validated sidecar;
+ties remain `AMBIGUOUS`.  This is fail-closed behavior, not evidence that all
+candidates share `defaultWall`.
 
 ## L0/L1 verification
 
