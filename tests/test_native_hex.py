@@ -156,6 +156,39 @@ def test_native_hex_denser_grid_more_cells(tmp_case_dir: Path) -> None:
     assert r2.n_cells > r1.n_cells
 
 
+def test_native_hex_target_cells_tracks_implicit_cube_budget(tmp_case_dir: Path) -> None:
+    """Implicit cube grids must follow requested counts within lattice tolerance.
+
+    A Cartesian lattice cannot represent every count exactly.  This L0 contract
+    accepts the closest practical cube lattice (20% band), but rejects the old
+    one-sided budget behavior where target=2000 silently stayed at 1000 cells.
+    Boundary-layer zero is explicit here: no layer budget may be reserved.
+    """
+    if not CUBE_STL.exists():
+        pytest.skip()
+    mesh = read_stl(CUBE_STL)
+    targets = (128, 256, 1000, 2000)
+    actual: list[int] = []
+    for target in targets:
+        result = generate_native_hex(
+            mesh.vertices,
+            mesh.faces,
+            tmp_case_dir / str(target),
+            target_cells=target,
+            max_cells=target,
+            seed_density=16,
+            adaptive=False,
+            bl_layers=0,
+            post_layers_num_layers=0,
+        )
+        assert result.success, result.message
+        assert abs(result.n_cells - target) / target <= 0.20
+        check = NativeMeshChecker().run(tmp_case_dir / str(target))
+        assert check.negative_volumes == 0
+        actual.append(result.n_cells)
+    assert actual == sorted(actual)
+
+
 def test_native_hex_empty_input_fails(tmp_case_dir: Path) -> None:
     V = np.zeros((0, 3))
     F = np.zeros((0, 3), dtype=np.int64)

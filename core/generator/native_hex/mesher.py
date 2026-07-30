@@ -1767,11 +1767,34 @@ def generate_native_hex(
 
     # 각 축별 grid size — max_cells_per_axis 로 제한 (과도한 셀 방지)
     cap = max(1, int(max_cells_per_axis))
-    nxyz_req = np.maximum(
-        np.ceil((bmax - bmin) / h).astype(int),
-        1,
-    )
-    nxyz = np.minimum(nxyz_req, cap)
+    if not _te_user_set_pre and _volume_budget > 0:
+        # ``target_cells`` is a user-facing count request, not merely an
+        # upper-bound hint.  The old uniform path only enlarged ``h`` when a
+        # seed-density grid exceeded the budget; a larger requested count
+        # could therefore leave the mesh unchanged.  Choose the nearest
+        # aspect-ratio-preserving integer lattice instead.  This is deliberately
+        # limited to the implicit-edge path: an explicit edge length remains an
+        # exact caller override, and ``max_cells_per_axis`` remains a hard cap.
+        extent = np.maximum(bmax - bmin, 1.0e-12)
+        lattice_scale = (float(_volume_budget) / float(np.prod(extent))) ** (1.0 / 3.0)
+        nxyz_req = np.maximum(np.rint(extent * lattice_scale).astype(int), 1)
+        nxyz = np.minimum(nxyz_req, cap)
+        h = float(np.max(extent / nxyz))
+        log.info(
+            "native_hex_target_lattice",
+            target_cells=int(target_cells or 0),
+            max_cells=int(max_cells or 0),
+            volume_budget=int(_volume_budget),
+            requested=nxyz_req.tolist(),
+            selected=nxyz.tolist(),
+            target_edge=round(h, 8),
+        )
+    else:
+        nxyz_req = np.maximum(
+            np.ceil((bmax - bmin) / h).astype(int),
+            1,
+        )
+        nxyz = np.minimum(nxyz_req, cap)
     if np.any(nxyz_req > cap):
         log.warning(
             "native_hex_grid_capped",
