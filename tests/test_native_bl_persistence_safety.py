@@ -154,10 +154,12 @@ def test_aspect_enforced_points_are_written_once_and_metrics_match_disk(
 
 
 @pytest.mark.parametrize("joint_enabled", [False, True])
+@pytest.mark.parametrize("selective", [False, True])
 def test_anti_invert_cap_applies_in_both_joint_modes_and_floor_cannot_raise_it(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     joint_enabled: bool,
+    selective: bool,
 ) -> None:
     original_points = _write_single_tet_case(tmp_path)
     _set_stable_test_environment(monkeypatch)
@@ -168,7 +170,10 @@ def test_anti_invert_cap_applies_in_both_joint_modes_and_floor_cannot_raise_it(
         "1" if joint_enabled else "0",
     )
     monkeypatch.setenv("AUTO_TESSELL_BL_ANTI_INVERT_GLOBAL", "1")
-    monkeypatch.setenv("AUTO_TESSELL_BL_ANTI_INVERT_SELECTIVE", "0")
+    monkeypatch.setenv(
+        "AUTO_TESSELL_BL_ANTI_INVERT_SELECTIVE",
+        "1" if selective else "0",
+    )
     monkeypatch.setenv("AUTO_TESSELL_BL_ANTI_INVERT_FLOOR", "0.5")
 
     safe_bound = 1.0e-3

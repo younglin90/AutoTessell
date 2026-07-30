@@ -7492,35 +7492,10 @@ def generate_native_bl(
                             1.0,
                         )
                         _global_ratio = float(_ratios.min())
-                        # Floor configurable via env; default 0.05.
-                        # Lower floors produce thinner BL but may
-                        # preserve quad-side planarity in tighter
-                        # corners.
-                        _global_floor = float(
-                            os.environ.get(
-                                "AUTO_TESSELL_BL_ANTI_INVERT_FLOOR",
-                                "0.05",
-                            )
-                        )
-                        # BLR-9c-d-(s-4) — selective floor.  When
-                        # ``AUTO_TESSELL_BL_ANTI_INVERT_SELECTIVE=1``
-                        # (default 1), verts whose individual
-                        # geometric ratio is *much smaller* than the
-                        # floor (say < 0.5 × floor) are treated as
-                        # outliers — they get their tight geometric
-                        # cap applied per-vert, while the rest of the
-                        # mesh uses ``max(geometric, floor)``.  This
-                        # preserves clean prisms in 99 % of the
-                        # mesh and tightens only the tiny problem
-                        # region — fixes medium_100330 at floor=0.5
-                        # without breaking any other case.
-                        # NOTE: BLR-9c-d-(s-4) tested selective floor
-                        # (per-vert tight cap for outliers, floor for
-                        # rest) and saw catastrophic cascade —
-                        # max_skew 1.7e15 on medium_100330.  Same
-                        # inhomogeneous-cap cascade pattern as p-10.
-                        # Default OFF; only the homogeneous floor is
-                        # safe.
+                        # Selective mode retains each geometric cap;
+                        # homogeneous mode uses their minimum.  A legacy
+                        # thickness floor was removed because it could raise
+                        # an inversion-safety upper bound.
                         _selective = (
                             os.environ.get(
                                 "AUTO_TESSELL_BL_ANTI_INVERT_SELECTIVE",
@@ -7528,19 +7503,11 @@ def generate_native_bl(
                             ) == "1"
                         )
                         if _selective:
-                            _outlier_thresh = (
-                                _global_floor * 0.5
-                            )
-                            anti_invert_scale_per_v = np.where(
-                                _ratios < _outlier_thresh,
-                                _ratios,
-                                np.maximum(_ratios, _global_floor),
-                            )
-                            # ``_global_ratio`` left as-is for diag.
+                            # A minimum-thickness floor cannot raise a
+                            # geometric inversion-safety cap.  The selective
+                            # mode therefore keeps each exact safe ratio.
+                            anti_invert_scale_per_v = _ratios
                         else:
-                            _global_ratio = max(
-                                _global_ratio, _global_floor,
-                            )
                             anti_invert_scale_per_v = np.full_like(
                                 _mag, _global_ratio
                             )
@@ -7574,7 +7541,7 @@ def generate_native_bl(
                             _req_extr, safety_factor=_safety,
                         )
                         if _joint < 1.0:
-                            _joint = max(_joint, 0.05)
+                            _joint = max(0.0, _joint)
                             if anti_invert_scale_per_v is None:
                                 anti_invert_scale_per_v = np.full_like(
                                     _mag, _joint,
@@ -7592,6 +7559,10 @@ def generate_native_bl(
                             "native_bl_anti_invert_joint_skipped",
                             reason=str(exc)[:160],
                         )
+                if anti_invert_scale_per_v is not None:
+                    _effective_capped = int(
+                        np.count_nonzero(anti_invert_scale_per_v < 1.0)
+                    )
                     _max_reduction = float(
                         np.max(_mag - anti_invert_scale_per_v * _mag)
                     )
@@ -7599,13 +7570,13 @@ def generate_native_bl(
                         points[wall_idx_arr_p]
                         + _delta * anti_invert_scale_per_v[:, None]
                     )
-                    anti_invert_cap_diag["n_capped"] = _n_capped
+                    anti_invert_cap_diag["n_capped"] = _effective_capped
                     anti_invert_cap_diag["max_reduction"] = (
                         _max_reduction
                     )
                     log.info(
                         "native_bl_anti_invert_cap_applied",
-                        n_capped=_n_capped,
+                        n_capped=_effective_capped,
                         max_reduction=round(_max_reduction, 6),
                         n_wall_verts=int(len(wall_vert_indices)),
                     )
@@ -8374,20 +8345,6 @@ def generate_native_bl(
             face_weight_post=float(_final_metrics.min_face_weight),
         )
 
-    # 쓰기
-    poly_dir.mkdir(parents=True, exist_ok=True)
-    _write_points(poly_dir / "points", final_points)
-    _write_faces(poly_dir / "faces", final_faces)
-    _write_labels(
-        poly_dir / "owner",
-        np.array(final_owner, dtype=np.int64), "owner",
-    )
-    _write_labels(
-        poly_dir / "neighbour",
-        np.array(final_nbr, dtype=np.int64), "neighbour",
-    )
-    _write_boundary(poly_dir / "boundary", final_boundary_entries)
-
     # beta65: prism quality check — aspect ratio 기반.
     n_degen = 0
     max_ar = 0.0
@@ -8546,6 +8503,42 @@ def generate_native_bl(
         )
     except Exception as exc:
         log.debug("native_bl_wall_preserve_check_skipped", reason=str(exc)[:120])
+
+    # Every accepted point transform must be measured and persisted from the
+    # same final array.  In particular, aspect-cap enforcement runs after the
+    # initial quality measurement and must not be lost by an earlier write.
+    if _line_search_enabled and final_points is not None:
+        _final_metrics = _bl_extrusion_metrics(
+            final_points,
+            points,
+            final_faces,
+            final_owner,
+            final_nbr,
+            base_n_cells=n_cells,
+        )
+        _negative = int(len(_final_metrics.inverted_cells))
+        extrusion_line_search_diag.update(
+            accepted=(_negative == 0),
+            negative_post=_negative,
+            boundary_skew_pre=float(_final_metrics.max_boundary_skewness),
+            non_ortho_pre=float(_final_metrics.max_non_orthogonality),
+            face_weight_post=float(_final_metrics.min_face_weight),
+        )
+
+    poly_dir.mkdir(parents=True, exist_ok=True)
+    _write_points(poly_dir / "points", final_points)
+    _write_faces(poly_dir / "faces", final_faces)
+    _write_labels(
+        poly_dir / "owner",
+        np.array(final_owner, dtype=np.int64),
+        "owner",
+    )
+    _write_labels(
+        poly_dir / "neighbour",
+        np.array(final_nbr, dtype=np.int64),
+        "neighbour",
+    )
+    _write_boundary(poly_dir / "boundary", final_boundary_entries)
 
     # beta2273 — commercial-grade mesh quality summary JSON.
     # cfMesh / Pointwise / Star-CCM+ 의 mesh quality report 동등.

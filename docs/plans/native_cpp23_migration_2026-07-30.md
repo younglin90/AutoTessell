@@ -595,6 +595,32 @@ pre-card master (three persistence defects and five tet-subdivision contract
 defects).  No geometry threshold, topology contract, dependency, external code,
 or `third_party/` file changed.
 
+## Native boundary-layer final-state persistence card
+
+The boundary-layer writer had two independent validity defects.  It committed
+the five polyMesh files before optional aspect-cap enforcement, so disk geometry
+was stale while the returned and JSON quality metrics described a later in-
+memory array.  Its anti-invert cap computed safe per-vertex scales but applied
+them only when joint capping was enabled, and both global and joint minimum-
+thickness floors could increase a geometric safety upper bound.
+
+All point mutation now precedes one polyMesh commit.  The final extrusion check,
+wall-envelope measurement, quality metrics, persisted points, and lineage output
+digest therefore consume the same accepted `final_points` array.  Aspect-cap
+tests verify the writer is called once, disk points exactly match the accepted
+candidate, and result/JSON aspect metrics recomputed from disk agree.
+
+Anti-invert scaling is applied independently of the optional joint check and is
+propagated to both moved bulk vertices and every layer offset.  A minimum layer-
+thickness preference can no longer raise a cap derived from inversion geometry;
+selective mode retains exact per-vertex safe ratios, while homogeneous mode uses
+their minimum.  A joint scale can only reduce that result.  The global/selective
+and joint-on/off matrix keeps maximum displacement at or below the injected
+`1e-3` bound in all four modes.  Focused persistence/provenance/transition tests
+report `40 passed, 3 skipped`; the wider native BL regression reports `172
+passed`.  No topology, wall coordinate, quality threshold, dependency, external
+source, or `third_party/` file changed.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:
