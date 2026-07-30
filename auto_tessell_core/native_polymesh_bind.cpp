@@ -63,6 +63,20 @@ struct StarExample {
     double normalized_signed_volume6 = 0.0;
 };
 
+struct StarSubtetGeometry {
+    size_t face_index;
+    size_t edge_index;
+    Label edge_a;
+    Label edge_b;
+    const double* point_a;
+    double edge_x;
+    double edge_y;
+    double edge_z;
+    double face_x;
+    double face_y;
+    double face_z;
+};
+
 struct FaceHash {
     size_t operator()(const Face& face) const noexcept
     {
@@ -558,81 +572,175 @@ py::tuple star_validity(
             region_center[1] *= inverse_cell_vertices;
             region_center[2] *= inverse_cell_vertices;
 
-            bool cell_bad = false;
-            for (size_t reference_index = cell_face_offsets[cell_index];
-                 reference_index < cell_face_offsets[cell_index + 1U];
-                 ++reference_index) {
-                const Label encoded_reference = cell_face_refs[reference_index];
-                const bool reversed = encoded_reference < 0;
-                const size_t face_index = static_cast<size_t>(
-                    std::abs(encoded_reference) - 1);
-                const auto face = ragged.face(face_index);
-                if (face.empty()) {
-                    continue;
-                }
-                double face_center[3]{0.0, 0.0, 0.0};
-                for (size_t local = 0U; local < face.size(); ++local) {
-                    const size_t oriented_local = reversed
-                        ? face.size() - 1U - local
-                        : local;
-                    const Label vertex = face[oriented_local];
-                    const double* const point = point_data
-                        + static_cast<size_t>(vertex) * 3U;
-                    face_center[0] += point[0];
-                    face_center[1] += point[1];
-                    face_center[2] += point[2];
-                }
-                const double inverse_face_vertices =
-                    1.0 / static_cast<double>(face.size());
-                face_center[0] *= inverse_face_vertices;
-                face_center[1] *= inverse_face_vertices;
-                face_center[2] *= inverse_face_vertices;
+            const auto visit_subtets = [&](auto&& visitor) {
+                for (size_t reference_index = cell_face_offsets[cell_index];
+                     reference_index < cell_face_offsets[cell_index + 1U];
+                     ++reference_index) {
+                    const Label encoded_reference = cell_face_refs[reference_index];
+                    const bool reversed = encoded_reference < 0;
+                    const size_t face_index = static_cast<size_t>(
+                        std::abs(encoded_reference) - 1);
+                    const auto face = ragged.face(face_index);
+                    if (face.empty()) {
+                        continue;
+                    }
+                    double face_center[3]{0.0, 0.0, 0.0};
+                    for (size_t local = 0U; local < face.size(); ++local) {
+                        const size_t oriented_local = reversed
+                            ? face.size() - 1U - local
+                            : local;
+                        const Label vertex = face[oriented_local];
+                        const double* const point = point_data
+                            + static_cast<size_t>(vertex) * 3U;
+                        face_center[0] += point[0];
+                        face_center[1] += point[1];
+                        face_center[2] += point[2];
+                    }
+                    const double inverse_face_vertices =
+                        1.0 / static_cast<double>(face.size());
+                    face_center[0] *= inverse_face_vertices;
+                    face_center[1] *= inverse_face_vertices;
+                    face_center[2] *= inverse_face_vertices;
 
-                for (size_t edge_index = 0U; edge_index < face.size(); ++edge_index) {
-                    const size_t oriented_index = reversed
-                        ? face.size() - 1U - edge_index
-                        : edge_index;
-                    const size_t oriented_next = reversed
-                        ? (oriented_index == 0U ? face.size() - 1U : oriented_index - 1U)
-                        : (oriented_index + 1U) % face.size();
-                    const Label a = face[oriented_index];
-                    const Label b = face[oriented_next];
-                    const double* const point_a = point_data
-                        + static_cast<size_t>(a) * 3U;
-                    const double* const point_b = point_data
-                        + static_cast<size_t>(b) * 3U;
-                    const double edge_x = point_b[0] - point_a[0];
-                    const double edge_y = point_b[1] - point_a[1];
-                    const double edge_z = point_b[2] - point_a[2];
-                    const double face_x = face_center[0] - point_a[0];
-                    const double face_y = face_center[1] - point_a[1];
-                    const double face_z = face_center[2] - point_a[2];
-                    const double region_x = region_center[0] - point_a[0];
-                    const double region_y = region_center[1] - point_a[1];
-                    const double region_z = region_center[2] - point_a[2];
-                    const double cross_x = face_y * region_z - face_z * region_y;
-                    const double cross_y = face_z * region_x - face_x * region_z;
-                    const double cross_z = face_x * region_y - face_y * region_x;
-                    const double signed_volume6 = edge_x * cross_x
-                        + edge_y * cross_y + edge_z * cross_z;
-                    const double normalized = -signed_volume6 / scale;
-                    if (normalized <= tolerance) {
-                        cell_bad = true;
-                        ++invalid_subtets;
-                        if (examples.size() < example_limit) {
-                            examples.push_back({
-                                StarExampleKind::NonPositiveSubtet,
-                                static_cast<Label>(cell_index),
-                                static_cast<Label>(face_index),
-                                a,
-                                b,
-                                edge_index,
-                                signed_volume6,
-                                normalized});
-                        }
+                    for (size_t edge_index = 0U; edge_index < face.size(); ++edge_index) {
+                        const size_t oriented_index = reversed
+                            ? face.size() - 1U - edge_index
+                            : edge_index;
+                        const size_t oriented_next = reversed
+                            ? (oriented_index == 0U
+                                  ? face.size() - 1U
+                                  : oriented_index - 1U)
+                            : (oriented_index + 1U) % face.size();
+                        const Label a = face[oriented_index];
+                        const Label b = face[oriented_next];
+                        const double* const point_a = point_data
+                            + static_cast<size_t>(a) * 3U;
+                        const double* const point_b = point_data
+                            + static_cast<size_t>(b) * 3U;
+                        visitor(StarSubtetGeometry{
+                            face_index,
+                            edge_index,
+                            a,
+                            b,
+                            point_a,
+                            point_b[0] - point_a[0],
+                            point_b[1] - point_a[1],
+                            point_b[2] - point_a[2],
+                            face_center[0] - point_a[0],
+                            face_center[1] - point_a[1],
+                            face_center[2] - point_a[2]});
                     }
                 }
+            };
+
+            const auto signed_volume_at_center = [&](const StarSubtetGeometry& subtet) {
+                const double region_x = region_center[0] - subtet.point_a[0];
+                const double region_y = region_center[1] - subtet.point_a[1];
+                const double region_z = region_center[2] - subtet.point_a[2];
+                const double cross_x = subtet.face_y * region_z
+                    - subtet.face_z * region_y;
+                const double cross_y = subtet.face_z * region_x
+                    - subtet.face_x * region_z;
+                const double cross_z = subtet.face_x * region_y
+                    - subtet.face_y * region_x;
+                return subtet.edge_x * cross_x + subtet.edge_y * cross_y
+                    + subtet.edge_z * cross_z;
+            };
+
+            size_t arithmetic_violations = 0U;
+            visit_subtets([&](const StarSubtetGeometry& subtet) {
+                const double signed_volume6 = signed_volume_at_center(subtet);
+                if (-signed_volume6 / scale <= tolerance) {
+                    ++arithmetic_violations;
+                }
+            });
+            if (arithmetic_violations == 0U) {
+                continue;
             }
+
+            // The arithmetic mean is only a witness candidate.  Project it
+            // into the oriented half-spaces, then certify with the unchanged
+            // signed-subtet predicate below.  This center is never output.
+            constexpr size_t max_projection_sweeps = 8U;
+            const double tolerance_scaled = tolerance * scale;
+            const double inward_guard = 64.0 * std::numeric_limits<double>::epsilon()
+                * std::max({
+                    scale,
+                    std::abs(tolerance_scaled),
+                    std::numeric_limits<double>::min()});
+            bool projection_valid = std::isfinite(scale)
+                && std::isfinite(tolerance_scaled)
+                && std::isfinite(inward_guard)
+                && std::isfinite(region_center[0])
+                && std::isfinite(region_center[1])
+                && std::isfinite(region_center[2]);
+            for (size_t sweep = 0U;
+                 projection_valid && sweep < max_projection_sweeps;
+                 ++sweep) {
+                visit_subtets([&](const StarSubtetGeometry& subtet) {
+                    const double normal_x = subtet.edge_y * subtet.face_z
+                        - subtet.edge_z * subtet.face_y;
+                    const double normal_y = subtet.edge_z * subtet.face_x
+                        - subtet.edge_x * subtet.face_z;
+                    const double normal_z = subtet.edge_x * subtet.face_y
+                        - subtet.edge_y * subtet.face_x;
+                    const double region_x = region_center[0] - subtet.point_a[0];
+                    const double region_y = region_center[1] - subtet.point_a[1];
+                    const double region_z = region_center[2] - subtet.point_a[2];
+                    const double signed_volume6 = normal_x * region_x
+                        + normal_y * region_y + normal_z * region_z;
+                    const double normal_squared = normal_x * normal_x
+                        + normal_y * normal_y + normal_z * normal_z;
+                    if (!std::isfinite(signed_volume6)
+                        || !std::isfinite(normal_squared)
+                        || normal_squared <= std::numeric_limits<double>::min()) {
+                        projection_valid = false;
+                        return;
+                    }
+                    if (signed_volume6 >= -tolerance_scaled) {
+                        const double step =
+                            (signed_volume6 + tolerance_scaled + inward_guard)
+                            / normal_squared;
+                        region_center[0] -= step * normal_x;
+                        region_center[1] -= step * normal_y;
+                        region_center[2] -= step * normal_z;
+                    }
+                });
+                if (!projection_valid) {
+                    break;
+                }
+                bool projected_bad = false;
+                visit_subtets([&](const StarSubtetGeometry& subtet) {
+                    const double signed_volume6 = signed_volume_at_center(subtet);
+                    if (-signed_volume6 / scale <= tolerance) {
+                        projected_bad = true;
+                    }
+                });
+                if (!projected_bad) {
+                    break;
+                }
+            }
+
+            bool cell_bad = false;
+            visit_subtets([&](const StarSubtetGeometry& subtet) {
+                const double signed_volume6 = signed_volume_at_center(subtet);
+                const double normalized = -signed_volume6 / scale;
+                if (normalized <= tolerance) {
+                    cell_bad = true;
+                    ++invalid_subtets;
+                    if (examples.size() < example_limit) {
+                        examples.push_back({
+                            StarExampleKind::NonPositiveSubtet,
+                            static_cast<Label>(cell_index),
+                            static_cast<Label>(subtet.face_index),
+                            subtet.edge_a,
+                            subtet.edge_b,
+                            subtet.edge_index,
+                            signed_volume6,
+                            normalized});
+                    }
+                }
+            });
             if (cell_bad) {
                 ++invalid_cells;
             }

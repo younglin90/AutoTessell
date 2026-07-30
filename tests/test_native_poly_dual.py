@@ -380,7 +380,7 @@ def test_tet_to_poly_dual_star_validity_convex_and_nonmanifold(
     # centroid fallback absorbs it and the final result is fully valid.
     assert "candidate rejected" in after.message
     assert "star_invalid_cells=6" in after.message
-    assert "star_invalid_subtets=30" in after.message
+    assert "star_invalid_subtets=23" in after.message
 
 
 def test_tet_to_poly_dual_from_sphere(tmp_case_dir: Path) -> None:
