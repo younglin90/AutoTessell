@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `19`
+- cycle: `20`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `be7fb6798edbf985413abba2162ae826e4a6e6bb`
+- last_verified_master: `853c679996b693745cdff63e01aeeb6f6e26427c`
 - allowed_to_stop: `false`
-- next_action: `Profile the native surface self-intersection broad phase, then replace the quadratic/approximate Python candidate search with a deterministic first-party C++23 exact broad phase while preserving the Python narrow-phase oracle.`
+- next_action: `Port the two profiled surface triangle-intersection narrow predicates to separate first-party C++23 modes, preserving each detector's adjacency, epsilon, coplanar, ordering, and diagnostic contract while removing the dense exact-candidate Python bottleneck.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -1073,3 +1073,61 @@ scope. Future MIT-core boundary follows
   quadratic broadcast and large-mesh approximate search with a deterministic
   first-party C++23 exact broad phase only if the existing Python narrow-phase
   result, candidate ordering, input geometry, and failure semantics remain.
+
+## Cycle 20 checkpoint -- 2026-07-30
+
+### Native surface exact AABB broad-phase evidence
+
+- `853c6799` adds deterministic exact sweep-and-prune candidate generation to
+  first-party C++23 `native_metrics`.  Flat AABB arrays, stable sweep order,
+  widest-axis selection, canonical pairs, and final lexicographic sorting
+  replace quadratic NumPy matrices in native builds.
+- Public large-mesh detection no longer depends on centroid `k=16` nearest
+  neighbours or turns a KDTree exception into a false-clean result.  Python
+  fallback retains prior optional-extension behavior.
+- Only broad phase moved.  Public repair still excludes every shared-vertex
+  pair and uses its `1e-12` segment predicate.  Tet-private detection still
+  excludes two-shared-vertex pairs and uses its `1e-10` interval predicate.
+  Input coordinates, faces, narrow arithmetic, ordering, and reports remain.
+- Sphere (`642` vertices / `1,280` faces): all `7,866` candidates match.
+  Broad median `0.068847826 s -> 0.002956569 s` (`23.29x`); full public detect
+  `0.081276332 s -> 0.015302687 s` (`5.31x`), `216` tests, zero intersections.
+  Tet-private detect `0.741000228 s -> 0.663361401 s` (`1.12x`) with all
+  `4,750` legacy detections unchanged.  Sparse `100,000` boxes take
+  `0.001812726 s`, candidate count zero.
+- Native ABI suite passes `39`; wider repair/native-tri suite passes `95`;
+  post-merge native rebuild and focused suites pass `45`.  Dense random
+  triangles now expose the exact-candidate Python narrow bottleneck and make
+  the wider batch about `106 s`; next card ports narrow predicates separately.
+- GCC 13.3 C++23 build is warning-free.  `third_party/`, geometry, thresholds,
+  adjacency policy, and external dependencies remain unchanged.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-si-broadphase-1-853c6799.bundle`,
+  SHA-256 `2bda871f487dc0b637d1f5f126ff1e7c9e93a73f03cd5e1c22b1fb15f311699d`.
+  Worktree, branch, and isolated build were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-20 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/wider/post-merge suites pass; immutable-head full suite missing. |
+| 4 Shape preservation | UNVERIFIED | Native large-mesh broad phase is complete; full corpus evidence remains. |
+| 5 Mesh validity | UNVERIFIED | Candidate completeness improved without narrow-policy change; strict corpus incomplete. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology; Poly target remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer corpus incomplete. |
+| 8 Quality | UNVERIFIED | No quality threshold changed; complete matrix missing. |
+| 9 Reproducibility | FAIL | Broad output deterministic; external P4C point/tet topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Large elongated AABB candidates no longer missed in native builds; all-engine matrix incomplete. |
+| 11 Performance | UNVERIFIED | Sparse/representative gains pass; dense exact narrow phase is the next measured bottleneck. |
+| 12 Packaging | UNVERIFIED | CMake native extensions are not yet included in wheel evidence. |
+| 13 License/provenance | UNVERIFIED | Independent first-party code; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Migration evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Port public segment-based and Tet-private interval-based triangle narrow
+  predicates as explicitly separate native modes.  Preserve each epsilon,
+  adjacency exclusion, coplanar behavior, lexicographic pair order, and count.
