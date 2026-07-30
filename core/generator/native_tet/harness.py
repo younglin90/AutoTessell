@@ -14,6 +14,7 @@ harness 패턴의 native_tet 전용 변형:
 beta62: q_thresh 를 kwarg 로 노출. 생성 실패 시 adaptive 로 threshold 를 0.8×
 완화 → 복잡 형상에서도 수렴하도록.
 """
+
 from __future__ import annotations
 
 import math
@@ -39,6 +40,76 @@ log = get_logger(__name__)
 # quality target.  OpenFOAM reports a 90° non-orthogonality as the geometric
 # limit; the evaluator already uses the same strict-under-90 contract.
 _TET_HARNESS_MAX_NON_ORTHOGONALITY = 90.0
+# Existing standard Hausdorff and native-tet B-grade plane floors.
+_TET_HARNESS_MAX_HAUSDORFF_RELATIVE = 0.05
+_TET_HARNESS_MIN_PLANAR_SOURCE_COVERAGE = 0.80
+
+
+def _source_has_repeated_coplanar_face_groups(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+) -> bool | None:
+    """Return planar-gate applicability; ``None`` on an audit error."""
+    try:
+        from core.generator.native_tet.plane_coverage import (  # noqa: PLC0415
+            _group_by_plane,
+            _triangle_planes_and_areas,
+        )
+
+        v, f = np.asarray(vertices, dtype=float), np.asarray(faces, dtype=np.int64)
+        if not f.size:
+            return False
+        bbox = v.max(axis=0) - v.min(axis=0)
+        bbox_diag = float(np.linalg.norm(bbox)) + 1e-30
+        unit, offsets, _ = _triangle_planes_and_areas(v, f)
+        groups = _group_by_plane(
+            unit, offsets, normal_tol=5e-2, offset_rel_tol=5e-3, bbox_diag=bbox_diag,
+        )
+        return any(len(group) > 1 for group in groups.values())
+    except Exception:
+        return None
+
+
+def _evaluate_source_shape_contract(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    result: NativeTetResult,
+) -> tuple[bool, str, dict[str, float]]:
+    """Measure final arrays; never certify stale mesher summary metrics."""
+    unknown = dict.fromkeys(
+        ("hausdorff_relative", "plane_coverage", "plane_area_coverage"),
+        float("nan"),
+    )
+    if result.tet_points is None or result.tets is None:
+        return False, "source_metrics_unavailable", unknown
+    try:
+        from core.generator.native_tet.surface_transaction_gate import (  # noqa: PLC0415
+            measure_source_surface_metrics,
+        )
+        measured = measure_source_surface_metrics(vertices, faces, result.tet_points, result.tets)
+    except Exception:
+        return False, "source_metrics_measurement_failed", unknown
+    metrics = {"hausdorff_relative": float(measured.hausdorff_relative),
+               "plane_coverage": float(measured.plane_coverage),
+               "plane_area_coverage": float(measured.area_coverage)}
+    if not all(math.isfinite(value) for value in metrics.values()):
+        return False, "source_metrics_nonfinite", metrics
+    if any(value < 0.0 for value in metrics.values()):
+        return False, "source_metrics_unavailable", metrics
+    if metrics["plane_coverage"] > 1.0 or metrics["plane_area_coverage"] > 1.0:
+        return False, "source_metrics_out_of_range", metrics
+
+    requires_planar_coverage = _source_has_repeated_coplanar_face_groups(vertices, faces)
+    if requires_planar_coverage is None:
+        return False, "source_plane_grouping_unavailable", metrics
+    if metrics["hausdorff_relative"] > _TET_HARNESS_MAX_HAUSDORFF_RELATIVE:
+        return False, "hausdorff_relative_exceeds_standard", metrics
+    if requires_planar_coverage and (
+        metrics["plane_coverage"] < _TET_HARNESS_MIN_PLANAR_SOURCE_COVERAGE
+        or metrics["plane_area_coverage"] < _TET_HARNESS_MIN_PLANAR_SOURCE_COVERAGE
+    ):
+        return False, "planar_source_coverage_below_b_grade", metrics
+    return True, "ok", metrics
 
 
 @dataclass
@@ -316,6 +387,7 @@ def run_native_tet_harness(
     current_q_thresh = float(sliver_quality_threshold)
     # beta840: 가장 최근 성공한 iteration 의 quality snapshot 보존.
     latest_quality = None
+    last_source_rejection: str | None = None
 
     for it in range(1, int(max_iter) + 1):
         log.info(
@@ -335,8 +407,6 @@ def run_native_tet_harness(
                 max_cells=int(max_cells),
                 gen_kwargs=kwargs,
             )
-            if res.success and getattr(res, "quality", None) is not None:
-                latest_quality = res.quality
             if not res.success:
                 log.warning(
                     "native_tet_harness_gen_fail",
@@ -348,6 +418,36 @@ def run_native_tet_harness(
                 current_q_thresh *= 0.8
                 shutil.rmtree(tmp, ignore_errors=True)
                 continue
+
+            source_ok, source_reason, source_metrics = _evaluate_source_shape_contract(
+                vertices, faces, res
+            )
+            if not source_ok:
+                # A source-invalid candidate is diagnostic evidence only.  It
+                # must not reach the evaluator, become best_case, or leave a
+                # copied case output.  A previously retained best_case is
+                # necessarily source-valid because it was admitted earlier.
+                last_source_rejection = source_reason
+                if best_case is None:
+                    last_metrics = {
+                        "cells": int(res.n_cells),
+                        "points": int(res.n_points),
+                        "negative_volumes": 0,
+                        "max_non_orthogonality": 0.0,
+                        "max_skewness": 0.0,
+                    }
+                log.warning(
+                    "native_tet_harness_source_shape_reject",
+                    iteration=it,
+                    reason=source_reason,
+                    **source_metrics,
+                )
+                shutil.rmtree(tmp, ignore_errors=True)
+                current_seed = int(current_seed * 1.3)
+                continue
+
+            if getattr(res, "quality", None) is not None:
+                latest_quality = res.quality
 
             # cell 수 cap — target_edge_length 가 None 이라 _generate_with_cell_rebudget
             # 의 measured-ratio 보정이 동작하지 못한 경우의 fallback (seed 기반).
@@ -436,6 +536,17 @@ def run_native_tet_harness(
             shutil.rmtree(case_dir)
         shutil.copytree(best_case, case_dir)
         shutil.rmtree(best_case, ignore_errors=True)
+    if best_case is None and last_source_rejection is not None:
+        message = (
+            "native_tet_harness source_shape_contract_rejected "
+            f"after {max_iter} iter "
+            f"(reason={last_source_rejection})"
+        )
+    else:
+        message = (
+            f"native_tet_harness best_effort after {max_iter} iter "
+            f"(best non_ortho={best_non_ortho:.1f}°)"
+        )
     return TetHarnessResult(
         success=False,
         elapsed=time.perf_counter() - t0,
@@ -445,9 +556,6 @@ def run_native_tet_harness(
         negative_volumes=last_metrics.get("negative_volumes", 0),
         max_non_ortho=float(last_metrics.get("max_non_orthogonality", 0.0)),
         max_skewness=float(last_metrics.get("max_skewness", 0.0)),
-        message=(
-            f"native_tet_harness best_effort after {max_iter} iter "
-            f"(best non_ortho={best_non_ortho:.1f}°)"
-        ),
+        message=message,
         quality=latest_quality,
     )
