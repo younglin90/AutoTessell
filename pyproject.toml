@@ -105,6 +105,7 @@ where = ["."]
 include = ["cli*", "core*", "desktop*"]
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "requires_display: marks tests that require a display (skip in headless CI with '-k \"not requires_display\"')",
