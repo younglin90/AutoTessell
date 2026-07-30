@@ -253,7 +253,15 @@ def estimate_curvature_sizing(
         for vertex in face:
             vertex_area[int(vertex)] += share
     valid_area = vertex_area > np.finfo(float).tiny
-    curvature[valid_area] /= 2.0 * vertex_area[valid_area]
+    # ``sum(edge_length * exterior_dihedral) / (2 A_i)`` is the
+    # edge-integrated *twice* mean-curvature convention at a barycentric
+    # vertex area.  Dunyach's sizing formula instead takes a principal
+    # curvature.  Until the separate cotangent/Gaussian-curvature card
+    # supplies ``H + sqrt(H**2 - K)``, use the corresponding mean-curvature
+    # surrogate: halve that integrated convention.  This is exact for the
+    # umbilic calibration case (a sphere), preserves the existing scalar
+    # ordering, and never changes the finite/clamped fallback path.
+    curvature[valid_area] /= 4.0 * vertex_area[valid_area]
 
     lengths = np.full(len(points), upper, dtype=np.float64)
     positive_curvature = valid_area & np.isfinite(curvature) & (curvature > 1e-14)
