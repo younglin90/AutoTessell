@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `4`
+- cycle: `5`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `d16ba5aa0f06f79980e7e207f6180514b196d14a`
+- last_verified_master: `7c8713fee81f92a5e9b2094aeef96a4768fa1822`
 - allowed_to_stop: `false`
-- next_action: `POLY-PRIMAL-VERTEX-FLOOR-1: prevent native-poly success below its declared primal-vertex budget.`
+- next_action: `FACE-REMESH-TYPEERROR-ROOTCAUSE-1: make the explicit native-face path either pass its shape gates or reject with exact evidence.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -136,13 +136,77 @@ ledger commit itself necessarily advances `HEAD`.
 | 14 Documentation/operations | UNVERIFIED | Release operations/checklist evidence absent. |
 | 15 Release candidate | UNVERIFIED | Gates 1–14 remain open. |
 
+## Cycle 5 checkpoint — 2026-07-30
+
+### Integration, failure, and cleanup evidence
+
+- `cce47cb3` made an explicit native-hex `boundary_layer=0` a complete no-op:
+  explicit strategy/override zero succeeds with `layers_post_disabled_zero`, negative
+  layer counts reject, and positive requests remain on their existing route. Direct
+  suite: `28 passed in 46.99 s`. This is BL0 evidence only, not a positive-layer
+  Gate-7 claim.
+- `5ee28a00` adds a test-only native-tet strict-topology checkpoint. It confirms
+  BETA2825/later phases as the source of the `2000`-cell non-manifold/duplicate
+  writer failure; it does not alter generation behavior.
+- `c36755e5` adds `BUILD_CINOLIB_HEX=OFF` as the default clean native-CMake
+  configuration. A temporary fresh Release build with external adapters off built
+  the declared native targets; it is partial Gate-2 evidence only.
+- `37af2036` preserves an explicit native-poly target primal-vertex-floor failure
+  through the tier without Voronoi fallback. Focused off-path tests pass, but an
+  actual cube target route still exceeds the short validation budget; Gate 6 stays
+  failed.
+- `34122af9` adds the runtime-disconnected native-tri L0 source-clone certificate.
+  It rejects moved/topology-edited/malformed-provenance candidates; direct
+  certificate plus tri-route suite: `11 passed in 2.10 s`. It is not enabled as a
+  topology-changing route.
+- Tet `BETA2825-3TO2-TRANSACTION-GUARD-L1` was rejected, not merged. Cube target
+  `2000` produced strict-writer-clean topology but failed the shape hard gate:
+  `plane_area_coverage=0.7152778`, `hausdorff_relative=0.07763`, and cell error
+  `-46.35%`. Failure evidence is outside the repository:
+  `failed-tet-beta2825-3to2-transaction-guard-code.patch`
+  (`sha256:a44308fef6c5e160ff183b5615889dbbca74836020f6d518553c647162f72b93`) and
+  `failed-tet-beta2825-3to2-transaction-guard-test.patch`
+  (`sha256:103bf2cb1932af300e93f180472dc02b873918b3830fb892c0f0bbabac155c1a`).
+  Its exact worktree and unmerged branch were removed after archive verification.
+- `7c8713fe` exports the already implemented native-face public API. It removes
+  the collection ImportError (`7 tests collected`); direct public import and
+  unused-import check pass. The now-runnable suite reports `5 failed, 2 passed in
+  34.43 s`: three explicit face calls return `native operation failed: TypeError`,
+  and two explicit engine names are not accepted by the pipeline routing allow-list.
+  The export change itself makes no geometry or routing decision. Archive patch:
+  `0001-fix-native-remesh-export-face-remesh-public-API.patch`
+  (`sha256:52cba2e93181900f5a9f1e24e359389911cac48c0e5d64b3b8849a344f56fafd`).
+- No card changed `third_party/`. Active worktrees remain deliberate campaign
+  state; they prevent a Repository Gate PASS.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-5 evidence / next evidence |
+|---|---|---|
+| 1 Repository | UNVERIFIED | `master` is clean at this checkpoint, but active research worktrees remain. |
+| 2 Build | UNVERIFIED | Fresh partial native CMake Release build passes with optional Cinolib off; supported-config matrix remains absent. |
+| 3 Automated tests | FAIL | Native-face collection now works, but its direct suite has 5 concrete failures; full unskipped suite not run. |
+| 4 Shape preservation | UNVERIFIED | Card-local clone/boundary evidence only; campaign corpus absent. |
+| 5 Mesh validity | FAIL | Native tet target 500/2000/10000 strict-writer failures remain on baseline. |
+| 6 Cell count | FAIL | Native tet target suite fails; native poly cube BL0 `50/100 -> 15`; target preflight is still unmerged. |
+| 7 Boundary layer | UNVERIFIED | Hex BL0 no-op passes; positive-layer corpus and actual-layer evidence absent. |
+| 8 Quality | UNVERIFIED | No complete engine/fixture quality specification matrix. |
+| 9 Reproducibility | UNVERIFIED | No complete three-run engine corpus. |
+| 10 Robustness | UNVERIFIED | Native-face TypeError and incomplete invalid-input matrix remain. |
+| 11 Performance | UNVERIFIED | No frozen Release benchmark budgets. |
+| 12 Packaging | UNVERIFIED | Wheel smoke only; native/installer clean-install proof absent. |
+| 13 License/provenance | UNVERIFIED | Binding/dependency manifests are partial; resolved artifacts/notices/source-offer proof absent. |
+| 14 Documentation/operations | UNVERIFIED | Release operations/checklist evidence absent. |
+| 15 Release candidate | UNVERIFIED | Gates 1–14 remain open. |
+
 ## Active research queue
 
-1. `POLY-PRIMAL-VERTEX-FLOOR-1` — reject native-poly output below its declared primal-vertex floor; primary metric: silent under-floor successes, target `0`.
-2. `TET-FINAL-STRICT-TOPOLOGY-CHECKPOINT-1` — locate first post-metric topology defect and a source-preserving valid checkpoint; research active.
-3. `HEX-CONTRACT-GAP-1` — choose one measured hex target/positive-layer contract gap after focused baseline; research active.
-4. `FULL-VALIDATION-BASELINE-1` — establish clean Release and unskipped test evidence without weakening gates.
-5. `LIC-RESOLVED-ARTIFACT-SBOM-1` — inventory resolved wheel/installer artifacts and notices from fresh temporary outputs; no license inference.
+1. `POLY-TARGET-PREFLIGHT-BUDGET-1` — active: validate a fail-closed, pre-tet refusal for an explicit BL0 target whose clamped uniform seed work exceeds the declared harness budget. No target-success claim.
+2. `FACE-REMESH-TYPEERROR-ROOTCAUSE-1` — active: isolate the direct native-face TypeError and repair one shape-preserving cause only.
+3. `FACE-REMESH-EXPLICIT-ROUTING-1` — queued after the direct face contract: register explicit native-face/native-quad engine names without changing default routing or fallback semantics.
+4. `TET-POST-SWEEP-SURFACE-GATE-1` — queued: audit and fail-close the first post-sweep mutation that can bypass the existing plane/Hausdorff evidence.
+5. `FULL-VALIDATION-BASELINE-1` — establish clean Release and unskipped test evidence without weakening gates.
+6. `LIC-RESOLVED-ARTIFACT-SBOM-1` — inventory resolved wheel/installer artifacts and notices from fresh temporary outputs; no license inference.
 
 ## DOI and provenance record
 
