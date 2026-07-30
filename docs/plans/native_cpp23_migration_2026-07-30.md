@@ -523,6 +523,41 @@ No input coordinate, face, patch, physical-group meaning, requested layer
 count, geometric epsilon, external dependency, or `third_party/` file changed.
 No fast-math or parallel reduction is used.
 
+## Native checker oriented-volume evidence card
+
+`NativeMeshChecker` previously exposed three conflicting facts on an invalid
+hybrid mesh: the result reported `1,280` negative cells, `mesh_ok` was false,
+and the final log reported zero.  The final log used the absolute-pyramid
+kernel's raw counter, which is always zero, while the result used a separate
+owner-face winding heuristic.  Absolute pyramids are still useful volume
+magnitudes, but they cannot be authoritative inversion evidence.
+
+The first-party `native_metrics` C++23 module now provides the report-only
+`compute_oriented_cell_volume_audit`.  It consumes the checker's already-flat
+face centres, raw normals, areas, cell centres, owner, and neighbour arrays;
+no ragged face materialization or copy is introduced.  Each raw face contributes
+with `+` to its owner and `-` to its neighbour, preserving the OpenFOAM winding
+contract.  The kernel returns both signed volume and absolute pyramid sum per
+cell, releases the GIL for its contiguous loops, and uses `O(C)` output storage.
+Negative classification uses a per-cell `1e-12 * absolute_sum` tolerance and is
+report-only until corpus/OpenFOAM parity is complete.
+
+Unit cube winding produces `+1`; reversing all normals produces `-1` with the
+same absolute magnitude.  A shared-face fixture gives positive owner and
+neighbour contributions, confirming the opposite neighbour sign.  Native and
+Python fallback arrays are identical.  Three disconnected tetrahedra with one
+cell's four faces reversed produce effective/raw/oriented counts `1/0/1`; a
+fully outward control produces `0/0/0`.  The final checker event now logs the
+effective result plus all component counts instead of the stale raw zero.
+
+The large hybrid fixture's `1,280` result must not yet be relaxed: a full
+owner-plus-neighbour signed audit also reports `1,280` negative cells.  The
+single-tetra boundary-layer fixture is more severe: its first BL output has
+`9/9` negative signed cells, but the old global-flip-rate exemption reports
+zero.  The next change belongs in native BL prism/face assembly and in replacing
+that exemption with the authoritative signed audit, not in a weaker validity
+threshold.  Geometry and the release gate are unchanged by this evidence card.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

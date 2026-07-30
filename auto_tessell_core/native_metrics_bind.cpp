@@ -1589,6 +1589,93 @@ py::tuple compute_cell_volumes(
     return py::make_tuple(volumes, 0);
 }
 
+py::tuple compute_oriented_cell_volume_audit(
+    py::array_t<double, py::array::c_style | py::array::forcecast> face_centres,
+    py::array_t<double, py::array::c_style | py::array::forcecast> face_normals,
+    py::array_t<double, py::array::c_style | py::array::forcecast> face_areas,
+    py::array_t<double, py::array::c_style | py::array::forcecast> cell_centres,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> owner,
+    py::array_t<long long, py::array::c_style | py::array::forcecast> neighbour,
+    const long long n_cells,
+    const long long n_internal)
+{
+    if (n_cells < 0 || n_internal < 0) {
+        throw std::invalid_argument("cell and internal-face counts must be non-negative");
+    }
+    if (face_centres.ndim() != 2 || face_centres.shape(1) != 3
+        || face_normals.ndim() != 2 || face_normals.shape(1) != 3
+        || face_centres.shape(0) != face_normals.shape(0)
+        || face_areas.ndim() != 1
+        || face_areas.shape(0) != face_centres.shape(0)) {
+        throw std::invalid_argument(
+            "face centres/normals/areas must have shapes (F,3), (F,3), and (F,)");
+    }
+    if (cell_centres.ndim() != 2 || cell_centres.shape(1) != 3
+        || cell_centres.shape(0) < n_cells) {
+        throw std::invalid_argument("cell_centres must have shape (C,3) with C >= n_cells");
+    }
+    if (owner.ndim() != 1 || owner.shape(0) < face_centres.shape(0)) {
+        throw std::invalid_argument("owner must contain one id per face");
+    }
+    if (neighbour.ndim() != 1 || neighbour.shape(0) < n_internal
+        || n_internal > face_centres.shape(0)) {
+        throw std::invalid_argument(
+            "neighbour must contain at least n_internal ids");
+    }
+
+    const auto face_count = static_cast<size_t>(face_centres.shape(0));
+    const double* const centre_data = face_centres.data();
+    const double* const normal_data = face_normals.data();
+    const double* const area_data = face_areas.data();
+    const double* const cell_data = cell_centres.data();
+    const long long* const owner_data = owner.data();
+    const long long* const neighbour_data = neighbour.data();
+    for (size_t face = 0U; face < face_count; ++face) {
+        if (owner_data[face] < 0 || owner_data[face] >= n_cells) {
+            throw std::invalid_argument("owner cell id is out of range");
+        }
+    }
+    for (long long face = 0; face < n_internal; ++face) {
+        if (neighbour_data[face] < 0 || neighbour_data[face] >= n_cells) {
+            throw std::invalid_argument("neighbour cell id is out of range");
+        }
+    }
+
+    py::array_t<double> signed_volumes({static_cast<py::ssize_t>(n_cells)});
+    py::array_t<double> absolute_pyramid_sums({static_cast<py::ssize_t>(n_cells)});
+    double* const signed_data = signed_volumes.mutable_data();
+    double* const absolute_data = absolute_pyramid_sums.mutable_data();
+    {
+        py::gil_scoped_release release;
+        std::fill_n(signed_data, static_cast<size_t>(n_cells), 0.0);
+        std::fill_n(absolute_data, static_cast<size_t>(n_cells), 0.0);
+        const auto contribution = [=](const size_t face, const long long cell) {
+            const double* const face_centre = centre_data + face * 3U;
+            const double* const normal = normal_data + face * 3U;
+            const double* const cell_centre = cell_data
+                + static_cast<size_t>(cell) * 3U;
+            return area_data[face]
+                * (normal[0] * (face_centre[0] - cell_centre[0])
+                   + normal[1] * (face_centre[1] - cell_centre[1])
+                   + normal[2] * (face_centre[2] - cell_centre[2]))
+                / 3.0;
+        };
+        for (size_t face = 0U; face < face_count; ++face) {
+            const long long cell = owner_data[face];
+            const double value = contribution(face, cell);
+            signed_data[cell] += value;
+            absolute_data[cell] += std::abs(value);
+        }
+        for (long long face = 0; face < n_internal; ++face) {
+            const long long cell = neighbour_data[face];
+            const double value = -contribution(static_cast<size_t>(face), cell);
+            signed_data[cell] += value;
+            absolute_data[cell] += std::abs(value);
+        }
+    }
+    return py::make_tuple(signed_volumes, absolute_pyramid_sums);
+}
+
 py::tuple compute_per_cell_aspect_ratios(
     py::array_t<double, py::array::c_style | py::array::forcecast> points,
     py::sequence faces,
@@ -2499,6 +2586,11 @@ PYBIND11_MODULE(native_metrics, m)
           py::arg("cell_centres"), py::arg("owner"), py::arg("neighbour"),
           py::arg("cell_volumes"), py::arg("n_internal"));
     m.def("compute_cell_volumes", &compute_cell_volumes,
+          py::arg("face_centres"), py::arg("face_normals"), py::arg("face_areas"),
+          py::arg("cell_centres"), py::arg("owner"), py::arg("neighbour"),
+          py::arg("n_cells"), py::arg("n_internal"));
+    m.def("compute_oriented_cell_volume_audit",
+          &compute_oriented_cell_volume_audit,
           py::arg("face_centres"), py::arg("face_normals"), py::arg("face_areas"),
           py::arg("cell_centres"), py::arg("owner"), py::arg("neighbour"),
           py::arg("n_cells"), py::arg("n_internal"));

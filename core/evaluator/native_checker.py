@@ -274,6 +274,28 @@ class NativeMeshChecker:
                 neighbour,
             )  # (C, 3)
 
+        # Report-only raw-winding audit.  Run before face-normal correction so
+        # owner(+)/neighbour(-) signed pyramids retain the polyMesh orientation
+        # contract.  Magnitude-based quality metrics continue to use the robust
+        # absolute-pyramid path below.
+        oriented_volumes, oriented_abs_sums = self._compute_oriented_cell_volume_audit(
+            face_centres,
+            face_normals,
+            face_areas,
+            cell_centres,
+            owner,
+            neighbour,
+            n_cells,
+            n_internal,
+        )
+        oriented_tolerance = np.maximum(oriented_abs_sums * 1e-12, 1e-30)
+        n_oriented_negative_cells = int(
+            np.count_nonzero(oriented_volumes < -oriented_tolerance)
+        )
+        n_oriented_degenerate_cells = int(
+            np.count_nonzero(np.abs(oriented_volumes) <= oriented_tolerance)
+        )
+
         # ------------------------------------------------------------------
         # 3b. Face normal orientation 교정 — owner cell 중심에서 face centre 로
         # 향하는 방향을 "바깥"으로 삼아 face normal 을 flip.
@@ -450,6 +472,14 @@ class NativeMeshChecker:
         # orientation-fix-based inversion count tracked above.
         meaningful_neg_volumes = max(int(negative_volumes), int(n_inverted_owner_cells))
 
+        if n_oriented_negative_cells != n_inverted_owner_cells:
+            log.info(
+                "native_checker_orientation_audit_disagreement",
+                oriented_negative_cells=n_oriented_negative_cells,
+                inverted_owner_cells=n_inverted_owner_cells,
+                note="report-only; release gate still uses existing effective count",
+            )
+
         failed_checks = 0
         if meaningful_neg_volumes > 0:
             failed_checks += 1
@@ -547,7 +577,11 @@ class NativeMeshChecker:
             cells=n_cells,
             max_non_ortho=max_non_ortho,
             max_skewness=max_skewness,
-            negative_volumes=negative_volumes,
+            negative_volumes=meaningful_neg_volumes,
+            raw_pyramid_negative_volumes=int(negative_volumes),
+            inverted_owner_cells=int(n_inverted_owner_cells),
+            oriented_negative_cells=n_oriented_negative_cells,
+            oriented_degenerate_cells=n_oriented_degenerate_cells,
             mesh_ok=mesh_ok,
         )
         return result
@@ -1200,6 +1234,83 @@ class NativeMeshChecker:
     # ------------------------------------------------------------------
     # Cell volumes (divergence theorem)
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _compute_oriented_cell_volume_audit(
+        face_centres: np.ndarray,
+        face_normals: np.ndarray,
+        face_areas: np.ndarray,
+        cell_centres: np.ndarray,
+        owner: np.ndarray,
+        neighbour: np.ndarray,
+        n_cells: int,
+        n_internal: int,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return report-only signed volumes and absolute pyramid sums.
+
+        Raw polyMesh face normals point outward for the owner and inward for
+        the neighbour.  This audit therefore accumulates owner contributions
+        with ``+`` and neighbour contributions with ``-``.  It runs before the
+        checker's normal correction and does not alter quality-gate magnitudes.
+        """
+        native_metrics = _load_native_metrics()
+        if native_metrics is not None:
+            kernel = getattr(
+                native_metrics, "compute_oriented_cell_volume_audit", None
+            )
+            if kernel is not None:
+                try:
+                    signed, absolute = kernel(
+                        face_centres,
+                        face_normals,
+                        face_areas,
+                        cell_centres,
+                        owner,
+                        neighbour,
+                        int(n_cells),
+                        int(n_internal),
+                    )
+                    return (
+                        np.asarray(signed, dtype=np.float64),
+                        np.asarray(absolute, dtype=np.float64),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.debug(
+                        "native oriented cell-volume audit failed", error=str(exc)
+                    )
+
+        signed = np.zeros(n_cells, dtype=np.float64)
+        absolute = np.zeros(n_cells, dtype=np.float64)
+        if n_cells <= 0:
+            return signed, absolute
+        area_vectors = face_normals * face_areas[:, np.newaxis]
+        n_faces = min(len(face_centres), len(owner))
+        if n_faces > 0:
+            own = np.asarray(owner[:n_faces], dtype=np.int64)
+            valid = (own >= 0) & (own < n_cells)
+            face_ids = np.nonzero(valid)[0]
+            own_ids = own[face_ids]
+            values = np.einsum(
+                "ij,ij->i",
+                area_vectors[face_ids],
+                face_centres[face_ids] - cell_centres[own_ids],
+            ) / 3.0
+            np.add.at(signed, own_ids, values)
+            np.add.at(absolute, own_ids, np.abs(values))
+        n_int_use = min(int(n_internal), n_faces, len(neighbour))
+        if n_int_use > 0:
+            nbr = np.asarray(neighbour[:n_int_use], dtype=np.int64)
+            valid = (nbr >= 0) & (nbr < n_cells)
+            face_ids = np.nonzero(valid)[0]
+            nbr_ids = nbr[face_ids]
+            values = -np.einsum(
+                "ij,ij->i",
+                area_vectors[face_ids],
+                face_centres[face_ids] - cell_centres[nbr_ids],
+            ) / 3.0
+            np.add.at(signed, nbr_ids, values)
+            np.add.at(absolute, nbr_ids, np.abs(values))
+        return signed, absolute
 
     @staticmethod
     def _compute_cell_volumes(
