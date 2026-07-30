@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `15`
+- cycle: `16`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `fee82ef197343607be31dca4212b68a2b48a2190`
+- last_verified_master: `03ae22b4f5cc01f49a5834cf7ceb25723e0c26bd`
 - allowed_to_stop: `false`
-- next_action: `Port the profiled native-Poly face-geometry sweep to a first-party C++23 batch kernel while retaining exact face, owner, patch, and disk-output parity.`
+- next_action: `Connect the existing C++23 strict Tet topology audit to P4C candidate acceptance and recompute final shape evidence transactionally before any target-cell work.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -861,3 +861,59 @@ scope. Future MIT-core boundary follows
   `_flip_if_inward`, and `_is_on_plane` account for about `3.81 s` of an
   `8.93 s` representative dual conversion.  Design one C++23 ragged-face batch
   API with exact sequential arithmetic and face/owner/patch/output parity.
+
+## Cycle 16 checkpoint -- 2026-07-30
+
+### Native Poly face-geometry C++23 evidence
+
+- `03ae22b4` batches polygon fan area, source-plane membership, and outward
+  orientation in the first-party `native_polymesh` module.  Ragged faces are
+  parsed once into flat offset/index storage; connectivity is validated before
+  the GIL is released.  Numerical loops create no per-face NumPy gather/cross/
+  signed-distance temporaries and retain strict sequential double arithmetic.
+- A `20,000`-quad benchmark reports area classification `1.195620 s ->
+  0.001883 s` (`635.03x`) and orientation `0.593882 s -> 0.001343 s`
+  (`442.05x`).  Masks and on/off areas match exactly within the frozen
+  `1e-12` arithmetic comparison.
+- Deterministic sphere primal (`706` points / `1,913` tets): complete dual
+  median `6.023769 s -> 3.473974 s` (`1.73x`).  Both routes emit `699` cells,
+  `5,755` points, zero invalid stars/subtets, and identical full polyMesh
+  SHA-256 snapshots.  Traced Python peak changes only `22.063 MiB ->
+  21.937 MiB`; retained final nested face objects dominate that metric.
+- Focused binding, topology, adverse-input, and sphere tests pass `52`; merged
+  master batch passes `40`.  A separate full polyMesh-validity fixture exceeded
+  `124 s`, so complete validation remains `UNVERIFIED` rather than inferred.
+- The C++23 target builds warning-free with GCC 13.3.  No `third_party/` file,
+  threshold, face order, owner/neighbour order, patch label, or provenance rule
+  changed.  pybind11 and CGAL documentation were architectural references only;
+  no external code was copied.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-poly-face-geometry-1-03ae22b4.bundle`,
+  SHA-256 `939388db9bed304fd302e956cd177cb7e18ccd1a9b9508aa75ced01934017375`.
+  Worktree, branch, and exact temporary build directory were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-16 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Changed C++23 target builds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/post-merge suites pass; a validity fixture timed out and immutable-head full suite is missing. |
+| 4 Shape preservation | UNVERIFIED | Poly output is byte-identical; full corpus and P4C source-surface transaction remain. |
+| 5 Mesh validity | UNVERIFIED | Sphere invalid star/subtet count is zero; complete strict-topology corpus missing. |
+| 6 Cell count | FAIL | Deferred Tet target and Poly target following remain unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer corpus incomplete. |
+| 8 Quality | UNVERIFIED | Poly topology-selection arithmetic is parity-locked; complete matrix missing. |
+| 9 Reproducibility | FAIL | External P4C point/tet topology hashes still vary across identical fresh processes. |
+| 10 Robustness | UNVERIFIED | Native connectivity rejection and adverse Poly fixtures pass; all-engine matrix incomplete. |
+| 11 Performance | UNVERIFIED | Poly kernel/end-to-end gains pass card thresholds; frozen all-engine release budgets missing. |
+| 12 Packaging | UNVERIFIED | Clean installer/artifact proof missing. |
+| 13 License/provenance | UNVERIFIED | Independent first-party code; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Reuse the existing native Tet audit as a mandatory P4C topology prefilter,
+  then recompute final source fidelity from the committed arrays.  Do not snap
+  missing geometry, edit external fTetWild, or resume target-cell tuning.
