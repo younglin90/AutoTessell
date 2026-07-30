@@ -5524,17 +5524,69 @@ def generate_native_tet(
             )
             _ns_m = int(min(V.shape[0], final_pts.shape[0]))
             _lock_m = np.unique(_tet_boundary_faces(final_tets)).astype(np.int64)
-            _new_pts_m, _new_tets_m, _mt_res = metric_tensor_sweep(
-                final_pts, final_tets,
-                n_cycles=2,
-                target_edge=_h_target_m,
-                metric=_metric,
-                locked_vertex_ids=_lock_m,
-                monotone_min_drop=0.025,
+            _metric_source_txn_enabled = (
+                os.environ.get("AUTO_TESSELL_TET_METRIC_SOURCE_TXN", "0") == "1"
             )
-            if _mt_res.accepted:
+            if _metric_source_txn_enabled:
+                # Snapshot only this optional mutator.  The source audit below
+                # must be able to restore these exact arrays without repair.
+                from core.generator.native_tet.surface_transaction_gate import (
+                    apply_metric_surface_transaction,
+                )
+
+                _pre_pts_m = final_pts.copy()
+                _pre_tets_m = final_tets.copy()
+            else:
+                _pre_pts_m = final_pts
+                _pre_tets_m = final_tets
+            try:
+                _new_pts_m, _new_tets_m, _mt_res = metric_tensor_sweep(
+                    final_pts, final_tets,
+                    n_cycles=2,
+                    target_edge=_h_target_m,
+                    metric=_metric,
+                    locked_vertex_ids=_lock_m,
+                    monotone_min_drop=0.025,
+                )
+            except Exception:
+                if _metric_source_txn_enabled:
+                    final_pts = _pre_pts_m
+                    final_tets = _pre_tets_m
+                raise
+
+            _metric_sweep_committed = bool(_mt_res.accepted)
+            if _metric_source_txn_enabled:
+                if _metric_sweep_committed:
+                    final_pts, final_tets, _metric_surface_txn = apply_metric_surface_transaction(
+                        V,
+                        F,
+                        _pre_pts_m,
+                        _pre_tets_m,
+                        _new_pts_m,
+                        _new_tets_m,
+                    )
+                    _metric_sweep_committed = _metric_surface_txn.accepted
+                    if not _metric_sweep_committed:
+                        log.info(
+                            "native_tet_metric_surface_txn_revert",
+                            reason=_metric_surface_txn.reason,
+                            pre_hausdorff_relative=_metric_surface_txn.pre.hausdorff_relative,
+                            post_hausdorff_relative=_metric_surface_txn.post.hausdorff_relative,
+                            pre_plane_coverage=_metric_surface_txn.pre.plane_coverage,
+                            post_plane_coverage=_metric_surface_txn.post.plane_coverage,
+                            pre_area_coverage=_metric_surface_txn.pre.area_coverage,
+                            post_area_coverage=_metric_surface_txn.post.area_coverage,
+                        )
+                else:
+                    # Also defend the opt-in snapshot from an unexpected
+                    # in-place mutator that reports its own rejection.
+                    final_pts = _pre_pts_m
+                    final_tets = _pre_tets_m
+            elif _metric_sweep_committed:
                 final_pts = _new_pts_m
                 final_tets = _new_tets_m
+
+            if _metric_sweep_committed:
                 log.info(
                     "native_tet_metric_tensor_sweep",
                     cycles=_mt_res.n_cycles_used,
