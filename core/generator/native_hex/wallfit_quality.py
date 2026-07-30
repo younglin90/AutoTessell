@@ -10,7 +10,8 @@ changes a candidate.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Literal, Sequence
 
 import numpy as np
 
@@ -26,8 +27,147 @@ from core.generator.native_hex.transition_quality import (
     _signed_cell_volume,
 )
 
+if TYPE_CHECKING:
+    from .source_feature_sidecar_l1 import AuthoritativeSourceFeatureManifest
+
 QUALITY_ENV = "AUTO_TESSELL_HEX_WALLFIT_CANDIDATE_QUALITY_DIAG"
 NORMAL_DISTANCE_DIAGNOSTIC_FLOOR = 1.0e-12
+SourceEntity = tuple[str, str]
+SourceProvenanceStatus = Literal["AUTHORITATIVE", "UNAVAILABLE", "AMBIGUOUS"]
+
+
+@dataclass(frozen=True)
+class CandidateSourceProvenance:
+    """Read-only attribution for one wall-fit projection target.
+
+    ``AUTHORITATIVE`` means an intact caller-supplied sidecar bound exactly one
+    source entity to every source triangle containing the projected point.
+    ``UNAVAILABLE`` and ``AMBIGUOUS`` deliberately carry no inferred label.
+    """
+
+    status: SourceProvenanceStatus
+    source_entity: SourceEntity | None
+    source_triangle_indices: tuple[int, ...]
+    reason: str
+
+    def to_dict(self) -> dict[str, object]:
+        """Return JSON/log-safe report fields without creating an authority claim."""
+
+        return {
+            "source_provenance_status": self.status,
+            "source_entity": self.source_entity,
+            "source_triangle_indices": self.source_triangle_indices,
+            "source_provenance_reason": self.reason,
+        }
+
+
+@dataclass(frozen=True)
+class SourceCandidateProvenanceContext:
+    """Validated source-sidecar snapshot for report-only candidate attribution."""
+
+    vertices: np.ndarray | None
+    faces: np.ndarray | None
+    face_entities: tuple[SourceEntity, ...] | None
+    unavailable_reason: str
+    point_tolerance: float
+
+    def classify_projection_target(self, point: np.ndarray) -> CandidateSourceProvenance:
+        """Classify a projected point without changing wall-fit selection.
+
+        The exhaustive source-face scan is intentionally diagnostic-only.  It
+        prevents a nearest-centroid shortlist from inventing a unique entity at
+        a source-entity boundary.
+        """
+
+        if self.vertices is None or self.faces is None or self.face_entities is None:
+            return CandidateSourceProvenance("UNAVAILABLE", None, (), self.unavailable_reason)
+        query = np.asarray(point, dtype=np.float64)
+        if query.shape != (3,) or not np.all(np.isfinite(query)):
+            return CandidateSourceProvenance("UNAVAILABLE", None, (), "invalid_projection_target")
+
+        from core.generator.native_hex.snap import _closest_point_on_triangle  # noqa: PLC0415
+
+        squared_tolerance = self.point_tolerance * self.point_tolerance
+        matches: list[int] = []
+        for triangle_index, triangle in enumerate(self.faces):
+            first, second, third = self.vertices[triangle]
+            closest = _closest_point_on_triangle(query, first, second, third)
+            squared_distance = float(np.dot(closest - query, closest - query))
+            if squared_distance <= squared_tolerance:
+                matches.append(triangle_index)
+        if not matches:
+            return CandidateSourceProvenance(
+                "UNAVAILABLE", None, (), "projection_target_not_on_authoritative_source"
+            )
+
+        entities = tuple(sorted({self.face_entities[index] for index in matches}))
+        if len(entities) != 1:
+            return CandidateSourceProvenance(
+                "AMBIGUOUS",
+                None,
+                tuple(matches),
+                "authoritative_source_entity_boundary_tie",
+            )
+        return CandidateSourceProvenance(
+            "AUTHORITATIVE",
+            entities[0],
+            tuple(matches),
+            "unique_authoritative_source_entity",
+        )
+
+
+def source_candidate_provenance_context(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    *,
+    source_path: str | Path | None,
+    manifest: AuthoritativeSourceFeatureManifest | None,
+) -> SourceCandidateProvenanceContext:
+    """Bind wall-fit diagnostics to a sidecar or return explicit unavailability.
+
+    The helper is deliberately independent of meshing acceptance.  A missing,
+    invalid, hash-mismatched, or reordered sidecar produces no source label.
+    """
+
+    if source_path is None or manifest is None:
+        return SourceCandidateProvenanceContext(
+            None,
+            None,
+            None,
+            "missing_authoritative_source_feature_sidecar",
+            0.0,
+        )
+
+    from core.generator.native_hex.source_feature_sidecar_l1 import (  # noqa: PLC0415
+        audit_authoritative_source_feature_sidecar_l1,
+    )
+
+    audit = audit_authoritative_source_feature_sidecar_l1(
+        vertices,
+        faces,
+        source_path=source_path,
+        manifest=manifest,
+    )
+    if audit.status != "pass_authoritative_feature_sidecar":
+        return SourceCandidateProvenanceContext(
+            None,
+            None,
+            None,
+            audit.status,
+            0.0,
+        )
+
+    points = np.asarray(vertices, dtype=np.float64).copy()
+    triangles = np.asarray(faces, dtype=np.int64).copy()
+    extent = float(np.max(np.ptp(points, axis=0))) if len(points) else 0.0
+    tolerance = 128.0 * np.finfo(np.float64).eps * max(1.0, extent)
+    return SourceCandidateProvenanceContext(
+        points,
+        triangles,
+        tuple(manifest.face_entities),
+        "",
+        tolerance,
+    )
 
 
 def enabled() -> bool:
@@ -227,6 +367,9 @@ class CandidateQualityAudit:
     n_distance_improved_strict_nonregressing: int = 0
     n_distance_improved_p95_nonregressing: int = 0
     n_distance_improved_combined_nonregressing: int = 0
+    n_source_provenance_authoritative: int = 0
+    n_source_provenance_unavailable: int = 0
+    n_source_provenance_ambiguous: int = 0
     total_applied_distance_reduction: float = 0.0
     max_applied_distance_reduction: float = 0.0
     n_trial_near_zero_normal_distance: int = 0
@@ -275,10 +418,20 @@ class CandidateQualityAudit:
         after: CandidateSnapshot,
         distance_before: float,
         distance_after: float,
+        source_provenance: CandidateSourceProvenance | None = None,
     ) -> None:
         """Record one candidate without affecting the mesh decision."""
 
         self.n_candidates += 1
+        provenance = source_provenance or CandidateSourceProvenance(
+            "UNAVAILABLE", None, (), "candidate_source_provenance_not_supplied"
+        )
+        if provenance.status == "AUTHORITATIVE":
+            self.n_source_provenance_authoritative += 1
+        elif provenance.status == "AMBIGUOUS":
+            self.n_source_provenance_ambiguous += 1
+        else:
+            self.n_source_provenance_unavailable += 1
         if outcome == "full":
             self.n_full += 1
         elif outcome == "partial":
@@ -353,6 +506,7 @@ class CandidateQualityAudit:
                 "negative_signed_volume_delta": float(
                     after.n_negative_signed_volume - before.n_negative_signed_volume
                 ),
+                **provenance.to_dict(),
             }
         )
         self.n_trial_near_zero_normal_distance += int(
@@ -405,6 +559,7 @@ class CandidateQualityAudit:
                     "distance_before": float(distance_before),
                     "distance_after": float(distance_after),
                     "distance_reduction": distance_reduction,
+                    **provenance.to_dict(),
                 }
             )
 
@@ -436,6 +591,9 @@ class CandidateQualityAudit:
             "n_distance_improved_strict_nonregressing": self.n_distance_improved_strict_nonregressing,
             "n_distance_improved_p95_nonregressing": self.n_distance_improved_p95_nonregressing,
             "n_distance_improved_combined_nonregressing": self.n_distance_improved_combined_nonregressing,
+            "n_source_provenance_authoritative": self.n_source_provenance_authoritative,
+            "n_source_provenance_unavailable": self.n_source_provenance_unavailable,
+            "n_source_provenance_ambiguous": self.n_source_provenance_ambiguous,
             "total_applied_distance_reduction": self.total_applied_distance_reduction,
             "max_applied_distance_reduction": self.max_applied_distance_reduction,
             "n_trial_near_zero_normal_distance": self.n_trial_near_zero_normal_distance,

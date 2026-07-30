@@ -117,12 +117,12 @@ def _run_one(name: str, stl_path: Path, max_cells: int, *, compact: bool) -> int
                 f"area_dev_percent:{fidelity.surface_area_deviation_percent:.9g}"
             )
     if compact:
-        # Candidate records currently retain geometric cell ownership only.
-        # Do not imply a source-patch or sharp-feature attribution that the
-        # writer did not receive; this is an explicit fail-closed result.
+        # Stock pipeline input carries no validated source-feature sidecar.
+        # Candidate records therefore keep explicit UNAVAILABLE status rather
+        # than inventing a default patch or feature label.
         print(
             "candidate_provenance=UNAVAILABLE "
-            "(no source-patch/feature label in wall-fit candidate records)"
+            "(stock run has no validated authoritative source-feature sidecar)"
         )
         lines = [line for line in lines if "native_hex_wall_fit_candidate_quality_summary" in line]
     if not lines:
