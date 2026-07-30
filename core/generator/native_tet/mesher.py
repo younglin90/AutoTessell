@@ -6187,6 +6187,18 @@ def generate_native_tet(
             "after_nonmanifold_faces": int(
                 _duplicate_group_repair.candidate_audit.n_nonmanifold_faces
             ),
+            "before_same_side_internal_faces": int(
+                _duplicate_group_repair.before_audit.n_same_side_internal_faces
+            ),
+            "after_same_side_internal_faces": int(
+                _duplicate_group_repair.candidate_audit.n_same_side_internal_faces
+            ),
+            "before_ambiguous_internal_faces": int(
+                _duplicate_group_repair.before_audit.n_ambiguous_internal_faces
+            ),
+            "after_ambiguous_internal_faces": int(
+                _duplicate_group_repair.candidate_audit.n_ambiguous_internal_faces
+            ),
         }
         if _duplicate_group_repair.applied:
             final_tets = _duplicate_group_repair.tets
@@ -6392,12 +6404,27 @@ def generate_native_tet(
                 _boundary_topology_audit.n_degenerate_tets
             ),
             "n_inverted_tets": int(_boundary_topology_audit.n_inverted_tets),
+            "n_internal_faces": int(_boundary_topology_audit.n_internal_faces),
+            "n_same_side_internal_faces": int(
+                _boundary_topology_audit.n_same_side_internal_faces
+            ),
+            "n_ambiguous_internal_faces": int(
+                _boundary_topology_audit.n_ambiguous_internal_faces
+            ),
             "component_bijective": bool(_source_component_audit.bijective),
             "source_faces_preserved": bool(
                 _source_component_audit.source_faces_preserved
             ),
         }
         if not _source_topology_audit.valid:
+            import shutil  # noqa: PLC0415
+
+            _stale_poly_mesh = Path(case_dir) / "constant" / "polyMesh"
+            if _stale_poly_mesh.is_dir():
+                shutil.rmtree(_stale_poly_mesh)
+            debug_info["strict_source_topology"]["polymesh_artifacts_removed"] = (
+                not _stale_poly_mesh.exists()
+            )
             log.warning(
                 "native_tet_source_topology_rejected",
                 **debug_info["strict_source_topology"],
@@ -6414,8 +6441,16 @@ def generate_native_tet(
                 debug_info=debug_info,
             )
     except Exception as _source_topology_exc:
+        import shutil  # noqa: PLC0415
+
+        _stale_poly_mesh = Path(case_dir) / "constant" / "polyMesh"
+        if _stale_poly_mesh.is_dir():
+            shutil.rmtree(_stale_poly_mesh)
         debug_info["strict_source_topology_error"] = (
             f"{type(_source_topology_exc).__name__}: {_source_topology_exc}"
+        )
+        debug_info["strict_source_topology_artifacts_removed"] = (
+            not _stale_poly_mesh.exists()
         )
         log.warning(
             "native_tet_source_topology_unverified",

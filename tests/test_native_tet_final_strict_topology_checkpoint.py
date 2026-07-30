@@ -42,18 +42,18 @@ def _disable_late_topology_mutators(monkeypatch) -> None:
             monkeypatch.setenv(name, "1" if name.endswith("_OFF") else "0")
 
 
-def test_cube_10000_l0_trace_records_pre_writer_strict_repair(
+def test_cube_10000_l0_trace_refuses_residual_internal_overlap(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """L0: localize the defect and prove exact duplicate repair restores strictness.
+    """L0: duplicate cleanup cannot certify a still-overlapping tet complex.
 
     Target tracking is observed only.  This card's acceptance is deterministic
-    in-memory topology recovery, not target-band success.
+    fail-closed topology detection, not target-band success.
     """
     import core.generator.native_tet.boundary_invariant as boundary_invariant
 
     _disable_late_topology_mutators(monkeypatch)
-    observed: list[tuple[str, int, int, int]] = []
+    observed: list[tuple[str, int, int, int, int]] = []
     original = boundary_invariant.check_boundary_invariant
 
     def traced(before_points, before_tets, after_points, after_tets, stage, *args, **kwargs):
@@ -67,6 +67,7 @@ def test_cube_10000_l0_trace_records_pre_writer_strict_repair(
                 int(audit.n_nonmanifold_faces),
                 int(audit.n_duplicate_tets),
                 int(audit.n_degenerate_tets),
+                int(audit.n_same_side_internal_faces),
             )
         )
         return original(
@@ -83,23 +84,27 @@ def test_cube_10000_l0_trace_records_pre_writer_strict_repair(
     )
 
     final_audit = audit_tet_boundary(result.tet_points, result.tets)
-    assert result.success, result.message
+    assert not result.success
+    assert result.message == "native_tet source-aware strict topology is invalid"
     assert result.n_cells > 0
-    assert final_audit.valid
+    assert not final_audit.valid
+    assert final_audit.n_same_side_internal_faces > 0
     repair = result.debug_info["strict_topology_duplicate_group_repair"]
-    assert repair["applied"] is True
+    assert repair["applied"] is False
     assert repair["n_duplicate_groups"] == 1
     assert repair["n_removed_tets"] == 2
     assert repair["boundary_preserved"] is True
     assert repair["before_nonmanifold_faces"] > 0
     assert repair["after_nonmanifold_faces"] == 0
+    assert repair["after_same_side_internal_faces"] > 0
+    assert not (tmp_path / "cube_10000" / "constant" / "polyMesh").exists()
     assert observed
 
     first_unsafe = next(
         (
             record
             for record in observed
-            if record[1] > 0 or record[2] > 0 or record[3] > 0
+            if record[1] > 0 or record[2] > 0 or record[3] > 0 or record[4] > 0
         ),
         None,
     )

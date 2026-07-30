@@ -44,18 +44,24 @@ def _does_not_increase_nonmanifold_faces(
     candidate_points: NDArray[np.float64],
     candidate_tets: NDArray[np.int64],
 ) -> bool:
-    """Reject a sweep candidate that adds 3+-owner tet faces.
+    """Reject a sweep candidate that worsens strict internal-face topology.
 
     This is deliberately narrower than the full topology audit: callers may
     carry other pre-existing limitations, but an improvement pass must never
-    create additional face incidence that cannot be represented by the
-    OpenFOAM owner/neighbour model.
+    add non-manifold incidence, same-side overlapping neighbours, or an
+    ambiguous near-coplanar shared-face embedding.
     """
     from core.generator.native_tet.rescue_gate import audit_tet_boundary
 
     before = audit_tet_boundary(before_points, before_tets)
     candidate = audit_tet_boundary(candidate_points, candidate_tets)
-    return candidate.n_nonmanifold_faces <= before.n_nonmanifold_faces
+    return bool(
+        candidate.n_nonmanifold_faces <= before.n_nonmanifold_faces
+        and candidate.n_same_side_internal_faces
+        <= before.n_same_side_internal_faces
+        and candidate.n_ambiguous_internal_faces
+        <= before.n_ambiguous_internal_faces
+    )
 
 
 def klingner_full_sweep(

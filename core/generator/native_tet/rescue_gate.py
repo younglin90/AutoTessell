@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from numbers import Integral
 
 import numpy as np
@@ -24,6 +24,9 @@ class TetBoundaryAudit:
     n_duplicate_tets: int
     n_degenerate_tets: int
     n_inverted_tets: int
+    n_internal_faces: int = 0
+    n_same_side_internal_faces: int = 0
+    n_ambiguous_internal_faces: int = 0
 
     @property
     def valid(self) -> bool:
@@ -44,6 +47,25 @@ class TetBoundaryAudit:
             and self.n_duplicate_tets == 0
             and self.n_degenerate_tets == 0
             and self.n_inverted_tets == 0
+            and self.n_same_side_internal_faces == 0
+            and self.n_ambiguous_internal_faces == 0
+        )
+
+
+@dataclass(frozen=True)
+class InternalFaceSidednessAudit:
+    """Embedding validity of two tetrahedra incident to one triangular face."""
+
+    n_internal_faces: int
+    n_opposite_side_internal_faces: int
+    n_same_side_internal_faces: int
+    n_ambiguous_internal_faces: int
+
+    @property
+    def valid(self) -> bool:
+        return bool(
+            self.n_same_side_internal_faces == 0
+            and self.n_ambiguous_internal_faces == 0
         )
 
 
@@ -694,6 +716,8 @@ def has_strict_writer_topology(points: np.ndarray, tets: np.ndarray) -> bool:
         audit.n_nonmanifold_faces == 0
         and audit.n_duplicate_tets == 0
         and audit.n_degenerate_tets == 0
+        and audit.n_same_side_internal_faces == 0
+        and audit.n_ambiguous_internal_faces == 0
     )
 
 
@@ -757,6 +781,8 @@ def drop_duplicate_tet_groups_if_strict_topology_restored(
         and candidate_audit.n_nonmanifold_faces == 0
         and candidate_audit.n_duplicate_tets == 0
         and candidate_audit.n_degenerate_tets == 0
+        and candidate_audit.n_same_side_internal_faces == 0
+        and candidate_audit.n_ambiguous_internal_faces == 0
     )
     if not boundary_preserved:
         reason = "duplicate_group_drop_changes_boundary"
@@ -774,6 +800,114 @@ def drop_duplicate_tet_groups_if_strict_topology_restored(
         boundary_preserved=boundary_preserved,
         before_audit=before,
         candidate_audit=candidate_audit,
+    )
+
+
+def audit_internal_face_sidedness(
+    points: np.ndarray,
+    tets: np.ndarray,
+    *,
+    relative_volume_tolerance: float = 1e-12,
+) -> InternalFaceSidednessAudit:
+    """Prove that adjacent tetrahedra lie on opposite sides of their face.
+
+    A positive-volume test for each tetrahedron is insufficient: two valid
+    tetrahedra may share a face while placing both opposite apexes on the same
+    side, geometrically overlapping each other.  Canonical face grouping finds
+    exactly-two-cell faces; the existing robust ``orientation_signs`` predicate
+    then classifies both apexes against the same ordered face.  Near-coplanar
+    signs inside the scale-relative volume floor remain ambiguous and fail
+    closed instead of being rounded into an accepted side.
+    """
+    pts = np.asarray(points, dtype=np.float64)
+    tet = np.asarray(tets, dtype=np.int64)
+    if tet.ndim != 2 or tet.shape[1:] != (4,):
+        raise ValueError("tets must have shape (N, 4)")
+    if pts.ndim != 2 or pts.shape[1:] != (3,):
+        raise ValueError("points must have shape (N, 3)")
+    if tet.size and (int(tet.min()) < 0 or int(tet.max()) >= len(pts)):
+        raise ValueError("tet vertex index out of range")
+    if tet.shape[0] == 0:
+        return InternalFaceSidednessAudit(0, 0, 0, 0)
+
+    faces = np.concatenate(
+        [
+            tet[:, (0, 1, 2)],
+            tet[:, (0, 1, 3)],
+            tet[:, (0, 2, 3)],
+            tet[:, (1, 2, 3)],
+        ],
+        axis=0,
+    )
+    opposite = np.concatenate(
+        [tet[:, 3], tet[:, 2], tet[:, 1], tet[:, 0]],
+        axis=0,
+    )
+    canonical = np.sort(faces, axis=1)
+    order = np.lexsort((canonical[:, 2], canonical[:, 1], canonical[:, 0]))
+    sorted_faces = canonical[order]
+    starts = np.r_[
+        0,
+        1 + np.flatnonzero(np.any(sorted_faces[1:] != sorted_faces[:-1], axis=1)),
+    ]
+    ends = np.r_[starts[1:], len(sorted_faces)]
+    internal = (ends - starts) == 2
+    internal_starts = starts[internal]
+    n_internal = int(internal_starts.size)
+    if n_internal == 0:
+        return InternalFaceSidednessAudit(0, 0, 0, 0)
+
+    first_rows = order[internal_starts]
+    second_rows = order[internal_starts + 1]
+    shared = canonical[first_rows]
+    first_apex = opposite[first_rows]
+    second_apex = opposite[second_rows]
+    a = pts[shared[:, 0]]
+    b = pts[shared[:, 1]]
+    c = pts[shared[:, 2]]
+    first_d = pts[first_apex]
+    second_d = pts[second_apex]
+    first_volume6 = np.einsum(
+        "ij,ij->i",
+        b - a,
+        np.cross(c - a, first_d - a),
+    )
+    second_volume6 = np.einsum(
+        "ij,ij->i",
+        b - a,
+        np.cross(c - a, second_d - a),
+    )
+    diagonal = max(
+        float(np.linalg.norm(np.ptp(pts, axis=0))),
+        float(np.finfo(np.float64).tiny),
+    )
+    volume_floor = max(0.0, float(relative_volume_tolerance)) * diagonal**3
+
+    from core.generator.native_tet.validate import orientation_signs
+
+    first_sign = orientation_signs(
+        pts,
+        np.column_stack((shared, first_apex)),
+        tol=volume_floor,
+    )
+    second_sign = orientation_signs(
+        pts,
+        np.column_stack((shared, second_apex)),
+        tol=volume_floor,
+    )
+    ambiguous = (
+        (np.abs(first_volume6) <= volume_floor)
+        | (np.abs(second_volume6) <= volume_floor)
+        | (first_sign == 0)
+        | (second_sign == 0)
+    )
+    same_side = (~ambiguous) & (first_sign == second_sign)
+    opposite_side = (~ambiguous) & (first_sign == -second_sign)
+    return InternalFaceSidednessAudit(
+        n_internal_faces=n_internal,
+        n_opposite_side_internal_faces=int(np.count_nonzero(opposite_side)),
+        n_same_side_internal_faces=int(np.count_nonzero(same_side)),
+        n_ambiguous_internal_faces=int(np.count_nonzero(ambiguous)),
     )
 
 
@@ -795,6 +929,12 @@ def audit_tet_boundary(
     if tet.shape[0] == 0:
         return TetBoundaryAudit(0, 0, 0, 0, 0, 0, 0, 0, 0)
 
+    sidedness = audit_internal_face_sidedness(
+        pts,
+        tet,
+        relative_volume_tolerance=relative_volume_tolerance,
+    )
+
     from core.utils.native_extensions import load_native_tet_predicates
 
     native = load_native_tet_predicates()
@@ -804,7 +944,12 @@ def audit_tet_boundary(
             tet,
             float(relative_volume_tolerance),
         )
-        return TetBoundaryAudit(*(int(value) for value in values))
+        return replace(
+            TetBoundaryAudit(*(int(value) for value in values)),
+            n_internal_faces=sidedness.n_internal_faces,
+            n_same_side_internal_faces=sidedness.n_same_side_internal_faces,
+            n_ambiguous_internal_faces=sidedness.n_ambiguous_internal_faces,
+        )
 
     canonical_tets = np.sort(tet, axis=1)
     duplicate_tets = int(canonical_tets.shape[0] - np.unique(canonical_tets, axis=0).shape[0])
@@ -850,6 +995,9 @@ def audit_tet_boundary(
             duplicate_tets,
             degenerate_tets,
             inverted_tets,
+            sidedness.n_internal_faces,
+            sidedness.n_same_side_internal_faces,
+            sidedness.n_ambiguous_internal_faces,
         )
 
     edges = np.concatenate(
@@ -900,16 +1048,21 @@ def audit_tet_boundary(
         n_duplicate_tets=duplicate_tets,
         n_degenerate_tets=degenerate_tets,
         n_inverted_tets=inverted_tets,
+        n_internal_faces=sidedness.n_internal_faces,
+        n_same_side_internal_faces=sidedness.n_same_side_internal_faces,
+        n_ambiguous_internal_faces=sidedness.n_ambiguous_internal_faces,
     )
 
 
 __all__ = [
     "DuplicateTetGroupRepair",
+    "InternalFaceSidednessAudit",
     "SourceComponentBijectionAudit",
     "SourcePrefixRoundoffRestore",
     "SourceTopologyAudit",
     "TetBoundaryAudit",
     "audit_source_component_bijection",
+    "audit_internal_face_sidedness",
     "audit_source_topology",
     "audit_tet_boundary",
     "drop_duplicate_tet_groups_if_strict_topology_restored",
