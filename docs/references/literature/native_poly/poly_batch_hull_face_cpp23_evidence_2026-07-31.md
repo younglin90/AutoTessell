@@ -85,6 +85,27 @@ the isolated `native_metrics` checker module enabled, the bounded hull,
 dual, boundary-semantics, dual-point, native-extension, primal-conformity, and
 star-validity regression set passes `74/74 in 54.33 s`.
 
+The frozen performance claim is also an executable hard gate rather than a
+document-only assertion. The gate clears ambient `AUTO_TESSELL_*` campaign
+overrides, regenerates the sphere primal with the declared `seed_density=8`
+configuration, and fails closed unless its typed-array digest is exactly
+`84856e4ffa7654beb46a0f894baa05d3a314508501d6d470d9be26de38ed7d6c`.
+It then forces the real `assemble_dual_hull_faces` symbol and an otherwise
+identical native module with only that symbol hidden, so both C++23 and Python
+assembly routes consume copied views of the same frozen primal. Both routes,
+plus a second native repeat, produce `669` cells, `5473` points, zero invalid
+star cells/sub-tets, byte-identical `points/faces/owner/neighbour/boundary`, and
+the exact final digest
+`c972331abbb502f25942adbf69143478f600339330d3f0def8064abc8eb4806a`.
+The bounded command passes `1/1 in 22.32 s` with one OpenMP/BLAS thread:
+
+```bash
+OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+PYTHONPATH=/tmp/autotessell_poly39_build:$PWD \
+../AutoTessell/.venv/bin/python -m pytest -q \
+tests/test_native_poly_hull_face_assembly.py::test_frozen_sphere_native_and_python_assembly_are_byte_exact
+```
+
 The broader `test_native_poly*.py` plus target/writer run exceeded its declared
 300-second budget, so it is not claimed as a pass. A separated
 parser/target/writer subset returned `58 passed, 1 failed in 2.78 s`; the sole

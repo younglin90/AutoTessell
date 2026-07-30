@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import sys
 import types
 from pathlib import Path
@@ -11,8 +12,18 @@ from typing import Any
 import numpy as np
 import pytest
 
+from core.analyzer.readers import read_stl
 from core.generator.native_poly import dual
+from core.generator.native_tet.mesher import generate_native_tet
 from core.utils import native_extensions
+
+_FROZEN_SPHERE_PRIMAL_DIGEST = (
+    "84856e4ffa7654beb46a0f894baa05d3a314508501d6d470d9be26de38ed7d6c"
+)
+_FROZEN_SPHERE_POLYMESH_DIGEST = (
+    "c972331abbb502f25942adbf69143478f600339330d3f0def8064abc8eb4806a"
+)
+_POLYMESH_FILES = ("points", "faces", "owner", "neighbour", "boundary")
 
 
 def _native_or_skip() -> Any:
@@ -168,6 +179,117 @@ def _snapshot(case_dir: Path) -> dict[str, tuple[str, bytes]]:
             payload,
         )
     return result
+
+
+def _typed_array_digest(*arrays: np.ndarray) -> str:
+    digest = hashlib.sha256()
+    for array in arrays:
+        values = np.ascontiguousarray(array)
+        digest.update(str(values.dtype).encode())
+        digest.update(repr(values.shape).encode())
+        digest.update(values.tobytes())
+    return digest.hexdigest()
+
+
+def _polymesh_snapshot(case_dir: Path) -> dict[str, bytes]:
+    mesh_dir = case_dir / "constant" / "polyMesh"
+    return {name: (mesh_dir / name).read_bytes() for name in _POLYMESH_FILES}
+
+
+def _case_digest(case_dir: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(item for item in case_dir.rglob("*") if item.is_file()):
+        digest.update(str(path.relative_to(case_dir)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
+def _without_hull_assembly_symbol(native: Any) -> types.SimpleNamespace:
+    return types.SimpleNamespace(
+        **{
+            name: getattr(native, name)
+            for name in dir(native)
+            if name != "assemble_dual_hull_faces" and not name.startswith("__")
+        }
+    )
+
+
+def test_frozen_sphere_native_and_python_assembly_are_byte_exact(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Executable promotion gate for the measured sphere primal and polyMesh."""
+    native = _native_or_skip()
+    assert hasattr(native, "assemble_dual_hull_faces")
+
+    # Ambient campaign toggles must not silently select a different primal.
+    for name in tuple(os.environ):
+        if name.startswith("AUTO_TESSELL_"):
+            monkeypatch.delenv(name, raising=False)
+
+    sphere = Path(__file__).parent / "benchmarks" / "sphere.stl"
+    surface = read_stl(sphere)
+    primal = generate_native_tet(
+        surface.vertices,
+        surface.faces,
+        tmp_path / "primal",
+        target_edge_length=None,
+        seed_density=8,
+        enable_auto_fix_input=True,
+        enable_phase_a=True,
+        enable_bsp_insertion=False,
+        enable_edge_recovery=False,
+        enable_phase_b=False,
+        enable_phase_c=False,
+        target_cells=None,
+        min_final_vertices=None,
+        use_adaptive_sizing=False,
+        use_anisotropic_metric=False,
+        enable_amips_smooth=False,
+        enable_chunked_delaunay=True,
+        enable_edge_steiner=False,
+        enable_cdt_recovery=False,
+        enable_boundary_clip=False,
+        use_torch_amips=False,
+        enable_stellar_split=False,
+    )
+    assert primal.success, primal.message
+    assert primal.tet_points is not None and primal.tets is not None
+    points = np.ascontiguousarray(primal.tet_points, dtype=np.float64)
+    tets = np.ascontiguousarray(primal.tets, dtype=np.int64)
+    assert _typed_array_digest(points, tets) == _FROZEN_SPHERE_PRIMAL_DIGEST
+
+    native_dir = tmp_path / "native"
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: native)
+    native_result = dual.tet_to_poly_dual(points.copy(), tets.copy(), native_dir)
+
+    python_dir = tmp_path / "python"
+    python_only = _without_hull_assembly_symbol(native)
+    assert not hasattr(python_only, "assemble_dual_hull_faces")
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: python_only)
+    python_result = dual.tet_to_poly_dual(points.copy(), tets.copy(), python_dir)
+
+    for result in (native_result, python_result):
+        assert result.success, result.message
+        assert result.n_cells == 669
+        assert result.n_points == 5473
+        assert result.invalid_star_cells == 0
+        assert result.invalid_star_subtets == 0
+    native_files = _polymesh_snapshot(native_dir)
+    assert native_files == _polymesh_snapshot(python_dir)
+    assert _case_digest(native_dir) == _FROZEN_SPHERE_POLYMESH_DIGEST
+    assert _case_digest(python_dir) == _FROZEN_SPHERE_POLYMESH_DIGEST
+
+    repeat_dir = tmp_path / "native_repeat"
+    monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: native)
+    repeat_result = dual.tet_to_poly_dual(points.copy(), tets.copy(), repeat_dir)
+    assert repeat_result.success, repeat_result.message
+    assert repeat_result.n_cells == 669
+    assert repeat_result.n_points == 5473
+    assert repeat_result.invalid_star_cells == 0
+    assert repeat_result.invalid_star_subtets == 0
+    assert _polymesh_snapshot(repeat_dir) == native_files
+    assert _case_digest(repeat_dir) == _FROZEN_SPHERE_POLYMESH_DIGEST
 
 
 def _small_primal() -> tuple[np.ndarray, np.ndarray]:
