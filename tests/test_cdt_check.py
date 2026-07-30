@@ -1,4 +1,5 @@
 """Round 49 — CDT edge recovery check tests."""
+
 from __future__ import annotations
 
 import numpy as np
@@ -43,11 +44,76 @@ def test_cdt_check_detects_missing() -> None:
     assert r.n_missing == 3
 
 
+def test_cdt_check_native_and_fallback_have_exact_parity(monkeypatch) -> None:
+    from core.generator.native_tet.cdt_check import check_edge_recovery
+    from core.utils import native_extensions
+
+    high = np.int64(3_100_000_000)
+    faces = np.array(
+        [
+            [high, high + 1, high + 2],
+            [8, 7, 9],
+        ],
+        dtype=np.int64,
+    )
+    tets = np.array(
+        [
+            [high, high + 1, high + 2, high + 3],
+            [7, 8, 10, 11],
+        ],
+        dtype=np.int64,
+    )
+    native_result = check_edge_recovery(faces, tets)
+    monkeypatch.setattr(native_extensions, "load_native_tet_predicates", lambda: None)
+    fallback_result = check_edge_recovery(faces, tets)
+    assert native_result == fallback_result
+
+
+def test_cdt_check_rejects_negative_indices() -> None:
+    from core.generator.native_tet.cdt_check import check_edge_recovery
+
+    with pytest.raises(ValueError, match="negative index"):
+        check_edge_recovery(
+            np.array([[-1, 1, 2]], dtype=np.int64),
+            np.array([[0, 1, 2, 3]], dtype=np.int64),
+        )
+
+
+def test_cdt_check_rejects_fractional_or_out_of_range_labels() -> None:
+    from core.generator.native_tet.cdt_check import check_edge_recovery
+
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    with pytest.raises(TypeError, match="integer dtype"):
+        check_edge_recovery(np.array([[0.0, 1.0, 2.5]]), tets)
+    with pytest.raises(TypeError, match="integer dtype"):
+        check_edge_recovery(np.array([[0, 1, 2]], dtype=object), tets)
+    with pytest.raises(ValueError, match="outside int64 range"):
+        check_edge_recovery(np.array([[0, 1, np.iinfo(np.uint64).max]], dtype=np.uint64), tets)
+
+
+def test_cdt_check_noncontiguous_fallback_matches_contiguous() -> None:
+    from core.generator.native_tet.cdt_check import check_edge_recovery
+
+    face_storage = np.array([[0, 1, 2], [9, 9, 9], [2, 3, 0], [8, 8, 8]], dtype=np.int64)
+    tet_storage = np.array(
+        [[0, 1, 2, 4], [9, 9, 9, 9], [0, 2, 3, 4], [8, 8, 8, 8]],
+        dtype=np.int64,
+    )
+    faces = face_storage[::2]
+    tets = tet_storage[::2]
+    assert not faces.flags.c_contiguous
+    assert not tets.flags.c_contiguous
+    assert check_edge_recovery(faces, tets) == check_edge_recovery(
+        np.ascontiguousarray(faces), np.ascontiguousarray(tets)
+    )
+
+
 def test_cdt_check_on_generated_cube(tmp_path) -> None:
     """실제 native_tet 출력의 cube CDT 상태 보고 (실패 없음 확인용)."""
+    import trimesh
+
     from core.generator.native_tet.cdt_check import check_edge_recovery
     from core.generator.native_tet.mesher import generate_native_tet
-    import trimesh
 
     m = trimesh.creation.box(extents=(1, 1, 1))
     V = np.asarray(m.vertices, dtype=np.float64)

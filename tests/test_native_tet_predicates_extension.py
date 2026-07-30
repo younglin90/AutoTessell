@@ -1,4 +1,5 @@
 """Parity and degeneracy tests for exact native tetrahedral predicates."""
+
 from __future__ import annotations
 
 import sys
@@ -8,7 +9,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 
 _BUILD = Path(__file__).resolve().parents[1] / "auto_tessell_core" / "build"
 
@@ -357,3 +357,91 @@ def test_native_quality_metrics_match_python_fallback_snapshot(
             getattr(native_snapshot, field), getattr(fallback_snapshot, field),
             rtol=1e-11, atol=1e-11,
         ), field
+
+
+def test_native_cdt_audit_matches_python_oracle_randomized() -> None:
+    module = _module_or_skip()
+    from core.generator.native_tet.cdt_check import _check_edge_recovery_python
+
+    rng = np.random.default_rng(20260730)
+    for _ in range(100):
+        faces = rng.integers(0, 48, size=(24, 3), dtype=np.int64)
+        tets = rng.integers(0, 64, size=(32, 4), dtype=np.int64)
+        expected = _check_edge_recovery_python(faces, tets)
+        actual = module.audit_cdt_constraints(faces, tets)
+        assert int(actual["n_surface_edges"]) == expected.n_surface_edges
+        assert (
+            int(actual["n_present_as_tet_edges"])
+            == expected.n_present_as_tet_edges
+        )
+        assert int(actual["n_missing"]) == expected.n_missing
+        assert np.asarray(actual["missing_edges"]).tolist() == [
+            list(edge) for edge in expected.missing_edges
+        ]
+        assert int(actual["n_surface_faces"]) == expected.n_surface_faces
+        assert (
+            int(actual["n_present_as_tet_faces"])
+            == expected.n_present_as_tet_faces
+        )
+        assert int(actual["n_missing_faces"]) == expected.n_missing_faces
+
+
+def test_native_cdt_audit_preserves_sparse_int64_indices() -> None:
+    module = _module_or_skip()
+    from core.generator.native_tet.cdt_check import _check_edge_recovery_python
+
+    high = np.int64(3_100_000_000)
+    faces = np.array([
+        [high, high + 1, high + 2],
+        [9, 7, 8],
+        [high + 2, high, high + 1],
+    ], dtype=np.int64)
+    tets = np.array([
+        [high, high + 1, high + 2, high + 3],
+        [7, 8, 10, 11],
+    ], dtype=np.int64)
+    expected = _check_edge_recovery_python(faces, tets)
+    actual = module.audit_cdt_constraints(faces, tets)
+    assert np.asarray(actual["missing_edges"]).tolist() == [
+        list(edge) for edge in expected.missing_edges
+    ]
+    assert (
+        int(actual["n_present_as_tet_faces"])
+        == expected.n_present_as_tet_faces
+    )
+    assert int(actual["n_missing_faces"]) == expected.n_missing_faces
+
+
+def test_native_cdt_audit_requires_exact_contiguous_int64_abi() -> None:
+    module = _module_or_skip()
+    faces = np.array([[0, 1, 2]], dtype=np.int64)
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+
+    with pytest.raises(TypeError, match="dtype int64"):
+        module.audit_cdt_constraints(faces.astype(np.int32), tets)
+    with pytest.raises(TypeError):
+        module.audit_cdt_constraints([[0, 1, 2]], tets)
+    with pytest.raises(ValueError, match="C-contiguous"):
+        module.audit_cdt_constraints(np.vstack([faces] * 4)[::2], tets)
+    with pytest.raises(ValueError, match="negative index"):
+        module.audit_cdt_constraints(
+            np.array([[-1, 1, 2]], dtype=np.int64), tets
+        )
+    with pytest.raises(ValueError, match="shape"):
+        module.audit_cdt_constraints(
+            np.array([[0, 1]], dtype=np.int64), tets
+        )
+
+
+def test_native_cdt_audit_missing_edges_are_deterministic_and_sorted() -> None:
+    module = _module_or_skip()
+    faces = np.array([[8, 4, 6], [2, 1, 0], [6, 4, 8]], dtype=np.int64)
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    outputs = [
+        np.asarray(
+            module.audit_cdt_constraints(faces, tets)["missing_edges"]
+        ).tolist()
+        for _ in range(3)
+    ]
+    assert outputs[0] == sorted(outputs[0])
+    assert outputs[0] == outputs[1] == outputs[2]
