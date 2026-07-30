@@ -155,6 +155,13 @@ def main() -> None:
         ),
         select_quad_pairs=native.select_quad_pairs,
     )
+    split_native_backend = SimpleNamespace(
+        validate_triangle_surface_and_build_edge_faces=(
+            native.validate_triangle_surface_and_build_edge_faces
+        ),
+        prepare_quad_pairs=native.prepare_quad_pairs,
+        select_quad_pairs=native.select_quad_pairs,
+    )
 
     def native_route() -> Any:
         return native_quad_dominant_remesh(vertices, triangles)
@@ -173,11 +180,21 @@ def main() -> None:
         finally:
             native_extensions.load_native_metrics = original_loader
 
+    def split_native_route() -> Any:
+        native_extensions.load_native_metrics = lambda: split_native_backend
+        try:
+            return native_quad_dominant_remesh(vertices, triangles)
+        finally:
+            native_extensions.load_native_metrics = original_loader
+
     python_selector_public_times, native_public_times = _measure_alternating(
         python_selector_route, native_route, args.repeats
     )
     legacy_preflight_public_times, native_prepared_public_times = _measure_alternating(
         legacy_preflight_route, native_route, args.repeats
+    )
+    split_native_public_times, fused_transaction_public_times = _measure_alternating(
+        split_native_route, native_route, args.repeats
     )
     native_result = native_route()
     python_selector_result = python_selector_route()
@@ -198,6 +215,8 @@ def main() -> None:
     native_public_median = statistics.median(native_public_times)
     legacy_preflight_public_median = statistics.median(legacy_preflight_public_times)
     native_prepared_public_median = statistics.median(native_prepared_public_times)
+    split_native_public_median = statistics.median(split_native_public_times)
+    fused_transaction_public_median = statistics.median(fused_transaction_public_times)
     memory: dict[str, float | int] = {}
     if args.trace_memory:
 
@@ -251,6 +270,13 @@ def main() -> None:
                 "native_prepared_public_median_seconds": native_prepared_public_median,
                 "preflight_public_speedup": (
                     legacy_preflight_public_median / native_prepared_public_median
+                ),
+                "split_native_public_seconds": split_native_public_times,
+                "fused_transaction_public_seconds": fused_transaction_public_times,
+                "split_native_public_median_seconds": split_native_public_median,
+                "fused_transaction_public_median_seconds": fused_transaction_public_median,
+                "fused_transaction_speedup": (
+                    split_native_public_median / fused_transaction_public_median
                 ),
                 **memory,
             },

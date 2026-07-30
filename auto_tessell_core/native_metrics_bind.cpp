@@ -3023,6 +3023,85 @@ py::dict select_quad_pairs(
     return result;
 }
 
+py::dict quad_dominant_transaction(
+    const py::array_t<double, py::array::c_style>& vertices_array,
+    const py::array_t<long long, py::array::c_style>& triangles_array,
+    const py::array_t<long long, py::array::c_style>& wall_edges_array,
+    const double feature_angle_deg,
+    const double minimum_scaled_jacobian,
+    const double maximum_aspect_ratio,
+    const double maximum_warpage)
+{
+    const py::tuple preparation = prepare_quad_pairs(
+        vertices_array, triangles_array, wall_edges_array, feature_angle_deg);
+    const auto candidate_pairs =
+        py::cast<py::array_t<long long>>(preparation[0]);
+    const auto preparation_diagnostics =
+        py::cast<py::array_t<long long>>(preparation[1]);
+    py::dict selection = select_quad_pairs(
+        vertices_array,
+        triangles_array,
+        candidate_pairs,
+        minimum_scaled_jacobian,
+        maximum_aspect_ratio,
+        maximum_warpage);
+    const auto accepted_pairs = py::cast<py::array_t<long long>>(
+        selection["accepted_face_pairs"]);
+    const auto accepted = accepted_pairs.unchecked<2>();
+    const auto triangles = triangles_array.unchecked<2>();
+    const size_t face_count = static_cast<size_t>(triangles.shape(0));
+    const size_t accepted_count = static_cast<size_t>(accepted.shape(0));
+    if (accepted_count > face_count / 2U) {
+        throw std::logic_error(
+            "quad transaction accepted more face pairs than the surface contains");
+    }
+    std::vector<unsigned char> consumed(face_count, 0U);
+    for (size_t pair = 0; pair < accepted_count; ++pair) {
+        for (size_t local = 0; local < 2U; ++local) {
+            const auto face = accepted(
+                static_cast<py::ssize_t>(pair),
+                static_cast<py::ssize_t>(local));
+            if (face < 0 || face >= static_cast<long long>(face_count)) {
+                throw std::logic_error(
+                    "quad transaction produced an out-of-range accepted face");
+            }
+            auto& marker = consumed[static_cast<size_t>(face)];
+            if (marker != 0U) {
+                throw std::logic_error(
+                    "quad transaction consumed one face more than once");
+            }
+            marker = 1U;
+        }
+    }
+
+    const auto remaining_count = static_cast<py::ssize_t>(
+        face_count - accepted_count * 2U);
+    py::array_t<long long> remaining_triangles({
+        remaining_count, py::ssize_t{3}});
+    auto remaining = remaining_triangles.mutable_unchecked<2>();
+    py::ssize_t output_index = 0;
+    for (size_t face = 0; face < face_count; ++face) {
+        if (consumed[face] != 0U) {
+            continue;
+        }
+        for (py::ssize_t local = 0; local < 3; ++local) {
+            remaining(output_index, local) = triangles(
+                static_cast<py::ssize_t>(face), local);
+        }
+        ++output_index;
+    }
+
+    py::dict result;
+    result["candidate_face_pairs"] = candidate_pairs;
+    result["accepted_face_pairs"] = accepted_pairs;
+    result["remaining_triangles"] = std::move(remaining_triangles);
+    result["quads"] = selection["quads"];
+    result["quality"] = selection["quality"];
+    result["preparation_diagnostics"] = preparation_diagnostics;
+    result["rejected_quality"] = selection["rejected_quality"];
+    return result;
+}
+
 [[nodiscard]] double dot(const Point3& left, const Point3& right) noexcept
 {
     return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
@@ -3605,6 +3684,14 @@ PYBIND11_MODULE(native_metrics, m)
           py::arg("triangles").noconvert(),
           py::arg("wall_edges").noconvert(),
           py::arg("feature_angle_deg"));
+    m.def("quad_dominant_transaction", &quad_dominant_transaction,
+          py::arg("vertices").noconvert(),
+          py::arg("triangles").noconvert(),
+          py::arg("wall_edges").noconvert(),
+          py::arg("feature_angle_deg"),
+          py::arg("minimum_scaled_jacobian"),
+          py::arg("maximum_aspect_ratio"),
+          py::arg("maximum_warpage"));
     m.def("estimate_triangle_curvature_sizing",
           &estimate_triangle_curvature_sizing,
           py::arg("vertices"), py::arg("triangles"), py::arg("epsilon"),

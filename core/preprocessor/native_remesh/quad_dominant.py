@@ -33,6 +33,8 @@ def _decode_triangle_indices(values: object) -> NDArray[np.int64]:
         raise ValueError("triangles must have shape (M, 3)") from None
     if raw_triangles.ndim != 2 or raw_triangles.shape[1] != 3:
         raise ValueError("triangles must have shape (M, 3)")
+    if raw_triangles.dtype == np.dtype(np.int64):
+        return np.array(raw_triangles, dtype=np.int64, order="C", copy=True)
     if any(not _is_exact_index(value) for value in raw_triangles.flat):
         raise ValueError("triangles must contain exact finite signed int64 indices")
     if any(int(value) < _INT64_MIN or int(value) > _INT64_MAX for value in raw_triangles.flat):
@@ -244,6 +246,120 @@ def _feature_edges(
     return protected
 
 
+def _oriented_quads_for_pairs(
+    triangles: NDArray[np.int64],
+    face_pairs: NDArray[np.int64],
+) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """Return exact oriented quads and canonical shared edges for face pairs."""
+    if not len(face_pairs):
+        return np.empty((0, 4), dtype=np.int64), np.empty((0, 2), dtype=np.int64)
+    first_triangles = triangles[face_pairs[:, 0]]
+    second_triangles = triangles[face_pairs[:, 1]]
+    equality = first_triangles[:, :, None] == second_triangles[:, None, :]
+    first_shared = equality.any(axis=2)
+    second_shared = equality.any(axis=1)
+    if not ((first_shared.sum(axis=1) == 2) & (second_shared.sum(axis=1) == 2)).all():
+        raise RuntimeError("native quad transaction returned a non-adjacent face pair")
+    oriented_edges = first_shared & np.roll(first_shared, -1, axis=1)
+    if not (oriented_edges.sum(axis=1) == 1).all():
+        raise RuntimeError("native quad transaction returned an invalid shared edge")
+    row = np.arange(len(face_pairs), dtype=np.int64)
+    start = np.argmax(oriented_edges, axis=1)
+    second_opposite = np.argmax(~second_shared, axis=1)
+    edge_start = first_triangles[row, start]
+    edge_end = first_triangles[row, (start + 1) % 3]
+    quads = np.column_stack(
+        (
+            first_triangles[row, (start + 2) % 3],
+            edge_start,
+            second_triangles[row, second_opposite],
+            edge_end,
+        )
+    )
+    shared_edges = np.sort(np.column_stack((edge_start, edge_end)), axis=1)
+    return np.ascontiguousarray(quads), np.ascontiguousarray(shared_edges)
+
+
+def _validate_preparation_result(
+    vertices: np.ndarray,
+    triangles: NDArray[np.int64],
+    decoded_wall_edges: list[tuple[int, int]],
+    feature_angle_deg: float,
+    result: object,
+) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """Fail closed on malformed native preflight arrays and provenance."""
+    if not isinstance(result, tuple) or len(result) != 2:
+        raise RuntimeError("native prepare_quad_pairs returned an invalid result")
+    face_pairs, diagnostics = result
+    if (
+        not isinstance(face_pairs, np.ndarray)
+        or face_pairs.dtype != np.dtype(np.int64)
+        or face_pairs.ndim != 2
+        or face_pairs.shape[1] != 2
+        or not face_pairs.flags.c_contiguous
+    ):
+        raise RuntimeError("native prepare_quad_pairs returned invalid face_pairs")
+    if (
+        not isinstance(diagnostics, np.ndarray)
+        or diagnostics.dtype != np.dtype(np.int64)
+        or diagnostics.shape != (5,)
+        or not diagnostics.flags.c_contiguous
+        or (diagnostics < 0).any()
+    ):
+        raise RuntimeError("native prepare_quad_pairs returned invalid diagnostics")
+    if face_pairs.size and (
+        face_pairs.min() < 0
+        or face_pairs.max() >= len(triangles)
+        or (face_pairs[:, 0] >= face_pairs[:, 1]).any()
+    ):
+        raise RuntimeError("native prepare_quad_pairs returned invalid face-pair indices")
+    if len(np.unique(face_pairs, axis=0)) != len(face_pairs):
+        raise RuntimeError("native prepare_quad_pairs returned duplicate face pairs")
+
+    _, shared_edges = _oriented_quads_for_pairs(triangles, face_pairs)
+    unique_wall_edges = np.asarray(
+        sorted({_edge_key(first, second) for first, second in decoded_wall_edges}),
+        dtype=np.int64,
+    ).reshape((-1, 2))
+    if len(shared_edges) and len(unique_wall_edges):
+        edge_dtype = np.dtype([("first", np.int64), ("second", np.int64)])
+        returned_edges = shared_edges.view(edge_dtype).reshape(-1)
+        protected_edges = np.ascontiguousarray(unique_wall_edges).view(edge_dtype).reshape(-1)
+        if np.isin(returned_edges, protected_edges).any():
+            raise RuntimeError("native prepare_quad_pairs returned a protected wall pair")
+    if len(face_pairs):
+        with np.errstate(over="ignore", invalid="ignore"):
+            face_points = vertices[triangles]
+            normals = np.cross(
+                face_points[:, 1] - face_points[:, 0],
+                face_points[:, 2] - face_points[:, 0],
+            )
+            lengths = np.linalg.norm(normals, axis=1)
+            unit_normals = np.divide(
+                normals,
+                lengths[:, None],
+                out=np.zeros_like(normals),
+                where=lengths[:, None] > 1e-30,
+            )
+            normal_dots = np.einsum(
+                "ij,ij->i",
+                unit_normals[face_pairs[:, 0]],
+                unit_normals[face_pairs[:, 1]],
+            )
+        cosine_limit = float(np.cos(np.deg2rad(feature_angle_deg)))
+        if (normal_dots < cosine_limit).any():
+            raise RuntimeError("native prepare_quad_pairs returned a protected feature pair")
+    if int(diagnostics[2]) != len(unique_wall_edges):
+        raise RuntimeError("native prepare_quad_pairs returned invalid wall-edge count")
+    if (
+        int(diagnostics[1]) > int(diagnostics[3])
+        or int(diagnostics[4]) > int(diagnostics[3])
+        or int(diagnostics[3]) != len(face_pairs) + int(diagnostics[4])
+    ):
+        raise RuntimeError("native prepare_quad_pairs returned inconsistent diagnostics")
+    return face_pairs, diagnostics
+
+
 def _prepare_quad_pairs_python(
     vertices: np.ndarray,
     triangles: NDArray[np.int64],
@@ -312,74 +428,13 @@ def _prepare_quad_pairs(
         wall_edges,
         feature_angle_deg,
     )
-    if not isinstance(result, tuple) or len(result) != 2:
-        raise RuntimeError("native prepare_quad_pairs returned an invalid result")
-    face_pairs, diagnostics = result
-    if (
-        not isinstance(face_pairs, np.ndarray)
-        or face_pairs.dtype != np.dtype(np.int64)
-        or face_pairs.ndim != 2
-        or face_pairs.shape[1] != 2
-        or not face_pairs.flags.c_contiguous
-    ):
-        raise RuntimeError("native prepare_quad_pairs returned invalid face_pairs")
-    if (
-        not isinstance(diagnostics, np.ndarray)
-        or diagnostics.dtype != np.dtype(np.int64)
-        or diagnostics.shape != (5,)
-        or not diagnostics.flags.c_contiguous
-        or (diagnostics < 0).any()
-    ):
-        raise RuntimeError("native prepare_quad_pairs returned invalid diagnostics")
-    if face_pairs.size and (
-        face_pairs.min() < 0
-        or face_pairs.max() >= len(triangles)
-        or (face_pairs[:, 0] >= face_pairs[:, 1]).any()
-    ):
-        raise RuntimeError("native prepare_quad_pairs returned invalid face-pair indices")
-    returned_pairs = [tuple(map(int, pair)) for pair in face_pairs]
-    if len(returned_pairs) != len(set(returned_pairs)):
-        raise RuntimeError("native prepare_quad_pairs returned duplicate face pairs")
-    unique_wall_edges = {_edge_key(first, second) for first, second in decoded_wall_edges}
-    if len(face_pairs):
-        first_triangles = triangles[face_pairs[:, 0]]
-        second_triangles = triangles[face_pairs[:, 1]]
-        shared_mask = (first_triangles[:, :, None] == second_triangles[:, None, :]).any(axis=2)
-        if not (shared_mask.sum(axis=1) == 2).all():
-            raise RuntimeError("native prepare_quad_pairs returned a non-adjacent face pair")
-        shared_edges = np.sort(first_triangles[shared_mask].reshape((-1, 2)), axis=1)
-        if any(tuple(map(int, edge)) in unique_wall_edges for edge in shared_edges):
-            raise RuntimeError("native prepare_quad_pairs returned a protected wall pair")
-        with np.errstate(over="ignore", invalid="ignore"):
-            face_points = vertices[triangles]
-            normals = np.cross(
-                face_points[:, 1] - face_points[:, 0],
-                face_points[:, 2] - face_points[:, 0],
-            )
-            lengths = np.linalg.norm(normals, axis=1)
-            unit_normals = np.divide(
-                normals,
-                lengths[:, None],
-                out=np.zeros_like(normals),
-                where=lengths[:, None] > 1e-30,
-            )
-            normal_dots = np.einsum(
-                "ij,ij->i",
-                unit_normals[face_pairs[:, 0]],
-                unit_normals[face_pairs[:, 1]],
-            )
-        cosine_limit = float(np.cos(np.deg2rad(feature_angle_deg)))
-        if (normal_dots < cosine_limit).any():
-            raise RuntimeError("native prepare_quad_pairs returned a protected feature pair")
-    if int(diagnostics[2]) != len(unique_wall_edges):
-        raise RuntimeError("native prepare_quad_pairs returned invalid wall-edge count")
-    if (
-        int(diagnostics[1]) > int(diagnostics[3])
-        or int(diagnostics[4]) > int(diagnostics[3])
-        or int(diagnostics[3]) != len(face_pairs) + int(diagnostics[4])
-    ):
-        raise RuntimeError("native prepare_quad_pairs returned inconsistent diagnostics")
-    return face_pairs, diagnostics
+    return _validate_preparation_result(
+        vertices,
+        triangles,
+        decoded_wall_edges,
+        feature_angle_deg,
+        result,
+    )
 
 
 def _oriented_quad(first: np.ndarray, second: np.ndarray) -> np.ndarray | None:
@@ -480,36 +535,17 @@ def _select_quad_pairs_python(
     return accepted_pairs, quads, quality, rejected_quality
 
 
-def _select_quad_pairs(
+def _validate_selection_result(
     vertices: np.ndarray,
-    triangles: np.ndarray,
-    face_pairs: np.ndarray,
+    triangles: NDArray[np.int64],
+    face_pairs: NDArray[np.int64],
+    result: object,
     *,
     min_scaled_jacobian: float,
     max_aspect_ratio: float,
     max_warpage: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
-    """Use the allocation-bounded native selector when its ABI is available."""
-    from core.utils.native_extensions import load_native_metrics
-
-    native = load_native_metrics()
-    if native is None or not hasattr(native, "select_quad_pairs"):
-        return _select_quad_pairs_python(
-            vertices,
-            triangles,
-            face_pairs,
-            min_scaled_jacobian=min_scaled_jacobian,
-            max_aspect_ratio=max_aspect_ratio,
-            max_warpage=max_warpage,
-        )
-    result = native.select_quad_pairs(
-        vertices,
-        triangles,
-        face_pairs,
-        min_scaled_jacobian,
-        max_aspect_ratio,
-        max_warpage,
-    )
+) -> tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.float64], int]:
+    """Fail closed on malformed native selection arrays and provenance."""
     if not isinstance(result, dict):
         raise RuntimeError("native select_quad_pairs returned a non-dict result")
 
@@ -542,20 +578,40 @@ def _select_quad_pairs(
         or (quality[:, 2] > max_warpage).any()
     ):
         raise RuntimeError("native select_quad_pairs returned out-of-range quality")
-    if accepted_pairs.size and (accepted_pairs.min() < 0 or accepted_pairs.max() >= len(triangles)):
+    if accepted_pairs.size and (
+        accepted_pairs.min() < 0
+        or accepted_pairs.max() >= len(triangles)
+        or (accepted_pairs[:, 0] >= accepted_pairs[:, 1]).any()
+    ):
         raise RuntimeError("native select_quad_pairs returned an invalid face index")
     if quads.size and (quads.min() < 0 or quads.max() >= len(vertices)):
         raise RuntimeError("native select_quad_pairs returned an invalid vertex index")
-    if any(len(set(map(int, row))) != 2 for row in accepted_pairs):
-        raise RuntimeError("native select_quad_pairs returned a repeated face index")
-    if any(len(set(map(int, row))) != 4 for row in quads):
-        raise RuntimeError("native select_quad_pairs returned a repeated quad vertex")
-    supplied_pairs = {tuple(sorted((int(pair[0]), int(pair[1])))) for pair in face_pairs}
-    returned_pairs = [tuple(map(int, pair)) for pair in accepted_pairs]
-    if any(
-        pair[0] >= pair[1] or pair not in supplied_pairs for pair in returned_pairs
-    ) or returned_pairs != sorted(set(returned_pairs)):
-        raise RuntimeError("native select_quad_pairs returned invalid face-pair provenance")
+    if accepted_count:
+        sorted_quads = np.sort(quads, axis=1)
+        if (sorted_quads[:, 1:] == sorted_quads[:, :-1]).any():
+            raise RuntimeError("native select_quad_pairs returned a repeated quad vertex")
+        if len(np.unique(accepted_pairs.reshape(-1))) != accepted_pairs.size:
+            raise RuntimeError("native select_quad_pairs consumed one face more than once")
+        if len(accepted_pairs) > 1:
+            previous, current = accepted_pairs[:-1], accepted_pairs[1:]
+            if (
+                (current[:, 0] < previous[:, 0])
+                | ((current[:, 0] == previous[:, 0]) & (current[:, 1] <= previous[:, 1]))
+            ).any():
+                raise RuntimeError("native select_quad_pairs returned unsorted face pairs")
+        supplied = (
+            np.ascontiguousarray(face_pairs)
+            .view(np.dtype([("first", np.int64), ("second", np.int64)]))
+            .reshape(-1)
+        )
+        returned = accepted_pairs.view(
+            np.dtype([("first", np.int64), ("second", np.int64)])
+        ).reshape(-1)
+        if not np.isin(returned, supplied).all():
+            raise RuntimeError("native select_quad_pairs returned invalid face-pair provenance")
+        expected_quads, _ = _oriented_quads_for_pairs(triangles, accepted_pairs)
+        if not np.array_equal(quads, expected_quads):
+            raise RuntimeError("native select_quad_pairs returned invalid quad provenance")
     rejected_quality = result.get("rejected_quality")
     if (
         isinstance(rejected_quality, (bool, np.bool_))
@@ -565,6 +621,124 @@ def _select_quad_pairs(
     ):
         raise RuntimeError("native select_quad_pairs returned invalid rejected_quality")
     return accepted_pairs, quads, quality, int(rejected_quality)
+
+
+def _select_quad_pairs(
+    vertices: np.ndarray,
+    triangles: np.ndarray,
+    face_pairs: np.ndarray,
+    *,
+    min_scaled_jacobian: float,
+    max_aspect_ratio: float,
+    max_warpage: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, int]:
+    """Use the allocation-bounded native selector when its ABI is available."""
+    from core.utils.native_extensions import load_native_metrics
+
+    native = load_native_metrics()
+    if native is None or not hasattr(native, "select_quad_pairs"):
+        return _select_quad_pairs_python(
+            vertices,
+            triangles,
+            face_pairs,
+            min_scaled_jacobian=min_scaled_jacobian,
+            max_aspect_ratio=max_aspect_ratio,
+            max_warpage=max_warpage,
+        )
+    result = native.select_quad_pairs(
+        vertices,
+        triangles,
+        face_pairs,
+        min_scaled_jacobian,
+        max_aspect_ratio,
+        max_warpage,
+    )
+    return _validate_selection_result(
+        vertices,
+        triangles,
+        face_pairs,
+        result,
+        min_scaled_jacobian=min_scaled_jacobian,
+        max_aspect_ratio=max_aspect_ratio,
+        max_warpage=max_warpage,
+    )
+
+
+def _native_quad_transaction(
+    vertices: np.ndarray,
+    triangles: NDArray[np.int64],
+    settings: QuadDominantConfig,
+) -> (
+    tuple[
+        NDArray[np.int64],
+        NDArray[np.int64],
+        NDArray[np.int64],
+        NDArray[np.float64],
+        NDArray[np.int64],
+        int,
+    ]
+    | None
+):
+    """Run one fused native transaction and independently audit provenance."""
+    from core.utils.native_extensions import load_native_metrics
+
+    native = load_native_metrics()
+    if native is None or not hasattr(native, "quad_dominant_transaction"):
+        return None
+    decoded_wall_edges = [
+        _decode_protected_wall_edge(value) for value in settings.protected_wall_edges
+    ]
+    wall_edges = np.asarray(decoded_wall_edges, dtype=np.int64).reshape((-1, 2))
+    result = native.quad_dominant_transaction(
+        vertices,
+        triangles,
+        wall_edges,
+        settings.feature_angle_deg,
+        settings.min_scaled_jacobian,
+        settings.max_aspect_ratio,
+        settings.max_warpage,
+    )
+    if not isinstance(result, dict):
+        raise RuntimeError("native quad_dominant_transaction returned a non-dict result")
+    candidate_pairs, preparation_diagnostics = _validate_preparation_result(
+        vertices,
+        triangles,
+        decoded_wall_edges,
+        settings.feature_angle_deg,
+        (result.get("candidate_face_pairs"), result.get("preparation_diagnostics")),
+    )
+    accepted_pairs, quads, quality, rejected_quality = _validate_selection_result(
+        vertices,
+        triangles,
+        candidate_pairs,
+        result,
+        min_scaled_jacobian=settings.min_scaled_jacobian,
+        max_aspect_ratio=settings.max_aspect_ratio,
+        max_warpage=settings.max_warpage,
+    )
+    remaining_triangles = result.get("remaining_triangles")
+    if (
+        not isinstance(remaining_triangles, np.ndarray)
+        or remaining_triangles.dtype != np.dtype(np.int64)
+        or remaining_triangles.ndim != 2
+        or remaining_triangles.shape[1] != 3
+        or not remaining_triangles.flags.c_contiguous
+    ):
+        raise RuntimeError("native quad_dominant_transaction returned invalid remaining_triangles")
+    consumed = np.zeros(len(triangles), dtype=bool)
+    if accepted_pairs.size:
+        consumed[accepted_pairs.reshape(-1)] = True
+    expected_remaining = triangles[~consumed]
+    if not np.array_equal(remaining_triangles, expected_remaining):
+        raise RuntimeError("native quad_dominant_transaction returned invalid triangle provenance")
+    return (
+        accepted_pairs,
+        remaining_triangles,
+        quads,
+        quality,
+        preparation_diagnostics,
+        rejected_quality,
+    )
 
 
 def native_quad_dominant_remesh(
@@ -578,12 +752,23 @@ def native_quad_dominant_remesh(
     input_triangles = _decode_triangle_indices(triangles)
     output_vertices = np.asarray(vertices, dtype=np.float64).copy()
     diagnostics = QuadDominantDiagnostics(input_triangles=int(len(input_triangles)))
-    face_pairs, preparation_diagnostics = _prepare_quad_pairs(
-        output_vertices,
-        input_triangles,
-        settings.protected_wall_edges,
-        settings.feature_angle_deg,
-    )
+    native_transaction = _native_quad_transaction(output_vertices, input_triangles, settings)
+    if native_transaction is None:
+        face_pairs, preparation_diagnostics = _prepare_quad_pairs(
+            output_vertices,
+            input_triangles,
+            settings.protected_wall_edges,
+            settings.feature_angle_deg,
+        )
+    else:
+        (
+            accepted_pairs,
+            output_triangles,
+            output_quads,
+            qualities,
+            preparation_diagnostics,
+            rejected_quality,
+        ) = native_transaction
     diagnostics.protected_boundary_edges = int(preparation_diagnostics[0])
     diagnostics.protected_feature_edges = int(preparation_diagnostics[1])
     diagnostics.protected_wall_edges = int(preparation_diagnostics[2])
@@ -598,20 +783,21 @@ def native_quad_dominant_remesh(
             diagnostics=diagnostics,
         )
 
-    accepted_pairs, output_quads, qualities, rejected_quality = _select_quad_pairs(
-        output_vertices,
-        input_triangles,
-        face_pairs,
-        min_scaled_jacobian=settings.min_scaled_jacobian,
-        max_aspect_ratio=settings.max_aspect_ratio,
-        max_warpage=settings.max_warpage,
-    )
+    if native_transaction is None:
+        accepted_pairs, output_quads, qualities, rejected_quality = _select_quad_pairs(
+            output_vertices,
+            input_triangles,
+            face_pairs,
+            min_scaled_jacobian=settings.min_scaled_jacobian,
+            max_aspect_ratio=settings.max_aspect_ratio,
+            max_warpage=settings.max_warpage,
+        )
+        consumed = set(accepted_pairs.reshape(-1).tolist())
+        output_triangles = np.array(
+            [triangle for index, triangle in enumerate(input_triangles) if index not in consumed],
+            dtype=np.int64,
+        ).reshape((-1, 3))
     diagnostics.rejected_quality = rejected_quality
-    consumed = set(accepted_pairs.reshape(-1).tolist())
-    output_triangles = np.array(
-        [triangle for index, triangle in enumerate(input_triangles) if index not in consumed],
-        dtype=np.int64,
-    ).reshape((-1, 3))
     diagnostics.accepted_pairs = len(accepted_pairs)
     diagnostics.output_quads = int(len(output_quads))
     diagnostics.output_triangles = int(len(output_triangles))
