@@ -63,6 +63,7 @@
     },
     "native_polymesh": {
       "public_symbols": [
+        "assemble_dual_hull_faces",
         "audit_tet_primal_conformity",
         "build_tet_incidence_maps",
         "build_topology",
