@@ -111,6 +111,7 @@ def test_native_boundary_audit_matches_numpy_fallback(monkeypatch) -> None:
         np.vstack([base_tets, base_tets[:1]]),
         base_tets[[0, 3]],
         np.array([[0, 1, 2, 3]], dtype=np.int64),
+        np.array([[0, 1, 3, 2]], dtype=np.int64),
     )
 
     for tets in fixtures:
@@ -135,6 +136,31 @@ def test_native_boundary_audit_rejects_invalid_input() -> None:
             points,
             np.array([[0, 1, 2, 3]], dtype=np.int64),
         )
+
+
+def test_native_boundary_audit_inversion_matches_fallback_near_degenerate(
+    monkeypatch,
+) -> None:
+    module = _module_or_skip()
+    from core.generator.native_tet import rescue_gate
+    from core.utils import native_extensions
+
+    points = np.array(
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0e-18]]
+    )
+    fixtures = (
+        np.array([[0, 1, 2, 3]], dtype=np.int64),
+        np.array([[0, 1, 3, 2]], dtype=np.int64),
+    )
+
+    for tets in fixtures:
+        native_values = tuple(int(value) for value in module.audit_tet_boundary(points, tets))
+        monkeypatch.setattr(native_extensions, "load_native_tet_predicates", lambda: None)
+        fallback = rescue_gate.audit_tet_boundary(points, tets)
+        assert native_values == tuple(fallback.__dict__.values())
+
+    assert module.audit_tet_boundary(points, fixtures[0])[-1] == 0
+    assert module.audit_tet_boundary(points, fixtures[1])[-1] == 1
 
 
 def test_native_exact_batch_preserves_native_tet_volume_convention() -> None:

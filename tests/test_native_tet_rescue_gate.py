@@ -87,6 +87,20 @@ def test_degenerate_tet_is_rejected() -> None:
     assert audit.n_degenerate_tets == 1
 
 
+def test_inverted_tet_is_rejected_without_repair() -> None:
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        dtype=np.float64,
+    )
+    inverted = np.array([[0, 1, 3, 2]], dtype=np.int64)
+
+    audit = audit_tet_boundary(points, inverted)
+
+    assert not audit.valid
+    assert audit.n_inverted_tets == 1
+    np.testing.assert_array_equal(inverted, [[0, 1, 3, 2]])
+
+
 def test_disconnected_tet_components_are_locally_manifold() -> None:
     points = np.array(
         [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],

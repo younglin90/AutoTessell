@@ -5992,6 +5992,7 @@ def generate_native_tet(
                     boundary_components=_p4c_topology.n_boundary_components,
                     duplicate_tets=_p4c_topology.n_duplicate_tets,
                     degenerate_tets=_p4c_topology.n_degenerate_tets,
+                    inverted_tets=_p4c_topology.n_inverted_tets,
                 )
                 if not _accept:
                     continue
@@ -6325,6 +6326,7 @@ def generate_native_tet(
             "n_degenerate_tets": int(
                 _boundary_topology_audit.n_degenerate_tets
             ),
+            "n_inverted_tets": int(_boundary_topology_audit.n_inverted_tets),
             "component_bijective": bool(_source_component_audit.bijective),
         }
         if not _source_topology_audit.valid:

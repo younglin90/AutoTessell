@@ -83,9 +83,12 @@ def test_source_aware_strict_topology_rejects_local_or_component_defects() -> No
     points, faces, tets = _disconnected_tetrahedra(2)
     duplicate = np.vstack([tets, tets[:1]])
     lost = tets[:1]
+    inverted = tets.copy()
+    inverted[0, [2, 3]] = inverted[0, [3, 2]]
 
     duplicate_audit = audit_source_topology(points, faces, points, duplicate)
     lost_audit = audit_source_topology(points, faces, points, lost)
+    inverted_audit = audit_source_topology(points, faces, points, inverted)
 
     assert not duplicate_audit.valid
     assert not duplicate_audit.boundary.valid
@@ -94,6 +97,10 @@ def test_source_aware_strict_topology_rejects_local_or_component_defects() -> No
     assert lost_audit.boundary.valid
     assert not lost_audit.components.bijective
     assert lost_audit.components.n_missing_source_vertices == 4
+    assert not inverted_audit.valid
+    assert not inverted_audit.boundary.valid
+    assert inverted_audit.boundary.n_inverted_tets == 1
+    assert inverted_audit.components.bijective
 
 
 def test_source_aware_strict_topology_rejects_open_nonmanifold_boundary() -> None:

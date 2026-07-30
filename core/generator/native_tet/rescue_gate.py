@@ -23,6 +23,7 @@ class TetBoundaryAudit:
     n_boundary_components: int
     n_duplicate_tets: int
     n_degenerate_tets: int
+    n_inverted_tets: int
 
     @property
     def valid(self) -> bool:
@@ -42,6 +43,7 @@ class TetBoundaryAudit:
             and self.n_boundary_components > 0
             and self.n_duplicate_tets == 0
             and self.n_degenerate_tets == 0
+            and self.n_inverted_tets == 0
         )
 
 
@@ -687,7 +689,7 @@ def audit_tet_boundary(
     if tet.size and (int(tet.min()) < 0 or int(tet.max()) >= len(pts)):
         raise ValueError("tet vertex index out of range")
     if tet.shape[0] == 0:
-        return TetBoundaryAudit(0, 0, 0, 0, 0, 0, 0, 0)
+        return TetBoundaryAudit(0, 0, 0, 0, 0, 0, 0, 0, 0)
 
     from core.utils.native_extensions import load_native_tet_predicates
 
@@ -717,6 +719,7 @@ def audit_tet_boundary(
     )
     volume_floor = max(0.0, float(relative_volume_tolerance)) * diagonal**3
     degenerate_tets = int((np.abs(volume6) <= volume_floor).sum())
+    inverted_tets = int((volume6 < 0.0).sum())
 
     faces = np.concatenate(
         [
@@ -742,6 +745,7 @@ def audit_tet_boundary(
             0,
             duplicate_tets,
             degenerate_tets,
+            inverted_tets,
         )
 
     edges = np.concatenate(
@@ -791,6 +795,7 @@ def audit_tet_boundary(
         n_boundary_components=int(components),
         n_duplicate_tets=duplicate_tets,
         n_degenerate_tets=degenerate_tets,
+        n_inverted_tets=inverted_tets,
     )
 
 

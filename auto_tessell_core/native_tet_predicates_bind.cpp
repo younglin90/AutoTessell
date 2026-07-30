@@ -543,7 +543,7 @@ int orient3d_shewchuk_sign(
     return sign_of(orient3d(vertices[0], vertices[1], vertices[2], vertices[3]));
 }
 
-long double absolute_volume6(
+long double signed_volume6_long_double(
     const py::detail::unchecked_reference<double, 2>& points,
     const Tet& tet)
 {
@@ -561,7 +561,14 @@ long double absolute_volume6(
     const long double adz = point(3, 2) - point(0, 2);
     const long double determinant = abx * (acy * adz - acz * ady)
         - aby * (acx * adz - acz * adx) + abz * (acx * ady - acy * adx);
-    return std::abs(determinant);
+    return determinant;
+}
+
+long double absolute_volume6(
+    const py::detail::unchecked_reference<double, 2>& points,
+    const Tet& tet)
+{
+    return std::abs(signed_volume6_long_double(points, tet));
 }
 
 py::tuple audit_tet_boundary_native(
@@ -584,10 +591,10 @@ py::tuple audit_tet_boundary_native(
     const size_t point_count = static_cast<size_t>(points.shape(0));
     const size_t tet_count = static_cast<size_t>(tets.shape(0));
     if (tet_count == 0) {
-        return py::make_tuple(0, 0, 0, 0, 0, 0, 0, 0);
+        return py::make_tuple(0, 0, 0, 0, 0, 0, 0, 0, 0);
     }
 
-    std::array<long long, 8> stats{};
+    std::array<long long, 9> stats{};
     {
         py::gil_scoped_release release;
 
@@ -630,6 +637,7 @@ py::tuple audit_tet_boundary_native(
         face_counts.reserve(tet_count * 4U);
         size_t duplicate_tets = 0;
         size_t degenerate_tets = 0;
+        size_t inverted_tets = 0;
 
         for (size_t row = 0; row < tet_count; ++row) {
             Tet tet{};
@@ -647,8 +655,19 @@ py::tuple audit_tet_boundary_native(
             if (!unique_tets.insert(canonical_tet).second) {
                 ++duplicate_tets;
             }
-            if (absolute_volume6(points, tet) <= volume_floor) {
+            const long double volume6 = signed_volume6_long_double(points, tet);
+            const bool degenerate = std::abs(volume6) <= volume_floor;
+            if (degenerate) {
                 ++degenerate_tets;
+            }
+            // The existing scale-relative degeneracy threshold is also a
+            // conservative exact-predicate filter.  Outside it, extended
+            // precision has a stable sign; inside it, use Shewchuk exactly.
+            const int orientation_sign = degenerate
+                ? -orient3d_shewchuk_sign(points, tet)
+                : (volume6 > 0.0L ? 1 : -1);
+            if (orientation_sign < 0) {
+                ++inverted_tets;
             }
             for (size_t excluded = 0; excluded < 4; ++excluded) {
                 ++face_counts[make_face_key(tet, excluded)];
@@ -671,6 +690,7 @@ py::tuple audit_tet_boundary_native(
         stats[4] = static_cast<long long>(nonmanifold_faces);
         stats[6] = static_cast<long long>(duplicate_tets);
         stats[7] = static_cast<long long>(degenerate_tets);
+        stats[8] = static_cast<long long>(inverted_tets);
         if (!boundary_faces.empty()) {
             DisjointSet components(boundary_faces.size());
             std::unordered_map<EdgeKey, BoundaryEdgeInfo, EdgeKeyHash> edge_info;
@@ -713,7 +733,7 @@ py::tuple audit_tet_boundary_native(
 
     return py::make_tuple(
         stats[0], stats[1], stats[2], stats[3],
-        stats[4], stats[5], stats[6], stats[7]);
+        stats[4], stats[5], stats[6], stats[7], stats[8]);
 }
 
 struct SourceComponentAuditResult {
