@@ -1534,6 +1534,27 @@ def tet_to_poly_dual(
                     f"star_invalid_subtets={invalid_star_subtets}"
                 )
                 return fallback
+            fallback.message = (
+                f"{fallback.message}; garimella point candidate rejected: "
+                f"star_invalid_cells={invalid_star_cells}, "
+                f"star_invalid_subtets={invalid_star_subtets}"
+            )
+            return fallback
+        return PolyDualResult(
+            False,
+            time.perf_counter() - t0,
+            n_cells=len(cell_face_lists),
+            n_points=int(dual_points.shape[0]),
+            n_faces=len(final_faces),
+            message=(
+                "star_validity_refused: mode=centroid, "
+                f"invalid_cells={invalid_star_cells}, "
+                f"invalid_subtets={invalid_star_subtets}"
+            ),
+            invalid_star_cells=invalid_star_cells,
+            invalid_star_subtets=invalid_star_subtets,
+            star_examples=star_examples,
+        )
 
     # 5) polyMesh 쓰기
     poly_dir = case_dir / "constant" / "polyMesh"
