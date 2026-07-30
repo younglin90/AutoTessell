@@ -38,6 +38,26 @@ class FullSweepResult:
     reason: str = ""
 
 
+def _does_not_increase_nonmanifold_faces(
+    before_points: NDArray[np.float64],
+    before_tets: NDArray[np.int64],
+    candidate_points: NDArray[np.float64],
+    candidate_tets: NDArray[np.int64],
+) -> bool:
+    """Reject a sweep candidate that adds 3+-owner tet faces.
+
+    This is deliberately narrower than the full topology audit: callers may
+    carry other pre-existing limitations, but an improvement pass must never
+    create additional face incidence that cannot be represented by the
+    OpenFOAM owner/neighbour model.
+    """
+    from core.generator.native_tet.rescue_gate import audit_tet_boundary
+
+    before = audit_tet_boundary(before_points, before_tets)
+    candidate = audit_tet_boundary(candidate_points, candidate_tets)
+    return candidate.n_nonmanifold_faces <= before.n_nonmanifold_faces
+
+
 def klingner_full_sweep(
     pts: NDArray[np.float64],
     tets: NDArray[np.int64],
@@ -242,15 +262,25 @@ def klingner_full_sweep(
     post_q = _qs(cur_pts, cur_tets)
     post_min = float(post_q.min_q)
     post_mean = float(post_q.mean_q)
+    topology_preserved = _does_not_increase_nonmanifold_faces(
+        pts, tets, cur_pts, cur_tets
+    )
     accepted = (
         post_mean >= pre_mean
         and (pre_min - post_min) <= float(monotone_min_drop)
+        and topology_preserved
     )
     if not accepted:
         cur_pts = pts.copy()
         cur_tets = tets.copy()
         post_min = pre_min
         post_mean = pre_mean
+        if not topology_preserved:
+            n_collapse_total = 0
+            n_split_total = 0
+            n_flip32_total = 0
+            n_flip44_total = 0
+            n_smooth_iters_total = 0
 
     return cur_pts, cur_tets, FullSweepResult(
         n_cycles_used=cycles_used,
@@ -263,5 +293,11 @@ def klingner_full_sweep(
         n_smooth_iters=n_smooth_iters_total,
         accepted=accepted,
         elapsed_s=time.perf_counter() - t0,
-        reason="ok" if accepted else "rejected",
+        reason=(
+            "ok"
+            if accepted
+            else "nonmanifold_face_regression"
+            if not topology_preserved
+            else "rejected"
+        ),
     )

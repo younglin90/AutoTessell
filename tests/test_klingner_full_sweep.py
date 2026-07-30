@@ -33,11 +33,47 @@ def test_klingner_full_sweep_empty():
     assert r.reason == "too_small"
 
 
+def test_nonmanifold_face_guard_rejects_only_an_incidence_increase():
+    from core.generator.native_tet.klingner_full_sweep import (
+        _does_not_increase_nonmanifold_faces,
+    )
+    from core.generator.native_tet.rescue_gate import audit_tet_boundary
+
+    points, tets = _gen_simple_tet_mesh()
+    valid = np.array(
+        [
+            [0, 1, 2, 3],
+            [0, 2, 1, 4],
+        ],
+        dtype=np.int64,
+    )
+    assert audit_tet_boundary(points, valid).n_nonmanifold_faces == 0
+    assert _does_not_increase_nonmanifold_faces(points, valid, points, valid)
+
+    duplicated = np.vstack([valid, valid[:1]])
+    assert audit_tet_boundary(points, duplicated).n_nonmanifold_faces > 0
+    assert not _does_not_increase_nonmanifold_faces(
+        points, valid, points, duplicated
+    )
+
+
+def test_nonmanifold_face_guard_allows_an_already_invalid_baseline_not_to_worsen():
+    from core.generator.native_tet.klingner_full_sweep import (
+        _does_not_increase_nonmanifold_faces,
+    )
+
+    points, tets = _gen_simple_tet_mesh()
+    invalid = np.vstack([tets, tets[:1]])
+
+    assert _does_not_increase_nonmanifold_faces(points, invalid, points, invalid)
+
+
 def test_klingner_full_sweep_real_mesh():
     """scipy Delaunay 로 100+ tet 생성 후 sweep 적용."""
     pytest.importorskip("scipy")
     from scipy.spatial import Delaunay
     from core.generator.native_tet.klingner_full_sweep import klingner_full_sweep
+    from core.generator.native_tet.rescue_gate import audit_tet_boundary
     rng = np.random.RandomState(42)
     pts = rng.rand(60, 3).astype(np.float64)
     d = Delaunay(pts)
@@ -45,9 +81,16 @@ def test_klingner_full_sweep_real_mesh():
     if tets.shape[0] < 50:
         pytest.skip("not enough tets")
     new_pts, new_tets, r = klingner_full_sweep(pts, tets, n_cycles=2)
+    repeat_pts, repeat_tets, repeat = klingner_full_sweep(pts, tets, n_cycles=2)
     # accepted=True 면 mean_q 향상 또는 동등.
     if r.accepted:
         assert r.post_mean_q >= r.pre_mean_q - 1e-6
+    assert audit_tet_boundary(new_pts, new_tets).n_nonmanifold_faces <= (
+        audit_tet_boundary(pts, tets).n_nonmanifold_faces
+    )
+    assert np.array_equal(new_pts, repeat_pts)
+    assert np.array_equal(new_tets, repeat_tets)
+    assert r.reason == repeat.reason
 
 
 # -- BC face picker tests --
