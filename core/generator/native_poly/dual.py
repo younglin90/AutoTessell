@@ -29,7 +29,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Integral
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -49,6 +49,184 @@ class PolyDualResult:
     invalid_star_cells: int = 0
     invalid_star_subtets: int = 0
     star_examples: tuple[dict[str, Any], ...] = ()
+
+
+@dataclass(frozen=True)
+class TetPrimalConformityAudit:
+    """Deterministic conformal-complex census for a tetrahedral primal."""
+
+    duplicate_tet_groups: tuple[tuple[tuple[int, int, int, int], tuple[int, ...]], ...]
+    nonmanifold_face_groups: tuple[tuple[tuple[int, int, int], tuple[int, ...]], ...]
+    negative_orientation_rows: tuple[int, ...]
+
+    @property
+    def conformal(self) -> bool:
+        return not self.duplicate_tet_groups and not self.nonmanifold_face_groups
+
+
+def _audit_tet_primal_conformity_python(
+    points: np.ndarray,
+    tets: np.ndarray,
+) -> TetPrimalConformityAudit:
+    """Independent sort/run oracle for primal tetrahedral conformity."""
+    tet_records = sorted(
+        (
+            cast(
+                tuple[int, int, int, int],
+                tuple(sorted(int(vertex) for vertex in tet)),
+            ),
+            index,
+        )
+        for index, tet in enumerate(tets)
+    )
+    duplicate_groups: list[tuple[tuple[int, int, int, int], tuple[int, ...]]] = []
+    begin = 0
+    while begin < len(tet_records):
+        end = begin + 1
+        while end < len(tet_records) and tet_records[end][0] == tet_records[begin][0]:
+            end += 1
+        if end - begin > 1:
+            duplicate_groups.append(
+                (
+                    tet_records[begin][0],
+                    tuple(record[1] for record in tet_records[begin:end]),
+                )
+            )
+        begin = end
+
+    local_faces = ((1, 2, 3), (0, 3, 2), (0, 1, 3), (0, 2, 1))
+    face_records = sorted(
+        (
+            cast(
+                tuple[int, int, int],
+                tuple(sorted(int(tet[local]) for local in face)),
+            ),
+            tet_index,
+        )
+        for tet_index, tet in enumerate(tets)
+        for face in local_faces
+    )
+    nonmanifold_groups: list[tuple[tuple[int, int, int], tuple[int, ...]]] = []
+    begin = 0
+    while begin < len(face_records):
+        end = begin + 1
+        while end < len(face_records) and face_records[end][0] == face_records[begin][0]:
+            end += 1
+        if end - begin > 2:
+            nonmanifold_groups.append(
+                (
+                    face_records[begin][0],
+                    tuple(record[1] for record in face_records[begin:end]),
+                )
+            )
+        begin = end
+
+    tet_points = points[tets]
+    signed_volume6 = np.einsum(
+        "ij,ij->i",
+        tet_points[:, 1] - tet_points[:, 0],
+        np.cross(tet_points[:, 2] - tet_points[:, 0], tet_points[:, 3] - tet_points[:, 0]),
+    )
+    negative_rows = tuple(int(row) for row in np.flatnonzero(signed_volume6 < 0.0))
+    return TetPrimalConformityAudit(
+        tuple(duplicate_groups),
+        tuple(nonmanifold_groups),
+        negative_rows,
+    )
+
+
+def _normalise_tet_primal_conformity_audit(
+    result: Any,
+    *,
+    n_tets: int,
+) -> TetPrimalConformityAudit:
+    """Validate an optional native result before it can certify the primal."""
+
+    def _exact_int(value: Any) -> int:
+        if isinstance(value, (bool, np.bool_)) or not isinstance(value, Integral):
+            raise TypeError("native conformity fields must be integer")
+        return int(value)
+
+    try:
+        raw_duplicates, raw_nonmanifold, raw_negative = result
+        duplicates = tuple(
+            (
+                cast(
+                    tuple[int, int, int, int],
+                    tuple(_exact_int(vertex) for vertex in key),
+                ),
+                tuple(_exact_int(owner) for owner in owners),
+            )
+            for key, owners in raw_duplicates
+        )
+        nonmanifold = tuple(
+            (
+                cast(
+                    tuple[int, int, int],
+                    tuple(_exact_int(vertex) for vertex in key),
+                ),
+                tuple(_exact_int(owner) for owner in owners),
+            )
+            for key, owners in raw_nonmanifold
+        )
+        negative = tuple(_exact_int(row) for row in raw_negative)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise RuntimeError("tet primal-conformity kernel returned an invalid result") from exc
+
+    valid_duplicate_groups = all(
+        len(key) == 4
+        and tuple(sorted(key)) == key
+        and len(owners) > 1
+        and tuple(sorted(owners)) == owners
+        and len(set(owners)) == len(owners)
+        and all(0 <= owner < n_tets for owner in owners)
+        for key, owners in duplicates
+    )
+    valid_nonmanifold_groups = all(
+        len(key) == 3
+        and tuple(sorted(key)) == key
+        and len(owners) > 2
+        and tuple(sorted(owners)) == owners
+        and len(set(owners)) == len(owners)
+        and all(0 <= owner < n_tets for owner in owners)
+        for key, owners in nonmanifold
+    )
+    valid_negative_rows = (
+        tuple(sorted(negative)) == negative
+        and len(set(negative)) == len(negative)
+        and all(0 <= row < n_tets for row in negative)
+    )
+    if not (
+        valid_duplicate_groups
+        and valid_nonmanifold_groups
+        and valid_negative_rows
+        and tuple(sorted(duplicates)) == duplicates
+        and tuple(sorted(nonmanifold)) == nonmanifold
+    ):
+        raise RuntimeError("tet primal-conformity kernel returned an invalid result")
+    return TetPrimalConformityAudit(duplicates, nonmanifold, negative)
+
+
+def _audit_tet_primal_conformity(
+    points: np.ndarray,
+    tets: np.ndarray,
+) -> TetPrimalConformityAudit:
+    """Use the strict C++23 audit when possible, otherwise the Python oracle."""
+    from core.utils.native_extensions import load_native_polymesh
+
+    native = load_native_polymesh()
+    native_compatible = (
+        points.dtype == np.dtype(np.float64)
+        and tets.dtype == np.dtype(np.int64)
+        and points.flags.c_contiguous
+        and tets.flags.c_contiguous
+    )
+    if native is not None and hasattr(native, "audit_tet_primal_conformity") and native_compatible:
+        result = native.audit_tet_primal_conformity(points, tets)
+    else:
+        result = _audit_tet_primal_conformity_python(points, tets)
+        return result
+    return _normalise_tet_primal_conformity_audit(result, n_tets=int(tets.shape[0]))
 
 
 def _preflight_tet_dual_inputs(
@@ -143,6 +321,28 @@ def _preflight_tet_dual_inputs(
             None,
             "tet geometry is degenerate in rows: "
             f"{tuple(int(row) for row in zero_volume_rows.tolist())}",
+        )
+
+    conformity = _audit_tet_primal_conformity(vertex_array, tet_array)
+    if conformity.duplicate_tet_groups:
+        return (
+            None,
+            None,
+            "tet connectivity contains duplicate canonical tetrahedra: "
+            f"{conformity.duplicate_tet_groups}",
+        )
+    if conformity.nonmanifold_face_groups:
+        return (
+            None,
+            None,
+            "tet connectivity has faces with more than two incident tetrahedra: "
+            f"{conformity.nonmanifold_face_groups}",
+        )
+    if conformity.negative_orientation_rows:
+        log.info(
+            "native_poly_primal_orientation_census",
+            negative_rows=conformity.negative_orientation_rows,
+            hard_reject=False,
         )
 
     return vertex_array, tet_array, None
