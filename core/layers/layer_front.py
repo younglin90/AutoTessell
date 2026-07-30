@@ -77,6 +77,14 @@ class LayerFrontSummary:
 
 
 @dataclass(frozen=True)
+class LayerFrontTopologySummary:
+    """Compact summary plus `(face, local-edge)` adjacent face ids."""
+
+    summary: LayerFrontSummary
+    adjacent_face_ids: np.ndarray
+
+
+@dataclass(frozen=True)
 class LayerMoveCheck:
     """Validity result for a proposed layer-edge point move."""
 
@@ -351,14 +359,14 @@ def build_layer_front(
     )
 
 
-def build_layer_front_summary(
+def build_layer_front_topology_summary(
     faces: list[list[int]],
     candidate_faces: list[int],
     *,
     points: np.ndarray | None,
     feature_cos_thresh: float = 0.9,
-) -> LayerFrontSummary:
-    """Return only the production diagnostics, using C++23 for triangles."""
+) -> LayerFrontTopologySummary:
+    """Return production diagnostics and compact triangle-edge adjacency."""
     active_seed = [
         int(face_id)
         for face_id in candidate_faces
@@ -386,7 +394,7 @@ def build_layer_front_summary(
             float(feature_cos_thresh),
         )
         edge = payload["first_nonmanifold_edge"]
-        return LayerFrontSummary(
+        summary = LayerFrontSummary(
             n_faces=int(payload["n_faces"]),
             n_ignored=int(payload["n_ignored"]),
             n_vertices=int(payload["n_vertices"]),
@@ -402,6 +410,13 @@ def build_layer_front_summary(
                 int(face_id) for face_id in payload["first_nonmanifold_faces"]
             ),
         )
+        return LayerFrontTopologySummary(
+            summary=summary,
+            adjacent_face_ids=np.asarray(
+                payload["adjacent_face_ids"],
+                dtype=np.int64,
+            ),
+        )
 
     front = build_layer_front(
         faces,
@@ -414,7 +429,7 @@ def build_layer_front_summary(
         (edge for edge in front.edges if edge.is_nonmanifold),
         None,
     )
-    return LayerFrontSummary(
+    summary = LayerFrontSummary(
         n_faces=len(front.active_faces),
         n_ignored=len(front.ignored_faces),
         n_vertices=len(front.vertices),
@@ -430,3 +445,38 @@ def build_layer_front_summary(
             () if first_nonmanifold is None else first_nonmanifold.faces
         ),
     )
+    adjacency = np.full((len(active_seed), 3), -1, dtype=np.int64)
+    edge_references: dict[tuple[int, int], list[tuple[int, int, int]]] = {}
+    for face_order, face_id in enumerate(active_seed):
+        triangle = faces[face_id]
+        for local_edge in range(3):
+            first = int(triangle[local_edge])
+            second = int(triangle[(local_edge + 1) % 3])
+            edge = (min(first, second), max(first, second))
+            edge_references.setdefault(edge, []).append(
+                (face_id, face_order, local_edge)
+            )
+    for references in edge_references.values():
+        for face_id, face_order, local_edge in references:
+            other = next(
+                (candidate for candidate, _, _ in references if candidate != face_id),
+                -1,
+            )
+            adjacency[face_order, local_edge] = other
+    return LayerFrontTopologySummary(summary=summary, adjacent_face_ids=adjacency)
+
+
+def build_layer_front_summary(
+    faces: list[list[int]],
+    candidate_faces: list[int],
+    *,
+    points: np.ndarray | None,
+    feature_cos_thresh: float = 0.9,
+) -> LayerFrontSummary:
+    """Return only production diagnostics; keep adjacency internal."""
+    return build_layer_front_topology_summary(
+        faces,
+        candidate_faces,
+        points=points,
+        feature_cos_thresh=feature_cos_thresh,
+    ).summary

@@ -662,6 +662,37 @@ No surface coordinate, topology threshold, feature cosine threshold, ordering,
 dependency, external implementation, or `third_party/` file changed.  The code
 is independently derived from the existing first-party Python oracle.
 
+## Boundary-layer fused edge-adjacency card
+
+After the compact front-summary port, production immediately scanned the same
+wall triangles again in `_build_edge_to_wall_faces`, allocated six NumPy edge
+arrays, and materialized a Python dictionary from canonical edge tuples to face
+lists.  The prism writer only needs one adjacent wall-face id for each
+`(face, local edge)` slot after the preceding non-manifold hard rejection.
+
+The existing C++23 summary edge-group scan now also emits a contiguous `(F,3)`
+`int64` adjacency array.  Each `LayerFrontEdgeRef` retains face order and local
+edge index.  A linear group pass selects the first different face id in original
+candidate order, matching the Python `other_faces[0]` rule including duplicate
+references.  Boundary slots are `-1`.  The production prism loop indexes this
+array directly; it no longer allocates or probes tuple-keyed Python edge maps.
+The extension-absent path constructs the same array from the unchanged Python
+front oracle and retains `_build_edge_to_wall_faces` as a compatibility fallback.
+
+The fused summary plus adjacency remains `O(F log F + sum(d_v^2))` time and
+`O(F + V + E)` storage; adjacency grouping itself is linear after the existing
+sort.  On an `80,000`-triangle planar front, the old Python edge dictionary costs
+`1.958444371 s` and `69.42 MiB` traced Python heap.  The complete fused native
+summary plus adjacency costs median `0.047959233 s` (`40.84x`) and returns a
+`1.83 MiB` contiguous adjacency array.  Every local-edge neighbor matches the
+Python oracle.  Focused topology/provenance tests pass `26`; wider native BL
+writer validation passes `125`.  Generated points, faces, owner, neighbour, and
+boundary files retain byte identity against the fallback.
+
+No geometry, face order, wall patch, topology threshold, dependency, external
+source, or `third_party/` file changed.  GCC 13.3 strict C++23 builds warning-
+free without fast-math or compiler extensions.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

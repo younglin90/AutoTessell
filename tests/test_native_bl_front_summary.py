@@ -9,7 +9,11 @@ import pytest
 
 import core.layers.layer_front as subject
 from core.generator.polymesh_writer import write_generic_polymesh
-from core.layers.layer_front import build_layer_front, build_layer_front_summary
+from core.layers.layer_front import (
+    build_layer_front,
+    build_layer_front_summary,
+    build_layer_front_topology_summary,
+)
 from core.layers.native_bl import BLConfig, generate_native_bl
 from core.utils.native_extensions import load_native_bl
 
@@ -45,6 +49,29 @@ def _assert_parity(
         face_ids,
         points,
     )
+
+
+def _oracle_adjacency(
+    faces: list[list[int]],
+    face_ids: list[int],
+) -> np.ndarray:
+    adjacency = np.full((len(face_ids), 3), -1, dtype=np.int64)
+    references: dict[tuple[int, int], list[tuple[int, int, int]]] = {}
+    for face_order, face_id in enumerate(face_ids):
+        for local_edge in range(3):
+            first = int(faces[face_id][local_edge])
+            second = int(faces[face_id][(local_edge + 1) % 3])
+            edge = (min(first, second), max(first, second))
+            references.setdefault(edge, []).append(
+                (face_id, face_order, local_edge)
+            )
+    for group in references.values():
+        for face_id, face_order, local_edge in group:
+            adjacency[face_order, local_edge] = next(
+                (candidate for candidate, _, _ in group if candidate != face_id),
+                -1,
+            )
+    return adjacency
 
 
 def test_open_square_summary_matches_python_oracle() -> None:
@@ -85,6 +112,25 @@ def test_nonmanifold_edge_preserves_lexicographic_edge_and_face_order() -> None:
     assert asdict(summary) == _oracle(faces, [9, 2, 7], points)
     assert summary.first_nonmanifold_edge == (0, 1)
     assert summary.first_nonmanifold_faces == (9, 2, 7)
+
+
+def test_compact_local_edge_adjacency_matches_owner_order() -> None:
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0],
+         [1, 1, 0], [0.5, -1, 0]],
+        dtype=np.float64,
+    )
+    faces = [[0, 1, 2], [1, 3, 2], [1, 0, 4]]
+    face_ids = [2, 0, 1]
+    topology = build_layer_front_topology_summary(
+        faces,
+        face_ids,
+        points=points,
+    )
+    np.testing.assert_array_equal(
+        topology.adjacent_face_ids,
+        _oracle_adjacency(faces, face_ids),
+    )
 
 
 def test_empty_and_degenerate_fronts_match_python_oracle() -> None:

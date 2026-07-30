@@ -6724,15 +6724,18 @@ def generate_native_bl(
 
     # SMESH-style layer-edge front topology. Default is diagnostic-only; strict
     # mode can conservatively drop faces touching non-manifold layer-front edges.
+    _front_edge_adjacency: np.ndarray | None = None
     try:
-        from core.layers.layer_front import build_layer_front_summary
+        from core.layers.layer_front import build_layer_front_topology_summary
 
         _front_strict = os.environ.get("AUTO_TESSELL_BL_FRONT_STRICT", "0") == "1"
-        _front = build_layer_front_summary(
+        _front_topology = build_layer_front_topology_summary(
             faces,
             wall_face_indices,
             points=points,
         )
+        _front = _front_topology.summary
+        _front_edge_adjacency = _front_topology.adjacent_face_ids
         if _front.first_nonmanifold_edge is not None:
             message = (
                 "non-manifold selected wall topology: "
@@ -6809,7 +6812,11 @@ def generate_native_bl(
         except Exception as _si_bl_exc:
             log.debug("native_bl_pre_extrude_si_skipped", reason=str(_si_bl_exc)[:120])
 
-    edge_to_walls = _build_edge_to_wall_faces(wall_face_indices, faces)
+    edge_to_walls = (
+        _build_edge_to_wall_faces(wall_face_indices, faces)
+        if _front_edge_adjacency is None
+        else None
+    )
     wall_fi_to_wi: dict[int, int] = {fi: wi for wi, fi in enumerate(wall_face_indices)}
 
     wall_tri_verts: dict[int, tuple[int, int, int]] = {}
@@ -7870,8 +7877,13 @@ def generate_native_bl(
                 for _ei, (a_p, b_p) in enumerate(tri_idx_p):
                     va_p, vb_p = wall_tri_verts[fi_p][a_p], wall_tri_verts[fi_p][b_p]
                     edge_key_p = (va_p, vb_p) if va_p < vb_p else (vb_p, va_p)
-                    nbrs_p = edge_to_walls.get(edge_key_p, [fi_p])
-                    other_p = [g for g in nbrs_p if g != fi_p]
+                    if _front_edge_adjacency is not None:
+                        adjacent_face = int(_front_edge_adjacency[wi_p, _ei])
+                        other_p = [] if adjacent_face < 0 else [adjacent_face]
+                    else:
+                        assert edge_to_walls is not None
+                        nbrs_p = edge_to_walls.get(edge_key_p, [fi_p])
+                        other_p = [g for g in nbrs_p if g != fi_p]
                     ov_a_p = lp_ids[k_p][va_p]
                     ov_b_p = lp_ids[k_p][vb_p]
                     iv_a_p = lp_ids[k_p + 1][va_p]

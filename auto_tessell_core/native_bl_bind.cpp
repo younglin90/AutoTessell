@@ -66,6 +66,7 @@ struct LayerFrontEdgeRef {
     std::int64_t high;
     std::int64_t face_id;
     size_t face_order;
+    size_t local_edge;
 };
 
 struct LayerFrontVertexFaceRef {
@@ -84,6 +85,7 @@ struct LayerFrontCompactSummary {
     size_t blocked_vertex_count{};
     std::array<std::int64_t, 2> first_nonmanifold_edge{-1, -1};
     std::vector<std::int64_t> first_nonmanifold_faces;
+    std::vector<std::int64_t> adjacent_face_ids;
 };
 
 [[nodiscard]] constexpr Point3 subtract(
@@ -141,6 +143,7 @@ struct LayerFrontCompactSummary {
                 std::max(first, second),
                 face_id,
                 face,
+                local,
             });
             vertex_faces.push_back({first, face_id, face});
         }
@@ -172,6 +175,7 @@ struct LayerFrontCompactSummary {
 
     LayerFrontCompactSummary summary;
     summary.face_count = face_count;
+    summary.adjacent_face_ids.assign(face_count * 3U, -1);
     std::vector<std::int64_t> vertices;
     vertices.reserve(vertex_faces.size());
     for (const auto& ref : vertex_faces) {
@@ -220,6 +224,26 @@ struct LayerFrontCompactSummary {
             summary.first_nonmanifold_faces.reserve(owners);
             for (size_t index = begin; index < end; ++index) {
                 summary.first_nonmanifold_faces.push_back(edges[index].face_id);
+            }
+        }
+        size_t first_different = end;
+        for (size_t index = begin + 1U; index < end; ++index) {
+            if (edges[index].face_id != edges[begin].face_id) {
+                first_different = index;
+                break;
+            }
+        }
+        for (size_t index = begin; index < end; ++index) {
+            const auto& reference = edges[index];
+            const size_t other = (
+                reference.face_id == edges[begin].face_id
+                ? first_different
+                : begin
+            );
+            if (other != end) {
+                summary.adjacent_face_ids[
+                    reference.face_order * 3U + reference.local_edge
+                ] = edges[other].face_id;
             }
         }
         begin = end;
@@ -324,6 +348,15 @@ py::dict layer_front_summary(
     result["n_nonmanifold_edges"] = py::int_(summary.nonmanifold_edge_count);
     result["n_feature_vertices"] = py::int_(summary.feature_vertex_count);
     result["n_blocked_vertices"] = py::int_(summary.blocked_vertex_count);
+    py::array_t<std::int64_t> adjacency({
+        static_cast<py::ssize_t>(summary.face_count),
+        static_cast<py::ssize_t>(3),
+    });
+    std::copy(
+        summary.adjacent_face_ids.begin(),
+        summary.adjacent_face_ids.end(),
+        adjacency.mutable_data());
+    result["adjacent_face_ids"] = std::move(adjacency);
     if (summary.first_nonmanifold_faces.empty()) {
         result["first_nonmanifold_edge"] = py::none();
         result["first_nonmanifold_faces"] = py::tuple();
