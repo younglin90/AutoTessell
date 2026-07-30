@@ -1198,16 +1198,21 @@ def tet_to_poly_dual(
         boundary_face_labels if boundary_face_labels is not None else boundary_face_entities
     )
     try:
-        if isinstance(boundary_face_entities, Mapping):
+        if isinstance(supplied_entity_labels, Mapping):
             mapped_triangles = {
                 tuple(sorted(map(int, key)))
-                for key in boundary_face_entities
+                for key in supplied_entity_labels
                 if isinstance(key, (tuple, list)) and len(key) == 3
             }
             missing = tuple(sorted(set(boundary_faces).difference(mapped_triangles)))
             if missing:
+                mapping_name = (
+                    "boundary_face_labels"
+                    if boundary_face_labels is not None
+                    else "boundary_face_entities"
+                )
                 raise ValueError(
-                    "boundary_face_entities must cover every extracted boundary triangle; "
+                    f"{mapping_name} must cover every extracted boundary triangle; "
                     f"missing canonical triangles: {missing}"
                 )
         source_entity_labels = _boundary_entity_labels(

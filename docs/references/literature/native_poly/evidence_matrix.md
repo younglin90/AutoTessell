@@ -707,3 +707,22 @@ budget because of those existing sphere/harness tests, so it is a timeout
 record, not a pass claim. This closes only the raw-input failure ambiguity;
 campaign shape, corpus topology, positive-layer, and adverse-fixture coverage
 remain open.
+
+### `POLY-BOUNDARY-LABEL-COVERAGE-1` — 2026-07-31
+
+The two public names for explicit primal-boundary classification had diverged:
+an incomplete `boundary_face_entities` mapping failed before writing, while the
+same incomplete mapping supplied as `boundary_face_labels` silently assigned
+every omitted triangle to `defaultWall` and returned success.  The existing
+exact extracted-boundary coverage check now applies to a `Mapping` supplied by
+either alias.  Sequence, classifier, and unclassified calls remain unchanged.
+
+On the frozen two-patch bipyramid, false successes are `3/3 -> 0/3` and written
+artifacts are `5/run -> 0`.  Complete mappings through either alias retain the
+five frozen polyMesh hashes for three runs, exact `source_high:wall` and
+`source_low:patch` ordering, and insertion-order independence.  Inputs remain
+byte-identical.  Focused tests pass `10`; the bounded provenance, conformity,
+star-validity, raw-input, and writer set passes `46` with `3` optional native
+tests skipped.  This is `L1_PASS / CORRECTNESS_KEEP`; broader L2/L3 Poly corpus
+validation remains open.  See
+`poly_boundary_label_coverage1_evidence_2026-07-31.md`.
