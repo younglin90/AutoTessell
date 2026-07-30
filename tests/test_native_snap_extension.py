@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -15,6 +20,108 @@ def _native_or_skip() -> Any:
     if module is None or not hasattr(module, "closest_triangle_candidates"):
         pytest.skip("native_snap extension is not built")
     return module
+
+
+def test_explicit_native_snap_build_replaces_stale_default_cache_in_subprocess(
+    tmp_path: Path,
+) -> None:
+    fake_root = tmp_path / "fake-project"
+    fake_snap_file = fake_root / "core" / "generator" / "native_hex" / "snap.py"
+    fake_snap_file.parent.mkdir(parents=True)
+    default_build = fake_root / "auto_tessell_core" / "build"
+    explicit_build = tmp_path / "explicit-build"
+    default_build.mkdir(parents=True)
+    explicit_build.mkdir()
+    (default_build / "native_snap.py").write_text("ORIGIN = 'default'\n", encoding="utf-8")
+    (explicit_build / "native_snap.py").write_text("ORIGIN = 'explicit'\n", encoding="utf-8")
+
+    script = textwrap.dedent(f"""
+        import os
+        import sys
+        from core.generator.native_hex import snap
+
+        snap.__file__ = {str(fake_snap_file)!r}
+        sys.path.insert(0, {str(default_build)!r})
+        import native_snap as stale
+        assert stale.ORIGIN == "default"
+
+        os.environ["AUTOTESSELL_EXT_BUILD_DIR"] = {str(explicit_build)!r}
+        snap._NATIVE_SNAP = None
+        snap._NATIVE_SNAP_IMPORT_ATTEMPTED = False
+        loaded = snap._load_native_snap()
+        assert loaded is not None
+        print(loaded.ORIGIN)
+        print(loaded.__file__)
+        print(sys.path[0])
+        """)
+    repo_root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join([str(repo_root), env.get("PYTHONPATH", "")]).rstrip(
+        os.pathsep
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo_root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    lines = completed.stdout.splitlines()
+    assert lines == ["explicit", str(explicit_build / "native_snap.py"), str(explicit_build)]
+
+
+def test_explicit_native_snap_import_failure_propagates_without_default_fallback(
+    tmp_path: Path,
+) -> None:
+    fake_root = tmp_path / "fake-project"
+    fake_snap_file = fake_root / "core" / "generator" / "native_hex" / "snap.py"
+    fake_snap_file.parent.mkdir(parents=True)
+    default_build = fake_root / "auto_tessell_core" / "build"
+    explicit_build = tmp_path / "broken-explicit-build"
+    default_build.mkdir(parents=True)
+    explicit_build.mkdir()
+    (default_build / "native_snap.py").write_text("ORIGIN = 'default'\n", encoding="utf-8")
+    (explicit_build / "native_snap.py").write_text(
+        "raise RuntimeError('explicit import failed')\n", encoding="utf-8"
+    )
+
+    script = textwrap.dedent(f"""
+        import os
+        import sys
+        from core.generator.native_hex import snap
+
+        snap.__file__ = {str(fake_snap_file)!r}
+        sys.path.insert(0, {str(default_build)!r})
+        import native_snap as stale
+        assert stale.ORIGIN == "default"
+
+        os.environ["AUTOTESSELL_EXT_BUILD_DIR"] = {str(explicit_build)!r}
+        snap._NATIVE_SNAP = None
+        snap._NATIVE_SNAP_IMPORT_ATTEMPTED = False
+        try:
+            snap._load_native_snap()
+        except RuntimeError as exc:
+            print(exc)
+        else:
+            raise AssertionError("explicit import failure was silently hidden")
+        print(snap._NATIVE_SNAP_IMPORT_ATTEMPTED)
+        print(stale.ORIGIN)
+        """)
+    repo_root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join([str(repo_root), env.get("PYTHONPATH", "")]).rstrip(
+        os.pathsep
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=repo_root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.stdout.splitlines() == ["explicit import failed", "False", "default"]
 
 
 def _triangles() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
