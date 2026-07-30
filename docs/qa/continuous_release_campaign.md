@@ -6,7 +6,7 @@
 - state: `CAMPAIGN_ACTIVE`
 - cycle: `1`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- current_master: `6e2b40611d3e638c56c2a871698ac7f4074e4048`
+- current_master: `6cd84caf0c2f6e92af81effc4b61419cbc7d6f1f`
 - allowed_to_stop: `false`
 - next_action: `TET-MANIFOLD-TOPOLOGY-1: remove native tet 3+-cell face incidence before writer acceptance without changing boundary provenance.`
 
@@ -29,6 +29,9 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
 - Boundary-layer state tests: `21 passed`; guard tests: `24 passed`.
 - Hex source-quad and sparse-chain focused suites: `36 passed`, then `15 passed`.
 - Native tri curvature/provenance focused suite: `23 passed`.
+- Native quad input manifold preflight: `27 passed` in `12.15 s`; non-manifold,
+  duplicate, degenerate, and inconsistent-orientation triangles now return a
+  validation error before pairing. Valid fixture coordinates are unchanged.
 - Poly target-forward L0 suite: `5 passed` in `12.19 s`; `target_cells` now
   reaches the BL=0 native-poly harness unchanged. Full native-poly suite timed
   out after `124 s`; target monotonicity and corpus tolerance remain unverified.
@@ -56,7 +59,7 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
 | 7 Boundary layer | UNVERIFIED | Focused state tests pass; engine corpus missing. |
 | 8 Quality | UNVERIFIED | Campaign quality specifications and corpus missing. |
 | 9 Reproducibility | UNVERIFIED | Three-run engine corpus missing. |
-| 10 Robustness | UNVERIFIED | NACA/cylinder now explicit topology failure, not silent invalid output; matrix missing. |
+| 10 Robustness | UNVERIFIED | Quad invalid topology rejects explicitly; tet NACA/cylinder fail explicitly; matrix missing. |
 | 11 Performance | UNVERIFIED | Baselines and budgets missing. |
 | 12 Packaging | UNVERIFIED | Fresh-install smoke evidence missing. |
 | 13 License/provenance | UNVERIFIED | GPL policy present; campaign inventory/evidence missing. |
