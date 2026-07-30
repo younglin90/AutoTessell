@@ -3,17 +3,40 @@
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <limits>
+#include <numbers>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace py = pybind11;
 
 namespace {
 
 using Point3 = std::array<double, 3>;
+
+struct EdgeRecord {
+    std::int64_t first;
+    std::int64_t second;
+    py::ssize_t face;
+    py::ssize_t ordinal;
+};
+
+struct FeatureEdge {
+    std::int64_t first;
+    std::int64_t second;
+    double weight;
+};
+
+constexpr std::array<std::array<py::ssize_t, 2>, 3> triangle_edges {{
+    {{0, 1}},
+    {{1, 2}},
+    {{2, 0}},
+}};
 
 Point3 subtract(const Point3& lhs, const Point3& rhs)
 {
@@ -32,6 +55,15 @@ Point3 add_scaled(const Point3& base, const Point3& direction, double scale)
 double dot(const Point3& lhs, const Point3& rhs)
 {
     return lhs[0] * rhs[0] + lhs[1] * rhs[1] + lhs[2] * rhs[2];
+}
+
+Point3 cross(const Point3& lhs, const Point3& rhs)
+{
+    return {
+        lhs[1] * rhs[2] - lhs[2] * rhs[1],
+        lhs[2] * rhs[0] - lhs[0] * rhs[2],
+        lhs[0] * rhs[1] - lhs[1] * rhs[0],
+    };
 }
 
 Point3 closest_point_on_triangle(
@@ -277,6 +309,180 @@ py::tuple closest_segment_candidates(
     return py::make_tuple(best_points, best_distances, best_segments, valid);
 }
 
+py::tuple extract_feature_edges(
+    const py::array& vertices,
+    const py::array& faces,
+    double feature_angle_deg)
+{
+    if (!vertices.dtype().is(py::dtype::of<double>())
+        || (vertices.flags() & py::array::c_style) == 0) {
+        throw py::type_error("vertices must have exact float64 dtype and C-contiguous layout");
+    }
+    if (!faces.dtype().is(py::dtype::of<long long>())
+        || (faces.flags() & py::array::c_style) == 0) {
+        throw py::type_error("faces must have exact int64 dtype and C-contiguous layout");
+    }
+    if (vertices.ndim() != 2 || vertices.shape(1) != 3) {
+        throw std::invalid_argument("vertices must be a C-contiguous float64 array of shape (V, 3)");
+    }
+    if (faces.ndim() != 2 || faces.shape(1) != 3) {
+        throw std::invalid_argument("faces must be a C-contiguous int64 array of shape (F, 3)");
+    }
+    if (!std::isfinite(feature_angle_deg)) {
+        throw std::invalid_argument("feature_angle_deg must be finite");
+    }
+
+    const py::ssize_t vertex_count = vertices.shape(0);
+    const py::ssize_t face_count = faces.shape(0);
+    constexpr py::ssize_t edges_per_face = 3;
+    if (face_count > std::numeric_limits<py::ssize_t>::max() / edges_per_face) {
+        throw std::overflow_error("face count exceeds the feature-edge index range");
+    }
+
+    const auto vertex_view = vertices.unchecked<double, 2>();
+    const auto face_view = faces.unchecked<long long, 2>();
+    for (py::ssize_t vertex = 0; vertex < vertex_count; ++vertex) {
+        for (py::ssize_t axis = 0; axis < 3; ++axis) {
+            if (!std::isfinite(vertex_view(vertex, axis))) {
+                throw std::invalid_argument("vertices must contain only finite coordinates");
+            }
+        }
+    }
+    for (py::ssize_t face = 0; face < face_count; ++face) {
+        for (py::ssize_t corner = 0; corner < 3; ++corner) {
+            const long long vertex = face_view(face, corner);
+            if (vertex < 0 || vertex >= vertex_count) {
+                throw py::index_error("face vertex index is out of bounds");
+            }
+        }
+    }
+
+    const auto edge_count = static_cast<std::size_t>(face_count * edges_per_face);
+    std::vector<EdgeRecord> edge_records;
+    std::vector<Point3> normals(static_cast<std::size_t>(face_count));
+    std::vector<FeatureEdge> feature_edges;
+    if (edge_count > edge_records.max_size()) {
+        throw std::overflow_error("feature-edge working set exceeds addressable memory");
+    }
+    edge_records.reserve(edge_count);
+
+    {
+        py::gil_scoped_release release;
+
+        for (py::ssize_t face = 0; face < face_count; ++face) {
+            const auto first_index = static_cast<py::ssize_t>(face_view(face, 0));
+            const auto second_index = static_cast<py::ssize_t>(face_view(face, 1));
+            const auto third_index = static_cast<py::ssize_t>(face_view(face, 2));
+            const Point3 first = load_point(vertex_view, first_index);
+            const Point3 second = load_point(vertex_view, second_index);
+            const Point3 third = load_point(vertex_view, third_index);
+            Point3 normal = cross(subtract(second, first), subtract(third, first));
+            const double normal_length = std::sqrt(dot(normal, normal));
+            if (normal_length > 1e-30) {
+                normal[0] /= normal_length;
+                normal[1] /= normal_length;
+                normal[2] /= normal_length;
+            } else {
+                normal = {0.0, 0.0, 0.0};
+            }
+            normals[static_cast<std::size_t>(face)] = normal;
+
+            for (py::ssize_t local_edge = 0; local_edge < edges_per_face; ++local_edge) {
+                const auto& edge = triangle_edges[static_cast<std::size_t>(local_edge)];
+                auto edge_first = static_cast<std::int64_t>(face_view(face, edge[0]));
+                auto edge_second = static_cast<std::int64_t>(face_view(face, edge[1]));
+                if (edge_second < edge_first) {
+                    std::swap(edge_first, edge_second);
+                }
+                edge_records.push_back(
+                    {edge_first, edge_second, face, face * edges_per_face + local_edge});
+            }
+        }
+
+        std::sort(
+            edge_records.begin(),
+            edge_records.end(),
+            [](const EdgeRecord& lhs, const EdgeRecord& rhs) {
+                if (lhs.first != rhs.first) {
+                    return lhs.first < rhs.first;
+                }
+                if (lhs.second != rhs.second) {
+                    return lhs.second < rhs.second;
+                }
+                return lhs.ordinal < rhs.ordinal;
+            });
+
+        const double radians = feature_angle_deg * std::numbers::pi_v<double> / 180.0;
+        const double cosine_threshold = std::cos(radians);
+        const auto feature_weight = [&](std::size_t run_start, std::size_t owner_count) {
+            if (owner_count == 1) {
+                return 1.5;
+            }
+            if (owner_count != 2) {
+                return 0.0;
+            }
+            const Point3& first_normal =
+                normals[static_cast<std::size_t>(edge_records[run_start].face)];
+            const Point3& second_normal =
+                normals[static_cast<std::size_t>(edge_records[run_start + 1].face)];
+            const double cosine = std::clamp(dot(first_normal, second_normal), -1.0, 1.0);
+            return cosine < cosine_threshold ? 1.0 + (1.0 - cosine) : 0.0;
+        };
+
+        std::size_t feature_count = 0;
+        std::size_t run_start = 0;
+        while (run_start < edge_records.size()) {
+            std::size_t run_end = run_start + 1;
+            while (run_end < edge_records.size()
+                   && edge_records[run_end].first == edge_records[run_start].first
+                   && edge_records[run_end].second == edge_records[run_start].second) {
+                ++run_end;
+            }
+            feature_count += feature_weight(run_start, run_end - run_start) > 0.0 ? 1 : 0;
+            run_start = run_end;
+        }
+
+        feature_edges.reserve(feature_count);
+        run_start = 0;
+        while (run_start < edge_records.size()) {
+            std::size_t run_end = run_start + 1;
+            while (run_end < edge_records.size()
+                   && edge_records[run_end].first == edge_records[run_start].first
+                   && edge_records[run_end].second == edge_records[run_start].second) {
+                ++run_end;
+            }
+            const std::size_t owner_count = run_end - run_start;
+            const double weight = feature_weight(run_start, owner_count);
+            if (weight > 0.0) {
+                feature_edges.push_back(
+                    {edge_records[run_start].first, edge_records[run_start].second, weight});
+            }
+            run_start = run_end;
+        }
+    }
+
+    if (feature_edges.size()
+        > static_cast<std::size_t>(std::numeric_limits<py::ssize_t>::max())) {
+        throw std::overflow_error("feature-edge output exceeds the NumPy index range");
+    }
+    const auto segment_count = static_cast<py::ssize_t>(feature_edges.size());
+    py::array_t<double> segments({segment_count, py::ssize_t {2}, py::ssize_t {3}});
+    py::array_t<double> weights({segment_count});
+    auto segment_output = segments.mutable_unchecked<3>();
+    auto weight_output = weights.mutable_unchecked<1>();
+    for (py::ssize_t segment = 0; segment < segment_count; ++segment) {
+        const FeatureEdge& source = feature_edges[static_cast<std::size_t>(segment)];
+        const Point3 first = load_point(vertex_view, static_cast<py::ssize_t>(source.first));
+        const Point3 second = load_point(vertex_view, static_cast<py::ssize_t>(source.second));
+        for (py::ssize_t axis = 0; axis < 3; ++axis) {
+            segment_output(segment, 0, axis) = first[static_cast<std::size_t>(axis)];
+            segment_output(segment, 1, axis) = second[static_cast<std::size_t>(axis)];
+        }
+        weight_output(segment) = source.weight;
+    }
+    return py::make_tuple(segments, weights);
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_snap, module)
@@ -297,4 +503,10 @@ PYBIND11_MODULE(native_snap, module)
         py::arg("segment_a"),
         py::arg("segment_b"),
         py::arg("candidates"));
+    module.def(
+        "extract_feature_edges",
+        &extract_feature_edges,
+        py::arg("vertices"),
+        py::arg("faces"),
+        py::arg("feature_angle_deg"));
 }

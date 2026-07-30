@@ -36,6 +36,22 @@ _NATIVE_SNAP: Any | None = None
 _NATIVE_SNAP_IMPORT_ATTEMPTED = False
 
 
+class _SegArrWithWeights(np.ndarray):
+    """Feature-segment coordinates carrying the matching sharpness weights."""
+
+    _seg_weight: np.ndarray | None
+
+    def __new__(cls, src: np.ndarray, weights: np.ndarray) -> _SegArrWithWeights:
+        obj = np.asarray(src, dtype=np.float64).view(cls)
+        obj._seg_weight = np.asarray(weights, dtype=np.float64)
+        return obj
+
+    def __array_finalize__(self, obj: object | None) -> None:
+        if obj is None:
+            return
+        self._seg_weight = getattr(obj, "_seg_weight", None)
+
+
 def _load_native_snap() -> Any | None:
     """Load optional C++ candidate-reduction kernels."""
     global _NATIVE_SNAP, _NATIVE_SNAP_IMPORT_ATTEMPTED
@@ -130,6 +146,35 @@ def _native_segment_candidates(
     except Exception as exc:  # noqa: BLE001
         log.debug("native_snap_segment_candidates_failed", error=str(exc))
         return None
+
+
+def _native_feature_edge_segments(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    feature_angle_deg: float,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    native_snap = _load_native_snap()
+    kernel = (
+        getattr(native_snap, "extract_feature_edges", None) if native_snap is not None else None
+    )
+    if kernel is None:
+        return None
+    segments, weights = kernel(vertices, faces, feature_angle_deg)
+    if not isinstance(segments, np.ndarray):
+        raise TypeError("native feature-edge segments must be a NumPy array")
+    if segments.dtype != np.float64 or not segments.flags.c_contiguous:
+        raise TypeError("native feature-edge segments must be C-contiguous float64")
+    if not isinstance(weights, np.ndarray):
+        raise TypeError("native feature-edge weights must be a NumPy array")
+    if weights.dtype != np.float64 or not weights.flags.c_contiguous:
+        raise TypeError("native feature-edge weights must be C-contiguous float64")
+    if segments.ndim != 3 or segments.shape[1:] != (2, 3):
+        raise ValueError("native feature-edge kernel returned invalid segments")
+    if weights.shape != (segments.shape[0],):
+        raise ValueError("native feature-edge kernel returned invalid weights")
+    if not np.isfinite(segments).all() or not np.isfinite(weights).all():
+        raise ValueError("native feature-edge kernel returned non-finite output")
+    return segments, weights
 
 
 def _closest_point_on_triangle(
@@ -693,8 +738,15 @@ def _extract_feature_edge_segments(
     if surface_V.size == 0 or surface_F.size == 0:
         return np.zeros((0, 2, 3), dtype=np.float64)
 
-    sV = np.asarray(surface_V, dtype=np.float64)
-    sF = np.asarray(surface_F, dtype=np.int64)
+    # The first-party ABI is strict: normalize explicitly here instead of
+    # allowing pybind11 to hide dtype/layout copies at the native boundary.
+    sV = np.ascontiguousarray(surface_V, dtype=np.float64)
+    sF = np.ascontiguousarray(surface_F, dtype=np.int64)
+
+    native_result = _native_feature_edge_segments(sV, sF, feature_angle_deg)
+    if native_result is not None:
+        native_segments, native_weights = native_result
+        return _SegArrWithWeights(native_segments, native_weights)
 
     # face normals
     v0 = sV[sF[:, 0]]
@@ -763,18 +815,6 @@ def _extract_feature_edge_segments(
         seg_arr_view.setflags(write=False)
     except Exception:
         pass
-
-    # Carry weights via attribute on segs object using a subclass.
-    class _SegArrWithWeights(np.ndarray):
-        def __new__(cls, src: np.ndarray, weights: np.ndarray) -> _SegArrWithWeights:
-            obj = np.asarray(src).view(cls)
-            obj._seg_weight = weights  # type: ignore[attr-defined]
-            return obj
-
-        def __array_finalize__(self, obj: object | None) -> None:
-            if obj is None:
-                return
-            self._seg_weight = getattr(obj, "_seg_weight", None)  # type: ignore[attr-defined]
 
     return _SegArrWithWeights(seg_arr, np.asarray(seg_weights, dtype=np.float64))
 
