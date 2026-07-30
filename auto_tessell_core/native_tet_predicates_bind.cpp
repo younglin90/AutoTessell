@@ -17,9 +17,11 @@
 #include <cstdint>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <mutex>
 #include <numbers>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -36,6 +38,183 @@ double insphere(double* pa, double* pb, double* pc, double* pd, double* pe);
 }
 
 namespace {
+
+using CdtEdge = std::array<int64_t, 2>;
+using CdtFace = std::array<int64_t, 3>;
+
+struct CdtAuditResult {
+    std::vector<CdtEdge> missing_edges;
+    size_t n_surface_edges{};
+    size_t n_present_edges{};
+    size_t n_surface_faces{};
+    size_t n_present_faces{};
+};
+
+template <typename Entity>
+void sort_unique(std::vector<Entity>& entities)
+{
+    std::sort(entities.begin(), entities.end());
+    entities.erase(std::unique(entities.begin(), entities.end()), entities.end());
+}
+
+size_t checked_entity_count(
+    const size_t rows,
+    const size_t entities_per_row,
+    const char* const name)
+{
+    if (rows > std::numeric_limits<size_t>::max() / entities_per_row) {
+        throw std::overflow_error(std::string(name) + " is too large");
+    }
+    return rows * entities_per_row;
+}
+
+void validate_cdt_array(
+    const py::array& array,
+    const py::ssize_t columns,
+    const char* const name)
+{
+    if (!array.dtype().is(py::dtype::of<int64_t>())) {
+        throw py::type_error(std::string(name) + " must have dtype int64");
+    }
+    if (array.ndim() != 2 || array.shape(1) != columns) {
+        throw py::value_error(
+            std::string(name) + " must have shape (N, "
+            + std::to_string(columns) + ")");
+    }
+    if ((array.flags() & py::array::c_style) == 0) {
+        throw py::value_error(std::string(name) + " must be C-contiguous");
+    }
+}
+
+CdtAuditResult audit_cdt_constraints_impl(
+    const std::span<const int64_t> surface_faces,
+    const std::span<const int64_t> tets)
+{
+    const size_t n_surface_faces = surface_faces.size() / 3U;
+    const size_t n_tets = tets.size() / 4U;
+
+    std::vector<CdtEdge> surface_edges;
+    std::vector<CdtFace> canonical_surface_faces;
+    std::vector<CdtEdge> tet_edges;
+    std::vector<CdtFace> tet_faces;
+    surface_edges.reserve(checked_entity_count(n_surface_faces, 3U, "surface_faces"));
+    canonical_surface_faces.reserve(n_surface_faces);
+    tet_edges.reserve(checked_entity_count(n_tets, 6U, "tets"));
+    tet_faces.reserve(checked_entity_count(n_tets, 4U, "tets"));
+
+    const auto edge = [](const int64_t a, const int64_t b) {
+        return a <= b ? CdtEdge{a, b} : CdtEdge{b, a};
+    };
+    const auto face = [](const int64_t a, const int64_t b, const int64_t c) {
+        CdtFace result{a, b, c};
+        std::sort(result.begin(), result.end());
+        return result;
+    };
+
+    for (size_t row = 0; row < n_surface_faces; ++row) {
+        const int64_t a = surface_faces[3U * row];
+        const int64_t b = surface_faces[3U * row + 1U];
+        const int64_t c = surface_faces[3U * row + 2U];
+        if (a < 0 || b < 0 || c < 0) {
+            throw std::invalid_argument("surface_faces contains a negative index");
+        }
+        surface_edges.push_back(edge(a, b));
+        surface_edges.push_back(edge(b, c));
+        surface_edges.push_back(edge(c, a));
+        canonical_surface_faces.push_back(face(a, b, c));
+    }
+    for (size_t row = 0; row < n_tets; ++row) {
+        const int64_t a = tets[4U * row];
+        const int64_t b = tets[4U * row + 1U];
+        const int64_t c = tets[4U * row + 2U];
+        const int64_t d = tets[4U * row + 3U];
+        if (a < 0 || b < 0 || c < 0 || d < 0) {
+            throw std::invalid_argument("tets contains a negative index");
+        }
+        tet_edges.push_back(edge(a, b));
+        tet_edges.push_back(edge(a, c));
+        tet_edges.push_back(edge(a, d));
+        tet_edges.push_back(edge(b, c));
+        tet_edges.push_back(edge(b, d));
+        tet_edges.push_back(edge(c, d));
+        tet_faces.push_back(face(a, b, c));
+        tet_faces.push_back(face(a, b, d));
+        tet_faces.push_back(face(a, c, d));
+        tet_faces.push_back(face(b, c, d));
+    }
+
+    sort_unique(surface_edges);
+    sort_unique(canonical_surface_faces);
+    sort_unique(tet_edges);
+    sort_unique(tet_faces);
+
+    CdtAuditResult result;
+    result.n_surface_edges = surface_edges.size();
+    result.n_surface_faces = canonical_surface_faces.size();
+    result.missing_edges.reserve(surface_edges.size());
+    std::set_difference(
+        surface_edges.begin(), surface_edges.end(),
+        tet_edges.begin(), tet_edges.end(),
+        std::back_inserter(result.missing_edges));
+    result.n_present_edges = surface_edges.size() - result.missing_edges.size();
+
+    size_t surface_index = 0;
+    size_t tet_index = 0;
+    while (surface_index < canonical_surface_faces.size() && tet_index < tet_faces.size()) {
+        if (canonical_surface_faces[surface_index] < tet_faces[tet_index]) {
+            ++surface_index;
+        } else if (tet_faces[tet_index] < canonical_surface_faces[surface_index]) {
+            ++tet_index;
+        } else {
+            ++result.n_present_faces;
+            ++surface_index;
+            ++tet_index;
+        }
+    }
+    return result;
+}
+
+py::dict audit_cdt_constraints(const py::array& surface_faces, const py::array& tets)
+{
+    validate_cdt_array(surface_faces, 3, "surface_faces");
+    validate_cdt_array(tets, 4, "tets");
+    const auto surface_info = surface_faces.request();
+    const auto tet_info = tets.request();
+    const auto surface_count = static_cast<size_t>(surface_info.size);
+    const auto tet_count = static_cast<size_t>(tet_info.size);
+    const auto surface_view = std::span{
+        static_cast<const int64_t*>(surface_info.ptr), surface_count};
+    const auto tet_view = std::span{
+        static_cast<const int64_t*>(tet_info.ptr), tet_count};
+
+    CdtAuditResult audit;
+    {
+        py::gil_scoped_release release;
+        audit = audit_cdt_constraints_impl(surface_view, tet_view);
+    }
+
+    if (audit.missing_edges.size()
+        > static_cast<size_t>(std::numeric_limits<py::ssize_t>::max())) {
+        throw std::overflow_error("missing edge output exceeds Python array limits");
+    }
+    py::array_t<int64_t> missing_edges({
+        static_cast<py::ssize_t>(audit.missing_edges.size()), py::ssize_t{2}});
+    auto output = missing_edges.mutable_unchecked<2>();
+    for (size_t row = 0; row < audit.missing_edges.size(); ++row) {
+        output(static_cast<py::ssize_t>(row), 0) = audit.missing_edges[row][0];
+        output(static_cast<py::ssize_t>(row), 1) = audit.missing_edges[row][1];
+    }
+
+    py::dict result;
+    result["n_surface_edges"] = audit.n_surface_edges;
+    result["n_present_as_tet_edges"] = audit.n_present_edges;
+    result["n_missing"] = audit.missing_edges.size();
+    result["missing_edges"] = std::move(missing_edges);
+    result["n_surface_faces"] = audit.n_surface_faces;
+    result["n_present_as_tet_faces"] = audit.n_present_faces;
+    result["n_missing_faces"] = audit.n_surface_faces - audit.n_present_faces;
+    return result;
+}
 
 void ensure_exact_predicates_initialized()
 {
@@ -1372,6 +1551,11 @@ PYBIND11_MODULE(native_tet_predicates, m)
     m.def("audit_tet_boundary", &audit_tet_boundary_native,
           py::arg("points"), py::arg("tets"),
           py::arg("relative_volume_tolerance") = 1e-12);
+    m.def("audit_cdt_constraints", &audit_cdt_constraints,
+          py::arg("surface_faces").noconvert(), py::arg("tets").noconvert(),
+          "Audit exact CDT edge/face membership without copying input arrays.\n\n"
+          "Inputs must be immutable for the duration of this call because the GIL "
+          "is released while their C-contiguous int64 storage is read.");
     m.def("recover_targeted_edges_23", &recover_targeted_edges_23,
           py::arg("points"), py::arg("tets"), py::arg("edges"),
           py::arg("max_attempts") = 200);
