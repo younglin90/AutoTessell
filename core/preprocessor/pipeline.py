@@ -28,6 +28,26 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 
+def _target_face_metrics(
+    target_faces: int | None,
+    actual_faces: int,
+) -> dict[str, int | float | None]:
+    """Report a face-count request without implying it was satisfied."""
+    requested = int(target_faces) if target_faces is not None and target_faces > 0 else None
+    if requested is None:
+        absolute_error = None
+        relative_error = None
+    else:
+        absolute_error = abs(actual_faces - requested)
+        relative_error = absolute_error / requested
+    return {
+        "target_faces_requested": target_faces,
+        "target_faces_actual": actual_faces,
+        "target_faces_absolute_error": absolute_error,
+        "target_faces_relative_error": relative_error,
+    }
+
+
 class Preprocessor:
     """전처리 파이프라인 오케스트레이터.
 
@@ -429,8 +449,13 @@ class Preprocessor:
         Returns:
             (리메쉬된 메쉬, gate_passed, step_record) 튜플.
         """
+        engine = remesh_engine.lower()
+        if engine == "native_face_remesh":
+            return self._l2_remesh_native_face(mesh, target_faces)
+        if engine == "native_quad_dominant":
+            return self._l2_remesh_native_quad_dominant(mesh, target_faces)
         if prefer_native:
-            if remesh_engine.lower() == "native_tri":
+            if engine == "native_tri":
                 return self._l2_remesh_native_tri(mesh, target_faces)
             return self._l2_remesh_native(mesh, target_faces)
         # legacy 경로 — pyACVD/pymeshlab/vorpalite 체인
@@ -502,6 +527,221 @@ class Preprocessor:
             gate_passed=passed,
         )
         return new_mesh, passed, step_record
+
+    def _l2_remesh_native_face(
+        self,
+        mesh: trimesh.Trimesh,
+        target_faces: int | None,
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
+        """Expose the fail-closed native face-remesh contract on explicit request."""
+        import time as _time  # noqa: PLC0415
+
+        import numpy as np  # noqa: PLC0415
+        import trimesh as _tm  # noqa: PLC0415
+
+        source_vertices = np.asarray(mesh.vertices, dtype=np.float64)
+        source_faces = np.asarray(mesh.faces, dtype=np.int64)
+        if target_faces is not None and target_faces > 0:
+            reason = "target_faces_unsupported_by_native_face_remesh"
+            unchanged_mesh = _tm.Trimesh(
+                vertices=source_vertices.copy(),
+                faces=source_faces.copy(),
+                process=False,
+            )
+            step_record = {
+                "step": "l2_remesh",
+                "method": "native_face_remesh",
+                "params": {
+                    "route": "native_face_remesh",
+                    "contract": "native_face",
+                    **_target_face_metrics(target_faces, int(len(source_faces))),
+                    "target_faces_actual_semantics": "source_triangle_faces",
+                    "accepted": False,
+                    "rejection_reason": reason,
+                    "source_geometry_preserved": True,
+                    "source_topology_preserved": True,
+                },
+                "input_faces": int(len(source_faces)),
+                "output_faces": int(len(source_faces)),
+                "time_seconds": 0.0,
+                "gate_passed": False,
+            }
+            log.warning(
+                "native_face_remesh_target_faces_unsupported",
+                requested=target_faces,
+                actual=len(source_faces),
+                reason=reason,
+            )
+            return unchanged_mesh, False, step_record
+
+        from core.preprocessor.native_remesh import native_face_remesh  # noqa: PLC0415
+
+        start = _time.perf_counter()
+        result = native_face_remesh(source_vertices, source_faces)
+        elapsed = _time.perf_counter() - start
+        remeshed = _tm.Trimesh(
+            vertices=result.vertices,
+            faces=result.faces,
+            process=False,
+        )
+        diagnostics = result.diagnostics
+        step_record = {
+            "step": "l2_remesh",
+            "method": "native_face_remesh",
+            "params": {
+                "route": "native_face_remesh",
+                "contract": "native_face",
+                **_target_face_metrics(target_faces, int(len(result.faces))),
+                "target_faces_actual_semantics": "output_triangle_faces",
+                "accepted": result.accepted,
+                "rejection_reason": diagnostics.rejection_reason,
+                "gates": diagnostics.gates,
+                "max_geometry_drift": diagnostics.max_geometry_drift,
+                "protected_edges": diagnostics.protected_edges,
+                "protected_edges_preserved": diagnostics.protected_edges_preserved,
+                "min_triangle_quality": diagnostics.min_triangle_quality,
+            },
+            "input_faces": int(len(source_faces)),
+            "output_faces": int(len(result.faces)),
+            "time_seconds": round(elapsed, 4),
+            "gate_passed": result.accepted,
+        }
+        if result.accepted:
+            log.info(
+                "native_face_remesh_done",
+                input_faces=len(source_faces),
+                output_faces=len(result.faces),
+            )
+        else:
+            log.warning(
+                "native_face_remesh_rejected",
+                reason=diagnostics.rejection_reason,
+            )
+        return remeshed, result.accepted, step_record
+
+    def _l2_remesh_native_quad_dominant(
+        self,
+        mesh: trimesh.Trimesh,
+        target_faces: int | None,
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
+        """Expose native quad pairing and preserve its evidence without legacy fallback."""
+        import time as _time  # noqa: PLC0415
+
+        import numpy as np  # noqa: PLC0415
+        import trimesh as _tm  # noqa: PLC0415
+
+        source_vertices = np.asarray(mesh.vertices, dtype=np.float64)
+        source_faces = np.asarray(mesh.faces, dtype=np.int64)
+        if target_faces is not None and target_faces > 0:
+            reason = "target_faces_unsupported_by_native_quad_dominant"
+            unchanged_mesh = _tm.Trimesh(
+                vertices=source_vertices.copy(),
+                faces=source_faces.copy(),
+                process=False,
+            )
+            step_record = {
+                "step": "l2_remesh",
+                "method": "native_quad_dominant",
+                "params": {
+                    "route": "native_quad_dominant",
+                    "contract": "native_quad",
+                    **_target_face_metrics(target_faces, int(len(source_faces))),
+                    "target_faces_actual_semantics": "source_triangle_faces",
+                    "rejection_reason": reason,
+                    "fallback_reason": None,
+                    "source_geometry_preserved": True,
+                    "source_topology_preserved": True,
+                },
+                "input_faces": int(len(source_faces)),
+                "output_faces": int(len(source_faces)),
+                "time_seconds": 0.0,
+                "gate_passed": False,
+            }
+            log.warning(
+                "native_quad_dominant_target_faces_unsupported",
+                requested=target_faces,
+                actual=len(source_faces),
+                reason=reason,
+            )
+            return unchanged_mesh, False, step_record
+
+        from core.preprocessor.native_remesh import native_quad_dominant_remesh  # noqa: PLC0415
+        from core.preprocessor.repair import gate_check as _gate  # noqa: PLC0415
+
+        start = _time.perf_counter()
+        try:
+            result = native_quad_dominant_remesh(source_vertices, source_faces)
+        except Exception as exc:
+            elapsed = _time.perf_counter() - start
+            reason = f"native_quad_dominant_error:{type(exc).__name__}"
+            log.warning("native_quad_dominant_rejected", reason=reason)
+            return (
+                mesh,
+                False,
+                {
+                    "step": "l2_remesh",
+                    "method": "native_quad_dominant",
+                    "params": {
+                        "route": "native_quad_dominant",
+                        "contract": "native_quad",
+                        **_target_face_metrics(target_faces, int(len(source_faces))),
+                        "target_faces_actual_semantics": "source_triangle_faces",
+                        "fallback_reason": reason,
+                    },
+                    "input_faces": int(len(source_faces)),
+                    "output_faces": int(len(source_faces)),
+                    "time_seconds": round(elapsed, 4),
+                    "gate_passed": False,
+                },
+            )
+
+        quad_triangles = np.concatenate(
+            (result.quads[:, (0, 1, 2)], result.quads[:, (0, 2, 3)]),
+            axis=0,
+        )
+        triangle_handoff = np.concatenate((result.triangles, quad_triangles), axis=0)
+        remeshed = _tm.Trimesh(
+            vertices=result.vertices,
+            faces=triangle_handoff,
+            process=False,
+        )
+        elapsed = _time.perf_counter() - start
+        diagnostics = result.diagnostics
+        passed = bool(_gate(remeshed))
+        step_record = {
+            "step": "l2_remesh",
+            "method": "native_quad_dominant",
+            "params": {
+                "route": diagnostics.route,
+                "contract": diagnostics.contract,
+                "fallback_reason": diagnostics.fallback_reason,
+                **_target_face_metrics(target_faces, int(len(triangle_handoff))),
+                "target_faces_actual_semantics": "triangular_handoff_faces",
+                "triangular_handoff_faces": int(len(triangle_handoff)),
+                "triangular_handoff_semantics": "output quads are split into two triangles",
+                "mixed_surface_elements": diagnostics.output_triangles + diagnostics.output_quads,
+                "mixed_surface_element_semantics": "native triangles plus native quads",
+                "output_quads": diagnostics.output_quads,
+                "output_triangles": diagnostics.output_triangles,
+                "accepted_pairs": diagnostics.accepted_pairs,
+                "candidate_pairs": diagnostics.candidate_pairs,
+                "rejected_protected": diagnostics.rejected_protected,
+                "rejected_quality": diagnostics.rejected_quality,
+            },
+            "input_faces": int(len(source_faces)),
+            "output_faces": int(len(triangle_handoff)),
+            "time_seconds": round(elapsed, 4),
+            "gate_passed": passed,
+        }
+        log.info(
+            "native_quad_dominant_done",
+            input_faces=len(source_faces),
+            output_faces=len(triangle_handoff),
+            output_quads=diagnostics.output_quads,
+            gate_passed=passed,
+            fallback_reason=diagnostics.fallback_reason,
+        )
+        return remeshed, passed, step_record
 
     def _l2_remesh_native_tri(
         self,
