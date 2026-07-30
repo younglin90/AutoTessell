@@ -6528,13 +6528,28 @@ def generate_native_bl(
         _front = build_layer_front(
             faces,
             wall_face_indices,
-            strict_manifold=_front_strict,
+            strict_manifold=False,
             points=points,
         )
-        if _front_strict and _front.ignored_faces:
-            wall_face_indices = list(_front.active_faces)
-            wall_set = set(wall_face_indices)
-            wall_vert_indices = list(_front.vertices)
+        nonmanifold_edges = [edge for edge in _front.edges if edge.is_nonmanifold]
+        if nonmanifold_edges:
+            edge = nonmanifold_edges[0]
+            message = (
+                "non-manifold selected wall topology: "
+                f"edge {edge.vertices} has {len(edge.faces)} incident wall faces "
+                f"{list(edge.faces)}"
+            )
+            log.warning(
+                "native_bl_nonmanifold_wall_rejected",
+                edge=edge.vertices,
+                incident_faces=edge.faces,
+                n_nonmanifold_edges=len(nonmanifold_edges),
+            )
+            return NativeBLResult(
+                success=False,
+                elapsed=time.perf_counter() - t_start,
+                message=message,
+            )
         log.info(
             "native_bl_layer_front",
             component="native_bl",
