@@ -54,6 +54,7 @@ def main() -> None:
     def native_run() -> dual.TetPrimalConformityAudit:
         return dual._normalise_tet_primal_conformity_audit(
             native.audit_tet_primal_conformity(points, tets),
+            n_points=int(points.shape[0]),
             n_tets=args.tets,
         )
 

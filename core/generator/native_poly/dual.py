@@ -58,10 +58,15 @@ class TetPrimalConformityAudit:
     duplicate_tet_groups: tuple[tuple[tuple[int, int, int, int], tuple[int, ...]], ...]
     nonmanifold_face_groups: tuple[tuple[tuple[int, int, int], tuple[int, ...]], ...]
     negative_orientation_rows: tuple[int, ...]
+    orphan_vertex_rows: tuple[int, ...]
 
     @property
     def conformal(self) -> bool:
-        return not self.duplicate_tet_groups and not self.nonmanifold_face_groups
+        return (
+            not self.duplicate_tet_groups
+            and not self.nonmanifold_face_groups
+            and not self.orphan_vertex_rows
+        )
 
 
 def _audit_tet_primal_conformity_python(
@@ -128,16 +133,21 @@ def _audit_tet_primal_conformity_python(
         np.cross(tet_points[:, 2] - tet_points[:, 0], tet_points[:, 3] - tet_points[:, 0]),
     )
     negative_rows = tuple(int(row) for row in np.flatnonzero(signed_volume6 < 0.0))
+    incident_vertices = np.zeros(points.shape[0], dtype=bool)
+    incident_vertices[tets.reshape(-1)] = True
+    orphan_rows = tuple(int(row) for row in np.flatnonzero(~incident_vertices))
     return TetPrimalConformityAudit(
         tuple(duplicate_groups),
         tuple(nonmanifold_groups),
         negative_rows,
+        orphan_rows,
     )
 
 
 def _normalise_tet_primal_conformity_audit(
     result: Any,
     *,
+    n_points: int,
     n_tets: int,
 ) -> TetPrimalConformityAudit:
     """Validate an optional native result before it can certify the primal."""
@@ -148,7 +158,14 @@ def _normalise_tet_primal_conformity_audit(
         return int(value)
 
     try:
-        raw_duplicates, raw_nonmanifold, raw_negative = result
+        raw_duplicates, raw_nonmanifold, raw_negative, raw_orphans = result
+        if (
+            not isinstance(raw_orphans, np.ndarray)
+            or raw_orphans.dtype != np.dtype(np.int64)
+            or raw_orphans.ndim != 1
+            or not raw_orphans.flags.c_contiguous
+        ):
+            raise TypeError("native orphan rows must be a contiguous int64 vector")
         duplicates = tuple(
             (
                 cast(
@@ -170,6 +187,7 @@ def _normalise_tet_primal_conformity_audit(
             for key, owners in raw_nonmanifold
         )
         negative = tuple(_exact_int(row) for row in raw_negative)
+        orphans = tuple(_exact_int(row) for row in raw_orphans.tolist())
     except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError("tet primal-conformity kernel returned an invalid result") from exc
 
@@ -196,15 +214,21 @@ def _normalise_tet_primal_conformity_audit(
         and len(set(negative)) == len(negative)
         and all(0 <= row < n_tets for row in negative)
     )
+    valid_orphan_rows = (
+        tuple(sorted(orphans)) == orphans
+        and len(set(orphans)) == len(orphans)
+        and all(0 <= row < n_points for row in orphans)
+    )
     if not (
         valid_duplicate_groups
         and valid_nonmanifold_groups
         and valid_negative_rows
+        and valid_orphan_rows
         and tuple(sorted(duplicates)) == duplicates
         and tuple(sorted(nonmanifold)) == nonmanifold
     ):
         raise RuntimeError("tet primal-conformity kernel returned an invalid result")
-    return TetPrimalConformityAudit(duplicates, nonmanifold, negative)
+    return TetPrimalConformityAudit(duplicates, nonmanifold, negative, orphans)
 
 
 def _audit_tet_primal_conformity(
@@ -226,7 +250,11 @@ def _audit_tet_primal_conformity(
     else:
         result = _audit_tet_primal_conformity_python(points, tets)
         return result
-    return _normalise_tet_primal_conformity_audit(result, n_tets=int(tets.shape[0]))
+    return _normalise_tet_primal_conformity_audit(
+        result,
+        n_points=int(points.shape[0]),
+        n_tets=int(tets.shape[0]),
+    )
 
 
 def _preflight_tet_dual_inputs(
@@ -337,6 +365,13 @@ def _preflight_tet_dual_inputs(
             None,
             "tet connectivity has faces with more than two incident tetrahedra: "
             f"{conformity.nonmanifold_face_groups}",
+        )
+    if conformity.orphan_vertex_rows:
+        return (
+            None,
+            None,
+            "tet point array contains vertices with zero tetrahedron incidence: "
+            f"{conformity.orphan_vertex_rows}",
         )
     if conformity.negative_orientation_rows:
         log.info(
