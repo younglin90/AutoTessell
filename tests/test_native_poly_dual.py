@@ -161,6 +161,144 @@ def test_tet_to_poly_dual_rejects_partial_boundary_entity_mapping(
     assert np.array_equal(T, T_before)
 
 
+def test_tet_to_poly_dual_preserves_a_valid_integer_tet_input(
+    tmp_case_dir: Path,
+) -> None:
+    """POLY-DUAL-TET-INPUT-CONTRACT-L0 accept: ordinary valid input is unchanged."""
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    tetrahedra = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    vertices_before = vertices.copy()
+    tetrahedra_before = tetrahedra.copy()
+
+    result = tet_to_poly_dual(vertices, tetrahedra, tmp_case_dir / "valid")
+
+    assert result.success, result.message
+    assert (result.n_cells, result.n_points, result.n_faces) == (4, 15, 18)
+    assert np.array_equal(vertices, vertices_before)
+    assert np.array_equal(tetrahedra, tetrahedra_before)
+
+
+@pytest.mark.parametrize(
+    ("vertices", "tetrahedra", "reason"),
+    [
+        (
+            np.array(
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                dtype=np.float64,
+            ),
+            np.array([0, 1, 2, 3], dtype=np.int64),
+            "tet connectivity must be a non-empty (Nt, 4) array",
+        ),
+        (
+            np.array(
+                [[np.nan, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                dtype=np.float64,
+            ),
+            np.array([[0, 1, 2, 3]], dtype=np.int64),
+            "vertices must be a finite (Nv, 3) array",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                dtype=np.float64,
+            ),
+            np.array([[0.0, 1.0, 2.0, 3.9]], dtype=np.float64),
+            "tet connectivity must use non-boolean integer indices",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                dtype=np.float64,
+            ),
+            np.array([[0, 1, 2, True]], dtype=object),
+            "tet connectivity must use non-boolean integer indices",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                dtype=np.float64,
+            ),
+            np.array([[0, 1, 2, "3"]], dtype=object),
+            "tet connectivity must use non-boolean integer indices",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                dtype=np.float64,
+            ),
+            np.array([[0, 1, 2, -1]], dtype=np.int64),
+            "tet connectivity contains an out-of-range vertex index",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                dtype=np.float64,
+            ),
+            np.array([[0, 1, 2, 4]], dtype=np.int64),
+            "tet connectivity contains an out-of-range vertex index",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+                dtype=np.float64,
+            ),
+            np.array([[0, 1, 2, 2]], dtype=np.int64),
+            "tet connectivity repeats a vertex index in rows: (0,)",
+        ),
+        (
+            np.array(
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+                dtype=np.float64,
+            ),
+            np.array([[0, 1, 2, 3]], dtype=np.int64),
+            "tet geometry is degenerate in rows: (0,)",
+        ),
+    ],
+    ids=(
+        "wrong_shape",
+        "nonfinite_vertices",
+        "fractional",
+        "boolean",
+        "string",
+        "negative",
+        "out_of_range",
+        "duplicate",
+        "zero_volume",
+    ),
+)
+def test_tet_to_poly_dual_rejects_invalid_raw_tet_input_before_writing(
+    tmp_case_dir: Path,
+    vertices: np.ndarray,
+    tetrahedra: np.ndarray,
+    reason: str,
+) -> None:
+    """POLY-DUAL-TET-INPUT-CONTRACT-L0 rejects without coercion or output."""
+    vertices_before = vertices.copy()
+    tetrahedra_before = tetrahedra.copy()
+    first_case = tmp_case_dir / "first"
+    second_case = tmp_case_dir / "second"
+
+    first = tet_to_poly_dual(vertices, tetrahedra, first_case)
+    second = tet_to_poly_dual(vertices, tetrahedra, second_case)
+
+    expected_message = f"invalid tet dual input: {reason}"
+    assert not first.success
+    assert first.message == expected_message
+    assert second.message == expected_message
+    assert not first_case.exists()
+    assert not second_case.exists()
+    assert np.array_equal(vertices, vertices_before, equal_nan=True)
+    assert np.array_equal(tetrahedra, tetrahedra_before)
+
+
 def test_tet_to_poly_dual_star_validity_convex_and_nonmanifold(
     tmp_case_dir: Path,
     monkeypatch: pytest.MonkeyPatch,
