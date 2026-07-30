@@ -98,7 +98,10 @@ def _runner(
     )
     if hres.success:
         return hres
-    if hres.message.startswith("target_primal_vertex_floor_unmet:"):
+    if hres.message.startswith((
+        "target_primal_vertex_floor_unmet:",
+        "target_poly_budget_unreachable:",
+    )):
         log.warning(
             "native_poly_target_primal_vertex_floor_unmet",
             message=hres.message,

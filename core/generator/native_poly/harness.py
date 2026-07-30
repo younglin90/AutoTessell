@@ -132,6 +132,31 @@ def run_native_poly_harness(
     """
     t0 = time.perf_counter()
 
+    # Explicit BL=0 poly targets must not enter a known-unbounded tet path.
+    # The uniform floor-grid requires interior work in addition to its nodes;
+    # reserve a conservative 2x overhead before generation starts.
+    if target_cells is not None and int(target_cells) > 0 and target_edge_length is not None:
+        bmin = np.asarray(vertices).min(axis=0)
+        bmax = np.asarray(vertices).max(axis=0)
+        diag = float(np.linalg.norm(bmax - bmin))
+        floor = diag / 50.0
+        if floor > 0.0 and float(target_edge_length) < floor:
+            grid_nodes = np.ceil((bmax - bmin) / floor).astype(np.int64) + 1
+            estimated_work = int(np.prod(grid_nodes)) * 2
+            if estimated_work > int(max_tet_cells):
+                return PolyHarnessResult(
+                    success=False,
+                    elapsed=time.perf_counter() - t0,
+                    iterations=0,
+                    message=(
+                        "target_poly_budget_unreachable: "
+                        f"requested={int(target_cells)}, edge_floor={floor:.9g}, "
+                        f"estimated_work={estimated_work}, budget={int(max_tet_cells)}"
+                    ),
+                    target_cells_requested=int(target_cells),
+                    target_cells_status="reported_not_gated",
+                )
+
     # target_edge_length 하한: bbox_diag / 50 이하로 내려가면 (= seed 가 50+)
     # tet mesh cell 수가 폭증하므로 clamp.
     if target_edge_length is not None:
