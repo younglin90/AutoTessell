@@ -66,6 +66,17 @@ class TestBuildRunKwargs:
         assert tsp["bl_layers"] == 12
         assert tsp["cfmesh_bl_n_layers"] == 12
 
+    def test_zero_bl_layers_is_preserved_as_explicit_disable(self):
+        k = _build_run_kwargs("standard", "auto", "hex_dominant", 1, {"bl_layers": 0})
+        tsp = k["tier_specific_params"]
+        assert tsp["bl_layers"] == 0
+        assert tsp["cfmesh_bl_n_layers"] == 0
+
+    @pytest.mark.parametrize("value", [-1, "-1", "invalid", None])
+    def test_negative_or_invalid_bl_layers_are_omitted(self, value):
+        k = _build_run_kwargs("standard", "auto", "hex_dominant", 1, {"bl_layers": value})
+        assert "tier_specific_params" not in k
+
     def test_element_size_kwarg_base_cell_size_tsp(self):
         k = _build_run_kwargs(
             "draft", "auto", "tet", 1, {"element_size": 0.5, "base_cell_size": 1.0}

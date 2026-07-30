@@ -846,6 +846,14 @@ def _build_run_kwargs(
             return None
         return i if i > 0 else None
 
+    def _nonnegative_int(key: str) -> int | None:
+        val = extra.get(key)
+        try:
+            i = int(float(val))
+        except (TypeError, ValueError):
+            return None
+        return i if i >= 0 else None
+
     # --- 셀 크기 ---
     es = _pos_float("element_size")
     if es is not None:
@@ -862,7 +870,10 @@ def _build_run_kwargs(
         tsp["target_cells"] = mc
 
     # --- Boundary Layer ---
-    bl = _pos_int("bl_layers")
+    # ``0`` is an explicit BL-off contract, unlike cell-count inputs where
+    # non-positive values remain absent.  Preserve it for every downstream
+    # engine so no layer budget or layer-generation path is selected.
+    bl = _nonnegative_int("bl_layers")
     if bl is not None:
         tsp["bl_layers"] = bl
         tsp["cfmesh_bl_n_layers"] = bl
