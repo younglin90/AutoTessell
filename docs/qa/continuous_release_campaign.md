@@ -4,14 +4,15 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `1`
+- cycle: `2`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- current_master: `6cd84caf0c2f6e92af81effc4b61419cbc7d6f1f`
+- last_verified_master: `4cc13ac3e2a11115df667c5d8ee2fd9b2443320a`
 - allowed_to_stop: `false`
-- next_action: `TET-MANIFOLD-TOPOLOGY-1: remove native tet 3+-cell face incidence before writer acceptance without changing boundary provenance.`
+- next_action: `HEX-TARGET-CELL-BIDIRECTIONAL-1: make native hex target response monotone without changing user sizing or boundary-layer reserve rules.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
-focused-test result. A later Git state supersedes the repository checkpoint below.
+focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
+ledger commit itself necessarily advances `HEAD`.
 
 ## Cycle 1 checkpoint — 2026-07-30
 
@@ -42,6 +43,14 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
   NACA strict count `13`, cylinder strict count `10`; focused writer/result
   tests `6 passed` in `14.04 s`. This removes false-success output, not the
   upstream manifold-topology limitation.
+- Tet Klingner sweep incidence guard: direct focused suite `37 passed` in
+  `4.04 s`; a direct NACA rerun reports strict count `10`, `success=False`,
+  and no `polyMesh`. The guard rolls back a sweep that increases non-manifold
+  face count; remaining pre-sweep topology defects are still open.
+- `verify_goal.py` now records selected phase evidence and explicit `NOT_RUN`
+  phases. L0: `3 passed` in `1.77 s`; GUI phase passed. Parameter phase with
+  `target_cells=2000`, `boundary_layer=0` fails because explicit zero is absent
+  from tier-specific params despite the later strategy reporting zero layers.
 - Same NACA baseline emitted `1827` cells for target `2000`; campaign-wide target
   tolerance is not yet declared or verified.
 - Previous full `python tests/verify_goal.py` timed out after `124 s`; no full-suite claim.
@@ -52,11 +61,11 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
 |---|---|---|
 | 1 Repository | PASS | Cycle-1 checkpoint clean; re-evaluate every cycle. |
 | 2 Build | UNVERIFIED | Fresh clean release build missing. |
-| 3 Automated tests | UNVERIFIED | Full suite timed out; all engine/routing/UI coverage missing. |
+| 3 Automated tests | UNVERIFIED | Phase-attributed verifier added; full engine/routing/UI suite missing. |
 | 4 Shape preservation | UNVERIFIED | No campaign corpus result. |
-| 5 Mesh validity | UNVERIFIED | Native tet false-success removed; full valid-output corpus missing. |
+| 5 Mesh validity | UNVERIFIED | Tet NACA strict count `10` now fails closed; full valid-output corpus missing. |
 | 6 Cell count | UNVERIFIED | Poly BL=0 forward L0 passes; NACA `1827/2000`; engine corpus/monotonicity missing. |
-| 7 Boundary layer | UNVERIFIED | Focused state tests pass; engine corpus missing. |
+| 7 Boundary layer | FAIL | Parameter-phase BL=0 loses explicit tier parameter; repair card active. |
 | 8 Quality | UNVERIFIED | Campaign quality specifications and corpus missing. |
 | 9 Reproducibility | UNVERIFIED | Three-run engine corpus missing. |
 | 10 Robustness | UNVERIFIED | Quad invalid topology rejects explicitly; tet NACA/cylinder fail explicitly; matrix missing. |
@@ -68,10 +77,11 @@ focused-test result. A later Git state supersedes the repository checkpoint belo
 
 ## Active research queue
 
-1. `TET-MANIFOLD-TOPOLOGY-1` — primary metric: native tet 3+-cell face incidences, lower is better, target `0`.
-2. `POLY-TARGET-CONTRACT-1` — establish observable target-cell response while preserving source topology.
-3. `TRI-QUAD-RELEASE-CARD-1` — select after independent source/test audit.
-4. `FULL-VALIDATION-BASELINE-1` — split full-suite timeout into reproducible subsystem evidence.
+1. `HEX-TARGET-CELL-BIDIRECTIONAL-1` — target-band failures, lower is better, target `0`.
+2. `BL0-EXPLICIT-PROPAGATION-1` — explicit zero-layer propagation failures, lower is better, target `0`.
+3. `POLY-TARGET-CONTRACT-1` — establish observable target-cell response while preserving source topology.
+4. `TET-MANIFOLD-TOPOLOGY-2` — remaining strict non-manifold face incidences, lower is better, target `0`.
+5. `FULL-VALIDATION-BASELINE-1` — run phase-attributed engine evidence without weakening gates.
 
 ## DOI and provenance record
 
