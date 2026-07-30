@@ -49,6 +49,7 @@
         "select_quad_pairs",
         "triangle_intersections_interval",
         "triangle_intersections_segment",
+        "triangle_quality_batch",
         "validate_triangle_surface_and_build_edge_faces"
       ],
       "sources": [

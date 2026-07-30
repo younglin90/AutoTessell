@@ -1874,6 +1874,52 @@ struct CurvatureEdgeContribution {
 [[nodiscard]] double dot_product(
     const Point3& left, const Point3& right) noexcept;
 
+py::array_t<double> triangle_quality_batch(const py::array& triangles_input)
+{
+    if (!triangles_input.dtype().is(py::dtype::of<double>())
+        || (triangles_input.flags() & py::array::c_style) == 0
+        || triangles_input.ndim() != 3 || triangles_input.shape(1) != 3
+        || triangles_input.shape(2) != 3) {
+        throw std::invalid_argument(
+            "triangles must be a C-contiguous float64 array with shape (N, 3, 3)");
+    }
+
+    const auto triangles_array =
+        py::reinterpret_borrow<py::array_t<double>>(triangles_input);
+    const auto triangles = triangles_array.unchecked<3>();
+    const auto triangle_count = triangles.shape(0);
+    py::array_t<double> quality({triangle_count});
+    auto output = quality.mutable_unchecked<1>();
+    constexpr double normalization =
+        2.0 * std::numbers::sqrt3_v<double>;
+
+    for (py::ssize_t index = 0; index < triangle_count; ++index) {
+        const double edge01_x = triangles(index, 1, 0) - triangles(index, 0, 0);
+        const double edge01_y = triangles(index, 1, 1) - triangles(index, 0, 1);
+        const double edge01_z = triangles(index, 1, 2) - triangles(index, 0, 2);
+        const double edge12_x = triangles(index, 2, 0) - triangles(index, 1, 0);
+        const double edge12_y = triangles(index, 2, 1) - triangles(index, 1, 1);
+        const double edge12_z = triangles(index, 2, 2) - triangles(index, 1, 2);
+        const double edge20_x = triangles(index, 0, 0) - triangles(index, 2, 0);
+        const double edge20_y = triangles(index, 0, 1) - triangles(index, 2, 1);
+        const double edge20_z = triangles(index, 0, 2) - triangles(index, 2, 2);
+        const double denominator =
+            edge01_x * edge01_x + edge01_y * edge01_y + edge01_z * edge01_z
+            + edge12_x * edge12_x + edge12_y * edge12_y + edge12_z * edge12_z
+            + edge20_x * edge20_x + edge20_y * edge20_y + edge20_z * edge20_z;
+        const double cross_x = edge01_z * edge20_y - edge01_y * edge20_z;
+        const double cross_y = edge01_x * edge20_z - edge01_z * edge20_x;
+        const double cross_z = edge01_y * edge20_x - edge01_x * edge20_y;
+        const double area_twice = std::sqrt(
+            cross_x * cross_x + cross_y * cross_y + cross_z * cross_z);
+        output(index) = denominator > 0.0 && std::isfinite(denominator)
+                && std::isfinite(area_twice)
+            ? normalization * area_twice / denominator
+            : 0.0;
+    }
+    return quality;
+}
+
 py::dict estimate_triangle_curvature_sizing(
     const py::array& vertices_input,
     const py::array& triangles_input,
@@ -3564,6 +3610,8 @@ PYBIND11_MODULE(native_metrics, m)
           py::arg("vertices"), py::arg("triangles"), py::arg("epsilon"),
           py::arg("minimum_length") = py::none(),
           py::arg("maximum_length") = py::none());
+    m.def("triangle_quality_batch", &triangle_quality_batch,
+          py::arg("triangles").noconvert());
     m.def("select_quad_pairs", &select_quad_pairs,
           py::arg("vertices").noconvert(),
           py::arg("triangles").noconvert(),
