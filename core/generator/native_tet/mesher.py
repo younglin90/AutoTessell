@@ -14,6 +14,44 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 
+def _input_vertices_exactly_present_l0(
+    source_vertices: object,
+    candidate_vertices: object,
+) -> tuple[bool, int]:
+    """Audit exact source-coordinate presence without changing either array.
+
+    This L0-only helper deliberately does not use an epsilon: accepting a
+    displaced source corner as present would be a false provenance
+    certificate.  Malformed or non-finite coordinates cannot be certified and
+    therefore fail closed.  Candidate order and duplicate coordinates are
+    irrelevant to this read-only membership check.
+    """
+    try:
+        source = np.asarray(source_vertices)
+        candidate = np.asarray(candidate_vertices)
+    except (TypeError, ValueError):
+        return False, 0
+
+    if source.ndim != 2 or source.shape[1:] != (3,):
+        return False, 0
+    missing_if_uncertified = int(source.shape[0])
+    if missing_if_uncertified == 0 or candidate.ndim != 2 or candidate.shape[1:] != (3,):
+        return False, missing_if_uncertified
+
+    arrays = (source, candidate)
+    if any(
+        not np.issubdtype(vertices.dtype, np.number)
+        or np.issubdtype(vertices.dtype, np.complexfloating)
+        or not bool(np.all(np.isfinite(vertices)))
+        for vertices in arrays
+    ):
+        return False, missing_if_uncertified
+
+    candidate_keys = {tuple(vertex) for vertex in candidate}
+    missing = sum(tuple(vertex) not in candidate_keys for vertex in source)
+    return missing == 0, missing
+
+
 def _native_tet_large_pass_enabled(n_cells: int) -> bool:
     """Return whether optional large-mesh passes may run.
 
