@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `34`
+- cycle: `44`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `a1c15a1d1ca3ab487cc30d71908d0064b3dd4796`
+- last_verified_master: `e5a2e4aa845ddf3cd4ef5fd1f38fe4b340ef00f0`
 - allowed_to_stop: `false`
-- next_action: `Complete the active Cycle-34 Hex C++23 wall-fit candidate-preparation card, then run the next all-engine validity and packaging evidence scan. Keep target-cell work behind shape, topology, and provenance.`
+- next_action: `Continue Tet same-side-overlap avoidance, Poly dual face-loop/seam repair, and Hex authoritative CAD-front contract diagnostics in parallel. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2232,3 +2232,88 @@ scope. Future MIT-core boundary follows
   ahead of target-cell count.  Prioritize the full immutable-head suite and
   representative shape/validity corpus while continuing one bounded engine
   hypothesis per lane.
+
+## Cycle 44 checkpoint -- 2026-07-31
+
+### Integrated evidence since Cycle 37
+
+- Common contract cards restored stale CVT and WildMesh dependency/build
+  contracts.  The current first-party native build manifest verifies all eight
+  modules at `e5a2e4aa` under GCC 13.3 / C++23.  No `third_party/` file changed.
+- Native Poly gained C++23 batched hull-face assembly and an immutable sharded
+  L3 runner.  The frozen sphere path is byte deterministic and the native block
+  is `4.271x` faster; the full 225-node Poly census still reports one failure,
+  two timeouts, and one module with a skip, so Gate 3 remains failed.
+- Native Tri/Quad gained a strict opt-in C++23 flip filter.  Default behavior is
+  unchanged; public-path median improves `1.669x` and the direct kernel
+  `64.99x`, with exact frozen hashes.
+- Native Tet now preserves immutable input-source evidence through all
+  source-certifying call sites and writes Tet point coordinates with 17
+  significant digits.  Cylinder disk ownership changed from `95/216` to
+  `216/216`, unowned points from `121` to `0`, and round-trip coordinate error
+  from `4.995e-10` to zero.  Post-merge focused validation passes `10`.
+- Tet shared-facet sidedness auditing then exposed previously published
+  overlapping tetrahedral complexes: pipeline cylinder `112` same-side faces;
+  self-only cylinder `72`, cube `142`, and sphere `108`.  `b709899d` now fails
+  closed with zero output artifacts instead of reporting these meshes as
+  successful.  Post-merge focused validation passes `8`; Tet functionality and
+  Gate 5 are not claimed.
+- Native Hex added a conservative oriented-box inward-shell certificate, then
+  ported the report-only local-front backtracking kernel to first-party C++23 in
+  `e5a2e4aa`.  On the hard bracket, raw inverted hexes change `160 -> 0` and
+  intersections `4161 -> 0` without outer-coordinate, topology, or provenance
+  change.  The C++ median is `0.000694 s` versus Python `0.032543 s`
+  (`46.89x`); real-extension and build-contract validation passes `22` with
+  zero skips.  This is not a production Boundary-Layer Gate claim.
+- WildMesh runtime dependencies now declare Shapely and Rtree with explicit
+  license boundaries outside the future MIT native core.  The global resolved
+  distribution inventory and release notices remain incomplete.
+
+### Active failed evidence and automatic queue
+
+- Poly Cycle 41 has a five-commit prerequisite stack that fixes pinned Lloyd
+  compaction, explicit BL0 propagation, mandatory pre-write validity, and cell
+  face orientation.  Related checks pass, and a dense cylinder changes from
+  `4497` negative cells to zero, but the stack is deliberately unmerged while
+  `test_native_poly_solid_volume.py` times out.
+- A proposed Poly concave-shell admission was rejected after independent shell
+  checks found `30` non-simple face loops, `42/73` cells with invalid closed-edge
+  incidence, and `20` self-intersecting cells (`154` pairs).  The active card
+  isolates the first dual face-loop/seam assembly defect; no threshold is being
+  relaxed.
+- The active Tet card isolates the first mutation that changes shared-facet
+  sidedness from zero to positive, preferring transaction rollback/avoidance
+  before any local-cavity repair.
+- The active CAD-front contract card records authoritative STEP face identity,
+  orientation, and seam connectivity without inferring missing physical groups.
+  Production Hex boundary-layer promotion remains blocked by CAD semantics,
+  inner-interface closure, and all-hex core fill.
+- Target-cell accuracy remains deliberately behind shape, topology, validity,
+  provenance, and requested boundary-layer behavior.
+
+### Cycle-44 gate re-evaluation
+
+| Gate | Status | Evidence / next evidence |
+|---|---|---|
+| 1 Repository | FAIL | `master` is clean, but active research worktrees remain and `installer/dist/AutoTessell-1.2.0-Setup.exe` is tracked. |
+| 2 Build | UNVERIFIED | GCC 13.3 C++23 first-party modules pass; supported OS/compiler/release matrix remains. |
+| 3 Automated tests | FAIL | Poly immutable census has one failure, two timeouts, and one skip-bearing module; complete unit/integration/UI suite remains. |
+| 4 Shape preservation | UNVERIFIED | Card-level hashes pass; complete representative multi-engine corpus remains. |
+| 5 Mesh validity | FAIL | Tet representative fixtures now correctly refuse overlapping complexes; a successful zero-overlap path is absent. |
+| 6 Cell count | FAIL | Explicitly deferred behind higher-priority contracts. |
+| 7 Boundary layer | UNVERIFIED | BL0 fixes and Hex report-only evidence exist; authoritative CAD 0/1/multi-layer release corpus remains. |
+| 8 Quality | UNVERIFIED | Hex bracket local front is valid but inner core is absent; Poly dense output remains grade D. |
+| 9 Reproducibility | FAIL | New card paths are deterministic; independent wheel bytes and external P4C hashes remain unresolved. |
+| 10 Robustness | UNVERIFIED | New fail-closed cases are covered; adverse corpus remains incomplete. |
+| 11 Performance | UNVERIFIED | Card budgets pass; frozen end-to-end engine budgets remain. |
+| 12 Packaging | FAIL | Windows wheel/installer/UI/install/uninstall matrix remains. |
+| 13 License/provenance | UNVERIFIED | Card provenance is recorded and `third_party/` is unchanged; resolved inventory/notices/source-offer proof remains. |
+| 14 Documentation/operations | UNVERIFIED | Checkpoints are current; installation, troubleshooting, release, and rollback evidence remains incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on Gates 1--14 and a versioned clean artifact/checksum manifest. |
+
+### Next automatic action
+
+- Continue the three active topology/provenance cards, integrate only critic-
+  accepted evidence, then rerun the Poly L3 census and start the next Tri/Quad
+  validity card.  Do not stop or claim release readiness while any gate is
+  `FAIL` or `UNVERIFIED`.
