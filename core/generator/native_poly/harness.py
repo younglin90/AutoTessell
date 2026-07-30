@@ -94,6 +94,7 @@ def run_native_poly_harness(
     case_dir: Path,
     *,
     target_edge_length: float | None = None,
+    target_cells: int | None = None,
     seed_density: int = 10,
     max_iter: int = 2,
     max_tet_cells: int = 30000,
@@ -147,6 +148,7 @@ def run_native_poly_harness(
                 faces,
                 tmp_tet,
                 target_edge_length=target_edge_length,
+                target_cells=target_cells,
                 seed_density=current_seed,
             )
             if not tet_res.success or tet_res.tets is None:

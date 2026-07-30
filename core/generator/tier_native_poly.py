@@ -91,6 +91,7 @@ def _runner(
         faces,
         case_dir,
         target_edge_length=target_edge_length,
+        target_cells=target_cells,
         seed_density=int(seed_density),
         max_iter=int(max_iter),
         boundary_face_classifier=boundary_face_classifier,
