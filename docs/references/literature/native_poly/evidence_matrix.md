@@ -624,6 +624,25 @@ plus MMS tests pass `14/14`. This closes only the implementation/calibration
 sub-card. A native-poly versus native-hex versus native-tet census is still
 required before interpreting a threshold or making an FV accuracy claim.
 
+### `POLY-PHASE0-MATCHING-CPP23-1` polynomial evaluator — 2026-07-31
+
+The exact subset dynamic program became exponential on seed-10 dual cells with
+up to 37 incident faces, leaving `NativeMeshChecker` CPU-active beyond 180
+seconds. The pairing objective now uses its exact maximum-weight-matching
+reduction and an independently authored C++23 Edmonds/Galil primal-dual kernel.
+The same kernel serves polygonal Python orchestration and the native triangular
+Phase-0 path; the exhaustive Python solver remains the small-input oracle.
+
+The sphere checker now completes three exact runs in `2.619/2.448/2.428 s`, at
+least `68.7x` faster than the timeout lower bound. All non-pairing report fields
+and all five polyMesh hashes remain identical; `mesh_ok=true`, negative volume
+zero. Native/exhaustive parity passed 1,500 deterministic cases through 14
+vectors with worst scaled difference `3.67e-15`; dense equal, antipodal,
+near-tie, odd-37, permutation, and harness tests terminate. This is a
+report-only `L1_PASS / CORRECTNESS_KEEP`; no gate, route, mesh, target-cell, or
+boundary-layer behavior changed. See
+`poly_phase0_matching_cpp23_evidence_2026-07-31.md`.
+
 ### `POLY-DUAL-BOUNDARY-SEMANTICS-L0/L1` — 2026-07-28
 
 The new read-only audit requires every exported classified dual boundary cap

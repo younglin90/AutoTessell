@@ -9,6 +9,8 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
 
+#include "native_weighted_matching.hpp"
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -942,42 +944,97 @@ double minimum_pairing_sum(const std::vector<Point3>& vectors)
     if (vectors.empty()) {
         return 0.0;
     }
-    if (vectors.size() >= 64) {
+    constexpr size_t maximum_face_count = 256;
+    if (vectors.size() > maximum_face_count) {
         throw std::invalid_argument(
-            "native triangle Phase-0 pairing supports fewer than 64 faces per cell");
+            "native Phase-0 pairing supports at most 256 faces per cell");
     }
+
     std::vector<double> norms;
     norms.reserve(vectors.size());
+    double all_single_cost = 0.0;
     for (const auto& vector : vectors) {
-        norms.push_back(norm3(vector));
+        const double magnitude = norm3(vector);
+        if (!std::isfinite(magnitude)) {
+            throw std::invalid_argument("pairing vectors must be finite");
+        }
+        norms.push_back(magnitude);
+        all_single_cost += magnitude;
     }
-    std::unordered_map<std::uint64_t, double> memo;
-    const auto solve = [&](auto&& self, std::uint64_t mask) -> double {
-        if (mask == 0) {
-            return 0.0;
-        }
-        if (const auto found = memo.find(mask); found != memo.end()) {
-            return found->second;
-        }
-        const auto first = static_cast<size_t>(std::countr_zero(mask));
-        const std::uint64_t first_bit = std::uint64_t{1} << first;
-        const std::uint64_t rest = mask ^ first_bit;
-        double best = norms[first] + self(self, rest);
-        for (std::uint64_t remaining = rest; remaining != 0;) {
-            const auto second = static_cast<size_t>(std::countr_zero(remaining));
-            const std::uint64_t second_bit = std::uint64_t{1} << second;
+    if (!std::isfinite(all_single_cost)) {
+        throw std::invalid_argument("pairing vector magnitudes must have a finite sum");
+    }
+
+    const size_t graph_size = vectors.size() + (vectors.size() & 1U);
+    std::vector<std::vector<double>> savings(
+        graph_size, std::vector<double>(graph_size, 0.0));
+    double maximum_saving = 0.0;
+    for (size_t first = 0; first < vectors.size(); ++first) {
+        for (size_t second = first + 1; second < vectors.size(); ++second) {
             const Point3 pair{
                 vectors[first][0] + vectors[second][0],
                 vectors[first][1] + vectors[second][1],
                 vectors[first][2] + vectors[second][2]};
-            best = std::min(
-                best, norm3(pair) + self(self, rest ^ second_bit));
-            remaining ^= second_bit;
+            const double raw_saving = norms[first] + norms[second] - norm3(pair);
+            if (!std::isfinite(raw_saving)) {
+                throw std::invalid_argument("pairing vector arithmetic must remain finite");
+            }
+            const double saving = std::max(0.0, raw_saving);
+            savings[first][second] = saving;
+            savings[second][first] = saving;
+            maximum_saving = std::max(maximum_saving, saving);
         }
-        memo.emplace(mask, best);
-        return best;
-    };
-    return solve(solve, (std::uint64_t{1} << vectors.size()) - 1);
+    }
+
+    using Matching = autotessell::matching::MaximumWeightMatching;
+    constexpr Matching::Weight quantization_max = Matching::Weight{1} << 50;
+    constexpr Matching::Weight cardinality_bonus = quantization_max + 1;
+    Matching matching(static_cast<int>(graph_size));
+    for (size_t first = 0; first < graph_size; ++first) {
+        for (size_t second = first + 1; second < graph_size; ++second) {
+            Matching::Weight quantized_saving = 0;
+            if (maximum_saving > 0.0) {
+                const long double ratio = static_cast<long double>(savings[first][second])
+                    / static_cast<long double>(maximum_saving);
+                quantized_saving = static_cast<Matching::Weight>(std::llround(
+                    ratio * static_cast<long double>(quantization_max)));
+            }
+            matching.add_edge(
+                static_cast<int>(first + 1),
+                static_cast<int>(second + 1),
+                2 * (cardinality_bonus + quantized_saving));
+        }
+    }
+
+    const std::vector<int> mates = matching.solve();
+    double selected_saving = 0.0;
+    for (size_t first = 0; first < vectors.size(); ++first) {
+        const int second_raw = mates[first];
+        if (second_raw < 0) {
+            throw std::logic_error("weighted pairing did not produce a full matching");
+        }
+        const auto second = static_cast<size_t>(second_raw);
+        if (second < vectors.size() && first < second) {
+            selected_saving += savings[first][second];
+        }
+    }
+    return std::max(0.0, all_single_cost - selected_saving);
+}
+
+double minimum_pairing_sum_array(
+    py::array_t<double, py::array::c_style | py::array::forcecast> vectors)
+{
+    if (vectors.ndim() != 2 || vectors.shape(1) != 3) {
+        throw std::invalid_argument("vectors must have shape (n, 3)");
+    }
+    const auto values = vectors.unchecked<2>();
+    std::vector<Point3> copied;
+    copied.reserve(static_cast<size_t>(vectors.shape(0)));
+    for (py::ssize_t row = 0; row < vectors.shape(0); ++row) {
+        copied.push_back(Point3{values(row, 0), values(row, 1), values(row, 2)});
+    }
+    py::gil_scoped_release release;
+    return minimum_pairing_sum(copied);
 }
 
 py::tuple compute_triangle_phase0_metrics_topology(
@@ -3646,6 +3703,8 @@ PYBIND11_MODULE(native_metrics, m)
           py::arg("cell_centres"), py::arg("face_centres"),
           py::arg("face_normals"), py::arg("face_areas"),
           py::arg("cell_volumes"));
+    m.def("minimum_pairing_sum", &minimum_pairing_sum_array,
+          py::arg("vectors"));
     m.def("compute_non_orthogonality", &compute_non_orthogonality,
           py::arg("face_centres"), py::arg("face_normals"),
           py::arg("cell_centres"), py::arg("owner"), py::arg("neighbour"),

@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from core.utils.native_extensions import load_native_metrics
+
 
 @dataclass(frozen=True)
 class PolyPhase0Metrics:
@@ -67,20 +69,8 @@ def _summary(values: list[float] | np.ndarray) -> tuple[float, float, float, flo
     )
 
 
-def _minimum_pairing_sum(vectors: np.ndarray) -> float:
-    """Return the minimum unpaired-vector sum over deterministic pairings.
-
-    A perfectly opposite pair contributes zero.  An odd face count leaves one
-    vector unmatched and charges its magnitude; this keeps the diagnostic
-    defined for arbitrary polyhedra without inventing a face.  The cell sizes
-    in the native-poly lane are small, so exhaustive pairing is bounded and
-    makes the reported minimum independent of traversal order.
-    """
-    values = np.asarray(vectors, dtype=np.float64)
-    if values.ndim != 2 or values.shape[1] != 3:
-        raise ValueError("vectors must have shape (n, 3)")
-    if len(values) == 0:
-        return 0.0
+def _minimum_pairing_sum_exhaustive(values: np.ndarray) -> float:
+    """Small-input exact oracle for the native weighted-matching kernel."""
     norms = np.linalg.norm(values, axis=1)
     memo: dict[int, float] = {}
 
@@ -105,6 +95,26 @@ def _minimum_pairing_sum(vectors: np.ndarray) -> float:
         return best
 
     return solve((1 << len(values)) - 1)
+
+
+def _minimum_pairing_sum(vectors: np.ndarray) -> float:
+    """Return the minimum unpaired-vector sum over deterministic pairings.
+
+    A perfectly opposite pair contributes zero.  An odd face count leaves one
+    vector unmatched and charges its magnitude; this keeps the diagnostic
+    defined for arbitrary polyhedra without inventing a face.  The native path
+    reduces the objective exactly to maximum-weight general matching.  The
+    exhaustive fallback remains the source-build oracle for small cell sizes.
+    """
+    values = np.asarray(vectors, dtype=np.float64)
+    if values.ndim != 2 or values.shape[1] != 3:
+        raise ValueError("vectors must have shape (n, 3)")
+    if len(values) == 0:
+        return 0.0
+    native_metrics = load_native_metrics()
+    if native_metrics is not None and hasattr(native_metrics, "minimum_pairing_sum"):
+        return float(native_metrics.minimum_pairing_sum(values))
+    return _minimum_pairing_sum_exhaustive(values)
 
 
 def _face_pairing_residual(
