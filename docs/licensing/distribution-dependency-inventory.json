@@ -211,6 +211,73 @@
           "core_boundary": "external_adapter_excluded"
         }
       ]
+    },
+    {
+      "id": "first-party-native-wheel",
+      "source": "pyproject.toml:[tool.scikit-build] and auto_tessell_core/CMakeLists.txt",
+      "project_license": "GPL-3.0-or-later",
+      "corresponding_source": "same-version sdist published beside each wheel",
+      "native_modules": [
+        "native_metrics",
+        "native_bl",
+        "native_polymesh",
+        "native_snap",
+        "native_surface_padding",
+        "native_hex_quality",
+        "native_tet_predicates",
+        "native_tet_qopt"
+      ],
+      "dependencies": [
+        {
+          "id": "cmake:pybind11",
+          "kind": "build_only",
+          "requirement": "pybind11>=3.0.4,<4",
+          "distribution_condition": "isolated PEP 517 build",
+          "license_assertion": {
+            "status": "UPSTREAM_LICENSE_DECLARED",
+            "spdx_expression": "BSD-3-Clause",
+            "local_evidence": [
+              "docs/licensing/native-core-provenance-manifest.json"
+            ]
+          },
+          "core_boundary": "not_core_implementation"
+        },
+        {
+          "id": "cmake:Boost.headers",
+          "kind": "build_only_header",
+          "declaration": "find_package(Boost REQUIRED); target_link_libraries(native_tet_predicates PRIVATE Boost::headers)",
+          "distribution_condition": "native_tet_predicates",
+          "license_assertion": {
+            "status": "UPSTREAM_LICENSE_DECLARED_NOT_YET_RELEASE_AUDITED",
+            "spdx_expression": "BSL-1.0",
+            "local_evidence": [
+              "docs/licensing/native-core-provenance-manifest.json"
+            ]
+          },
+          "core_boundary": "build_dependency_not_distributed"
+        },
+        {
+          "id": "source:shewchuk-predicates",
+          "kind": "compiled_source",
+          "path": "core/utils/_shewchuk/predicates.c",
+          "distribution_condition": "native_tet_predicates",
+          "license_assertion": {
+            "status": "LOCAL_PROVENANCE_RECORDED",
+            "spdx_expression": "LicenseRef-Public-Domain",
+            "local_evidence": [
+              "docs/licensing/native-core-provenance-manifest.json"
+            ]
+          },
+          "core_boundary": "native_core_dependency"
+        }
+      ],
+      "forbidden_native_modules": [
+        "cinolib_hex",
+        "robusthex",
+        "ftetwild",
+        "cfmesh_native"
+      ],
+      "policy": "docs/licensing/first-party-native-wheel-profile.md"
     }
   ]
 }

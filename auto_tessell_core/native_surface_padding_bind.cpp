@@ -193,7 +193,7 @@ py::dict pad_surface(
     std::sort(edges.begin(), edges.end());
     edges.erase(std::unique(edges.begin(), edges.end()), edges.end());
     double total_length = 0.0;
-    for (const auto [begin, end] : edges) {
+    for (const auto& [begin, end] : edges) {
         const Point delta = subtract(
             source_vertices[static_cast<size_t>(end)], source_vertices[static_cast<size_t>(begin)]);
         const double length = std::sqrt(squared_norm(delta));
