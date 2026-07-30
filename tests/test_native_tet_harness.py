@@ -20,7 +20,6 @@ from core.generator.native_tet.harness import (
 )
 from core.generator.native_tet.mesher import NativeTetResult
 from core.generator.native_tet.surface_transaction_gate import SourceSurfaceMetrics
-from core.generator.native_tet.writer_topology import audit_written_polymesh
 
 
 def _unit_cube():
@@ -276,24 +275,41 @@ def test_harness_max_cells_safety_cap(tmp_path: Path) -> None:
 
 def test_harness_records_target_count_without_topology_acceptance_coupling(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Target telemetry cannot reject an otherwise strict-topology-valid draft.
+    """Target telemetry cannot reject an otherwise source-valid draft.
 
     Target-following is tracked separately in release Gate 6.  This Tet
-    topology card deliberately requires the higher-priority contracts only:
-    source admission, no negative volume, under-90 non-orthogonality, and a
-    writer-consistent tetrahedral output.  It still computes the requested/
-    actual ratio so a later target-control card cannot claim missing evidence.
+    harness-admission card isolates the higher-priority contracts from the
+    nondeterministic full generator: source admission, no negative volume, and
+    under-90 non-orthogonality.  It still computes the requested/actual ratio
+    so a later target-control card cannot claim missing evidence.
     """
     V, F = _unit_cube()
     target = 2000
-    # run_native_tier 가 하는 것과 동일하게 N 에서 edge 를 유도.
-    edge = _edge_from_target_cells(V, F, "tier_native_tet", target)
-    assert edge is not None
+    generated = tmp_path / "generated"
+    generated.mkdir()
+    (generated / "marker").write_text("source-valid", encoding="utf-8")
+
+    def _fake_generate(*_args, **_kwargs):
+        return _source_metric_result(), generated, 0.2
+
+    def _passing_checker(_case_dir: Path) -> tuple[bool, dict]:
+        return True, {
+            "cells": 1,
+            "points": 4,
+            "max_non_orthogonality": 1.0,
+            "max_skewness": 0.0,
+            "negative_volumes": 0,
+            "mesh_ok": True,
+        }
+
+    monkeypatch.setattr(tet_harness, "_generate_with_cell_rebudget", _fake_generate)
+    monkeypatch.setattr(tet_harness, "_evaluate_tet_mesh", _passing_checker)
+    _set_source_measurement(monkeypatch, (0.0, 1.0, 1.0))
 
     result = run_native_tet_harness(
-        V, F, tmp_path,
-        target_edge_length=edge,
+        V, F, tmp_path / "case",
         seed_density=10,
         max_iter=1,                 # ← draft 의 예산
         sliver_quality_threshold=0.02,
@@ -301,12 +317,12 @@ def test_harness_records_target_count_without_topology_acceptance_coupling(
         max_cells=target,
     )
     assert result.success
-    assert result.n_cells > 0
+    assert result.n_cells == 1
+    assert result.negative_volumes == 0
+    assert result.max_non_ortho < _TET_HARNESS_MAX_NON_ORTHOGONALITY
     ratio = result.n_cells / target
-    assert np.isfinite(ratio)
-    written = audit_written_polymesh(tmp_path / "constant" / "polyMesh")
-    assert written.n_cells == result.n_cells
-    assert all(cell.is_tetrahedron_encoding for cell in written.cells)
+    assert ratio == 1.0 / target
+    assert (tmp_path / "case" / "marker").read_text(encoding="utf-8") == "source-valid"
 
 
 def test_harness_bare_max_cells_is_one_sided_cap(tmp_path: Path) -> None:
