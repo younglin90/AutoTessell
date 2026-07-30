@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `6`
+- cycle: `7`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `a1be3c4761a6e21a38b84be52bf0f804f59cd56d`
+- last_verified_master: `2a530343f42954ca034020a5e3af36d0305d3483`
 - allowed_to_stop: `false`
-- next_action: `parallel lanes: CMAKE-NATIVE-SURFACE-PADDING-TARGET-1, FACE-REMESH-EXPLICIT-ROUTING-1, TET-INPUT-VERTEX-L0-HELPER-RESTORE-1.`
+- next_action: `TET-STRICT-TOPOLOGY-CUBE-PROBE-1; HEX-NEXT-CARD-SCAN-1 in parallel; then poly and tri/quad gate cards.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -307,3 +307,92 @@ scope. Future MIT-core boundary follows
   classified full-test baseline rather than treating collection as a test pass.
 - Follow tet helper cleanup with the separate `TET-TARGET-MAX-CELLS-CONTRACT-1`
   card. It may not overlap another `mesher.py` mutation.
+
+## Cycle 7 checkpoint — 2026-07-30
+
+### User-priority update
+
+- Native-tet target-cell work is deferred.  Strict topology is the immediate
+  primary metric; a release Gate-6 failure is recorded but does not block the
+  next strict-topology card.
+- The topology acceptance rule may be made less brittle only when a proof shows
+  that the relaxed/recovered candidate preserves the exterior boundary and has
+  no invalid or residual non-manifold entity.  A real 3+-cell face is never
+  silently encoded as a successful OpenFOAM mesh.
+
+### Integration, recovery, and cleanup evidence
+
+- `c884ac8e` merged through `7a9a8735`.  Explicit `native_face_remesh` and
+  `native_quad_dominant` now reject a positive `target_faces` before invoking
+  an engine or fallback; `None` and `0` retain the existing route.  Focused
+  route suite: `32 passed in 24.36 s`; post-merge native-face suite:
+  `12 passed in 2.78 s`.  Archive patches:
+  `face-explicit-target-contract-c884ac8e/` and
+  `face-explicit-routing-21cc0214/`.
+- `380a0cda` merged through `2a530343`.  The native-tet final sync now removes
+  every member of an exact duplicate-tetrahedron group only if boundary face
+  keys are unchanged and the resulting tet audit has zero duplicate,
+  degenerate, open-edge, non-manifold-edge, and non-manifold-face entities.
+  Residual true non-manifold output still reaches the strict writer and fails
+  closed.  No external source was copied; the independent provenance note is
+  `docs/references/tetrahedral_meshing/strict_topology_duplicate_group_repair_2026-07-30.md`.
+- Cylinder strict-topology probe (`target_cells=2000`, external rescue off):
+  baseline `1499` tets with `4` non-manifold faces and `2` exact duplicate
+  groups; recovered result `1495` tets, boundary keys `216 -> 216`, boundary
+  area unchanged, and all audited duplicate/degenerate/open/non-manifold counts
+  `0`.  Requested/actual cell error is `-505` (`-25.25%`), intentionally not
+  accepted as a target-cell success under the new priority.
+- Strict topology focused suite after merge: `24 passed in 16.89 s`.  The
+  cylinder regression passed three independent runs (`17.50 s`, `17.53 s`,
+  `17.92 s`).  The generic strict-writer non-manifold rejection tests remain
+  green.
+- `FULL-VALIDATION-BASELINE-1` ran with a `900 s` watchdog, reached about
+  `14%`, and ended without a pytest summary.  `master` changed during the run,
+  so this is invalid baseline evidence, not a pass or a fail.  It must be
+  rerun on an immutable commit.
+- Both merged face worktrees/branches and the merged tet worktree/branch were
+  archived then removed exactly.  Tet archive:
+  `tet-strict-topology-duplicate-repair-380a0cda/0001-fix-native-tet-duplicate-group-topology-repair.patch`
+  (`sha256:52fc3314c95bf75993dd4e1eec845cf91a841f788c19464b0e7fe6cfb0557947`).
+  No `third_party/` file changed.
+
+### Research record
+
+- CGAL 6.2 Tetrahedral Remeshing documentation was checked for this card:
+  topology-preserving atomic operations and feature-complex preservation are
+  separated from sizing optimization.  Sources:
+  `https://doc.cgal.org/latest/Tetrahedral_remeshing/index.html` and
+  `https://doc.cgal.org/latest/Tetrahedral_remeshing/group__PkgTetrahedralRemeshingRef.html`.
+  The card uses only the independently implemented contract above.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-7 evidence / next evidence |
+|---|---|---|
+| 1 Repository | UNVERIFIED | `master` clean after cleanup; active campaign lanes prevent terminal closure. |
+| 2 Build | UNVERIFIED | Native Release matrix remains incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused regressions pass; full immutable-head run remains missing. |
+| 4 Shape preservation | UNVERIFIED | Duplicate repair proves pre/post tet boundary equality; corpus proof remains missing. |
+| 5 Mesh validity | UNVERIFIED | Cylinder strict topology is repaired and writer-valid; cube/corpus strict topology is next. |
+| 6 Cell count | FAIL | Existing tet/poly target contracts remain unmet.  Tet target work is deferred by user priority. |
+| 7 Boundary layer | UNVERIFIED | BL0-only evidence; positive-layer corpus remains missing. |
+| 8 Quality | UNVERIFIED | No complete engine/fixture specification matrix. |
+| 9 Reproducibility | UNVERIFIED | Card-local cylinder 3-run pass only; campaign corpus is missing. |
+| 10 Robustness | UNVERIFIED | Strict duplicate-group recovery is one fixture; full adverse corpus remains missing. |
+| 11 Performance | UNVERIFIED | No frozen Release benchmark budgets. |
+| 12 Packaging | UNVERIFIED | Wheel smoke only; native/installer clean-install proof missing. |
+| 13 License/provenance | UNVERIFIED | Current GPL and no-third-party policy upheld; artifact proof remains incomplete. |
+| 14 Documentation/operations | UNVERIFIED | Release operations/checklist proof missing. |
+| 15 Release candidate | UNVERIFIED | Gates 1–14 remain open. |
+
+### Next automatic actions
+
+- `TET-STRICT-TOPOLOGY-CUBE-PROBE-1`: run the known cube target route as a
+  topology probe only; classify whether duplicate-group recovery clears it or
+  a true residual face incidence remains.  Do not rebudget or relax target
+  tolerance in this card.
+- `HEX-NEXT-CARD-SCAN-1`: select one independently testable native-hex card in
+  parallel, then assign a clean worktree.
+- After those, select native-poly and native-tri/quad cards from their own
+  research/evidence records.  Gate 6 remains recorded but is not the tet lane's
+  scheduling priority.
