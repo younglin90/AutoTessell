@@ -22,6 +22,10 @@ dependencies = [
     # 메쉬 I/O 호환 (v0.4 에서 자체 reader 로 점진 전환 중이지만 legacy 경로
     # 기본값과 file_reader.py 의 다양한 포맷 지원을 위해 아직 유지).
     "trimesh>=4.5",
+    # WildMesh axis-section topology and conservative hole-sweep validation.
+    # Keep this Python runtime outside the future first-party MIT native core.
+    "shapely>=2.1,<3",
+    "rtree>=1.4,<2",
     "meshio>=5.3",
     "pyvista>=0.44",
 ]

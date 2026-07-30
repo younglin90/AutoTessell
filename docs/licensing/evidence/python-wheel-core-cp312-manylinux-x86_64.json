@@ -392,6 +392,77 @@
       }
     },
     {
+      "id": "pypi:shapely",
+      "role": "runtime_direct",
+      "requirement": "shapely>=2.1,<3",
+      "name": "shapely",
+      "version": "2.1.2",
+      "pypi_json_url": "https://pypi.org/pypi/shapely/2.1.2/json",
+      "artifact": {
+        "filename": "shapely-2.1.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "url": "https://files.pythonhosted.org/packages/b9/37/e781683abac55dde9771e086b790e554811a71ed0b2b8a1e789b7430dd44/shapely-2.1.2-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "sha256": "1e7d4d7ad262a48bb44277ca12c7c78cb1b0f56b32c10734ec9a1d30c0b0c54b"
+      },
+      "metadata": {
+        "path": "shapely-2.1.2.dist-info/METADATA",
+        "sha256": "0dc2e9aed9d57f314be60e8855a0caec53865cbd4c96752b8ac4fff571d1a2da",
+        "metadata_version": "2.4",
+        "name": "shapely",
+        "version": "2.1.2",
+        "requires_python": ">=3.10",
+        "license_expression": null,
+        "license_field_sha256": "f4efa249eada90291d5db535412acdb1b0fc8ed21129a070dc3667af7631ef5c",
+        "license_field_length": 12,
+        "license_classifiers": [
+          "License :: OSI Approved :: BSD License"
+        ],
+        "license_files": [
+          {
+            "declared_path": "LICENSE.txt",
+            "archive_path": "shapely-2.1.2.dist-info/licenses/LICENSE.txt",
+            "sha256": "4a207eac9bf257ed286e1c6f0fce253d1abfdb134fc61ec855e37f5692a3f754"
+          },
+          {
+            "declared_path": "LICENSE_GEOS",
+            "archive_path": "shapely-2.1.2.dist-info/licenses/LICENSE_GEOS",
+            "sha256": "138b2c2f9450073d7c116abe397ca4382625671c752b7a9a5f320b33fc3f3f2a"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:rtree",
+      "role": "runtime_direct",
+      "requirement": "rtree>=1.4,<2",
+      "name": "rtree",
+      "version": "1.4.1",
+      "pypi_json_url": "https://pypi.org/pypi/rtree/1.4.1/json",
+      "artifact": {
+        "filename": "rtree-1.4.1-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+        "url": "https://files.pythonhosted.org/packages/d1/75/e5d44be90525cd28503e7f836d077ae6663ec0687a13ba7810b4114b3668/rtree-1.4.1-py3-none-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl",
+        "sha256": "12de4578f1b3381a93a655846900be4e3d5f4cd5e306b8b00aa77c1121dc7e8c"
+      },
+      "metadata": {
+        "path": "rtree-1.4.1.dist-info/METADATA",
+        "sha256": "bdca97d6c73966af4a00c7b285720bc39a988f7b611eb84bc3cd14e5bfd98228",
+        "metadata_version": "2.4",
+        "name": "rtree",
+        "version": "1.4.1",
+        "requires_python": ">=3.9",
+        "license_expression": "MIT",
+        "license_field_sha256": null,
+        "license_field_length": 0,
+        "license_classifiers": [],
+        "license_files": [
+          {
+            "declared_path": "LICENSE.txt",
+            "archive_path": "rtree-1.4.1.dist-info/licenses/LICENSE.txt",
+            "sha256": "2e3e6e756da9258484bdd0e81dcd57c9094a58ca23c37c79b14cc23eeb6b7b21"
+          }
+        ]
+      }
+    },
+    {
       "id": "pypi:meshio",
       "role": "runtime_direct",
       "requirement": "meshio>=5.3",

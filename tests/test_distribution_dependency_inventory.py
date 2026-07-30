@@ -38,6 +38,65 @@ def test_python_wheel_profile_is_fully_resolved() -> None:
     )
 
 
+def test_wildmesh_polygon_runtime_stays_outside_future_mit_native_core() -> None:
+    with (_ROOT / "pyproject.toml").open("rb") as stream:
+        config = tomllib.load(stream)
+    assert "shapely>=2.1,<3" in config["project"]["dependencies"]
+    assert "rtree>=1.4,<2" in config["project"]["dependencies"]
+
+    manifest = load_manifest(_MANIFEST)
+    shapely_record = _dependency(manifest, "python-wheel-core", "pypi:shapely")
+    assert shapely_record["core_boundary"] == "not_core_implementation"
+    assert (
+        shapely_record["runtime_boundary"]
+        == "python_distribution_runtime_excluded_from_future_mit_native_core"
+    )
+    assert shapely_record["bundled_runtime_components"] == [
+        {
+            "name": "GEOS",
+            "relationship": "bundled_shared_libraries",
+            "license_label_from_artifact": "LGPLv2.1",
+            "artifact_license_file": "LICENSE_GEOS",
+            "core_boundary": "excluded_from_future_mit_native_core",
+        }
+    ]
+    rtree_record = _dependency(manifest, "python-wheel-core", "pypi:rtree")
+    assert rtree_record["core_boundary"] == "not_core_implementation"
+    assert (
+        rtree_record["runtime_boundary"]
+        == "python_distribution_runtime_excluded_from_future_mit_native_core"
+    )
+    assert rtree_record["bundled_runtime_components"] == [
+        {
+            "name": "libspatialindex",
+            "version": "2.1.0",
+            "relationship": "bundled_shared_library",
+            "spdx_expression": "MIT",
+            "wheel_artifact_evidence": "pypi:rtree@1.4.1",
+            "upstream_license_evidence": (
+                "https://github.com/libspatialindex/libspatialindex/blob/2.1.0/COPYING"
+            ),
+            "core_boundary": "excluded_from_future_mit_native_core",
+        }
+    ]
+
+    evidence = json.loads(_EVIDENCE.read_text(encoding="utf-8"))
+    shapely_evidence = next(item for item in evidence["packages"] if item["id"] == "pypi:shapely")
+    assert shapely_evidence["role"] == "runtime_direct"
+    assert shapely_evidence["requirement"] == "shapely>=2.1,<3"
+    assert {item["declared_path"] for item in shapely_evidence["metadata"]["license_files"]} == {
+        "LICENSE.txt",
+        "LICENSE_GEOS",
+    }
+    rtree_evidence = next(item for item in evidence["packages"] if item["id"] == "pypi:rtree")
+    assert rtree_evidence["role"] == "runtime_direct"
+    assert rtree_evidence["requirement"] == "rtree>=1.4,<2"
+    assert rtree_evidence["metadata"]["license_expression"] == "MIT"
+    assert {item["declared_path"] for item in rtree_evidence["metadata"]["license_files"]} == {
+        "LICENSE.txt"
+    }
+
+
 def test_global_resolution_stays_fail_closed() -> None:
     errors = validate(load_manifest(_MANIFEST), _ROOT, require_resolved=True)
     assert len(errors) == 8
