@@ -351,6 +351,30 @@ def detect_self_intersections(
 
     aabb_min, aabb_max = _tri_aabbs(V, F)
 
+    from core.utils.native_extensions import load_native_metrics  # noqa: PLC0415
+
+    native = load_native_metrics()
+    if (
+        native is not None
+        and hasattr(native, "aabb_overlap_pairs")
+        and hasattr(native, "triangle_intersections_segment")
+    ):
+        candidate_array = native.aabb_overlap_pairs(aabb_min, aabb_max, 1e-12)
+        n_tested, pair_array = native.triangle_intersections_segment(
+            V, F, candidate_array, 1e-12
+        )
+        pairs = [
+            (int(pair[0]), int(pair[1]))
+            for pair in np.asarray(pair_array, dtype=np.int64)
+        ]
+        return SelfIntersectReport(
+            n_faces=n_faces,
+            n_pairs_tested=int(n_tested),
+            n_intersections=len(pairs),
+            intersecting_face_pairs=pairs,
+            elapsed_s=_t.perf_counter() - t0,
+        )
+
     # Native sweep is exact at every size.  The approximate KDTree remains only
     # an optional-extension fallback for backward-compatible installations.
     native_candidates = _native_aabb_overlap_pairs(

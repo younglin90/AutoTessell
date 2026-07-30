@@ -108,6 +108,19 @@ def _detect_self_intersections_impl(V: np.ndarray, F: np.ndarray) -> np.ndarray:
     # optional-extension fallback preserves the prior broadcast oracle.
     if n == 0:
         return np.empty((0, 2), dtype=np.intp)
+    from core.utils.native_extensions import load_native_metrics  # noqa: PLC0415
+
+    native = load_native_metrics()
+    if (
+        native is not None
+        and hasattr(native, "aabb_overlap_pairs")
+        and hasattr(native, "triangle_intersections_interval")
+    ):
+        candidates = native.aabb_overlap_pairs(aabb_min, aabb_max, 0.0)
+        return np.asarray(
+            native.triangle_intersections_interval(V, F, candidates, 1e-10),
+            dtype=np.intp,
+        )
     from core.preprocessor.native_repair.self_intersect import (  # noqa: PLC0415
         _aabb_overlap_pairs,
     )

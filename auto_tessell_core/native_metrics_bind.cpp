@@ -1939,6 +1939,384 @@ py::dict validate_triangle_surface_and_build_edge_faces(
     return result;
 }
 
+[[nodiscard]] double dot(const Point3& left, const Point3& right) noexcept
+{
+    return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
+[[nodiscard]] double norm(const Point3& value) noexcept
+{
+    return std::sqrt(dot(value, value));
+}
+
+[[nodiscard]] bool all_greater(
+    const std::array<double, 3>& values, const double threshold) noexcept
+{
+    return values[0] > threshold
+        && values[1] > threshold
+        && values[2] > threshold;
+}
+
+[[nodiscard]] bool all_less(
+    const std::array<double, 3>& values, const double threshold) noexcept
+{
+    return values[0] < threshold
+        && values[1] < threshold
+        && values[2] < threshold;
+}
+
+[[nodiscard]] bool segment_hits_triangle(
+    const Point3& point0,
+    const Point3& point1,
+    const std::array<Point3, 3>& triangle,
+    const double epsilon) noexcept
+{
+    const Point3 direction = sub(point1, point0);
+    const Point3 edge1 = sub(triangle[1], triangle[0]);
+    const Point3 edge2 = sub(triangle[2], triangle[0]);
+    const Point3 pvec = cross(direction, edge2);
+    const double determinant = dot(edge1, pvec);
+    if (std::abs(determinant) < epsilon) {
+        return false;
+    }
+    const double inverse_determinant = 1.0 / determinant;
+    const Point3 tvec = sub(point0, triangle[0]);
+    const double u = dot(tvec, pvec) * inverse_determinant;
+    if (u < -epsilon || u > 1.0 + epsilon) {
+        return false;
+    }
+    const Point3 qvec = cross(tvec, edge1);
+    const double v = dot(direction, qvec) * inverse_determinant;
+    if (v < -epsilon || u + v > 1.0 + epsilon) {
+        return false;
+    }
+    const double distance = dot(edge2, qvec) * inverse_determinant;
+    return distance >= -epsilon && distance <= 1.0 + epsilon;
+}
+
+[[nodiscard]] bool segment_triangle_intersection(
+    const std::array<Point3, 3>& first,
+    const std::array<Point3, 3>& second,
+    const double epsilon) noexcept
+{
+    const Point3 normal1 = cross(
+        sub(first[1], first[0]), sub(first[2], first[0]));
+    if (norm(normal1) < epsilon) {
+        return false;
+    }
+    const double distance1 = dot(normal1, first[0]);
+    const std::array<double, 3> second_distances{
+        dot(normal1, second[0]) - distance1,
+        dot(normal1, second[1]) - distance1,
+        dot(normal1, second[2]) - distance1,
+    };
+    if (all_greater(second_distances, epsilon)
+        || all_less(second_distances, -epsilon)) {
+        return false;
+    }
+    if (std::abs(second_distances[0]) < epsilon
+        && std::abs(second_distances[1]) < epsilon
+        && std::abs(second_distances[2]) < epsilon) {
+        return false;
+    }
+
+    const Point3 normal2 = cross(
+        sub(second[1], second[0]), sub(second[2], second[0]));
+    if (norm(normal2) < epsilon) {
+        return false;
+    }
+    const double distance2 = dot(normal2, second[0]);
+    const std::array<double, 3> first_distances{
+        dot(normal2, first[0]) - distance2,
+        dot(normal2, first[1]) - distance2,
+        dot(normal2, first[2]) - distance2,
+    };
+    if (all_greater(first_distances, epsilon)
+        || all_less(first_distances, -epsilon)) {
+        return false;
+    }
+
+    constexpr std::array<std::array<size_t, 2>, 3> edges{{
+        {{0U, 1U}}, {{1U, 2U}}, {{2U, 0U}},
+    }};
+    for (const auto& edge : edges) {
+        if (segment_hits_triangle(
+                first[edge[0]], first[edge[1]], second, epsilon)) {
+            return true;
+        }
+    }
+    for (const auto& edge : edges) {
+        if (segment_hits_triangle(
+                second[edge[0]], second[edge[1]], first, epsilon)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+[[nodiscard]] std::pair<double, double> intersection_interval(
+    const std::array<Point3, 3>& triangle,
+    const std::array<double, 3>& signed_distances,
+    const Point3& direction,
+    const double epsilon) noexcept
+{
+    const std::array<double, 3> projection{
+        dot(triangle[0], direction),
+        dot(triangle[1], direction),
+        dot(triangle[2], direction),
+    };
+    std::array<size_t, 3> same{};
+    std::array<size_t, 3> different{};
+    size_t same_count = 0U;
+    size_t different_count = 0U;
+    for (size_t index = 0U; index < 3U; ++index) {
+        if (signed_distances[index] * signed_distances[0] > 0.0) {
+            same[same_count++] = index;
+        } else {
+            different[different_count++] = index;
+        }
+    }
+
+    size_t alone = 0U;
+    std::array<size_t, 2> others{1U, 2U};
+    if (same_count == 2U) {
+        alone = 0U;
+    } else if (different_count == 1U) {
+        alone = different[0];
+        others = alone == 0U
+            ? std::array<size_t, 2>{1U, 2U}
+            : alone == 1U
+                ? std::array<size_t, 2>{0U, 2U}
+                : std::array<size_t, 2>{0U, 1U};
+    } else if (same_count == 1U) {
+        alone = same[0];
+        others = alone == 0U
+            ? std::array<size_t, 2>{1U, 2U}
+            : alone == 1U
+                ? std::array<size_t, 2>{0U, 2U}
+                : std::array<size_t, 2>{0U, 1U};
+    }
+
+    std::array<double, 2> values{};
+    for (size_t index = 0U; index < 2U; ++index) {
+        const size_t other = others[index];
+        const double denominator =
+            signed_distances[alone] - signed_distances[other];
+        values[index] = std::abs(denominator) < epsilon
+            ? projection[alone]
+            : projection[other]
+                + (projection[alone] - projection[other])
+                    * signed_distances[other] / denominator;
+    }
+    return std::minmax(values[0], values[1]);
+}
+
+[[nodiscard]] bool interval_triangle_intersection(
+    const std::array<Point3, 3>& first,
+    const std::array<Point3, 3>& second,
+    const double epsilon) noexcept
+{
+    const Point3 normal1 = cross(
+        sub(first[1], first[0]), sub(first[2], first[0]));
+    const double distance1 = dot(normal1, first[0]);
+    const std::array<double, 3> second_distances{
+        dot(second[0], normal1) - distance1,
+        dot(second[1], normal1) - distance1,
+        dot(second[2], normal1) - distance1,
+    };
+    if (all_greater(second_distances, epsilon)
+        || all_less(second_distances, -epsilon)) {
+        return false;
+    }
+
+    const Point3 normal2 = cross(
+        sub(second[1], second[0]), sub(second[2], second[0]));
+    const double distance2 = dot(normal2, second[0]);
+    const std::array<double, 3> first_distances{
+        dot(first[0], normal2) - distance2,
+        dot(first[1], normal2) - distance2,
+        dot(first[2], normal2) - distance2,
+    };
+    if (all_greater(first_distances, epsilon)
+        || all_less(first_distances, -epsilon)) {
+        return false;
+    }
+
+    Point3 direction = cross(normal1, normal2);
+    const double direction_norm = norm(direction);
+    if (direction_norm < epsilon) {
+        return false;
+    }
+    direction[0] /= direction_norm;
+    direction[1] /= direction_norm;
+    direction[2] /= direction_norm;
+    const auto first_interval = intersection_interval(
+        first, first_distances, direction, epsilon);
+    const auto second_interval = intersection_interval(
+        second, second_distances, direction, epsilon);
+    return first_interval.second >= second_interval.first - epsilon
+        && second_interval.second >= first_interval.first - epsilon;
+}
+
+struct TriangleIntersectionResult {
+    long long tested = 0;
+    std::vector<std::pair<long long, long long>> pairs;
+};
+
+enum class TrianglePredicate : unsigned char {
+    Segment,
+    Interval,
+};
+
+TriangleIntersectionResult triangle_intersections_impl(
+    const double* vertices,
+    const long long* triangles,
+    const long long* candidates,
+    const size_t candidate_count,
+    const size_t shared_vertex_threshold,
+    const double epsilon,
+    const TrianglePredicate predicate)
+{
+    TriangleIntersectionResult result;
+    result.pairs.reserve(std::min(candidate_count, static_cast<size_t>(1024U)));
+    for (size_t candidate_index = 0U;
+         candidate_index < candidate_count;
+         ++candidate_index) {
+        const long long first_id = candidates[candidate_index * 2U];
+        const long long second_id = candidates[candidate_index * 2U + 1U];
+        const long long* const first_face = triangles
+            + static_cast<size_t>(first_id) * 3U;
+        const long long* const second_face = triangles
+            + static_cast<size_t>(second_id) * 3U;
+        std::array<long long, 3> shared_ids{};
+        size_t shared_vertices = 0U;
+        for (size_t first_local = 0U; first_local < 3U; ++first_local) {
+            for (size_t second_local = 0U; second_local < 3U; ++second_local) {
+                if (first_face[first_local] == second_face[second_local]) {
+                    const long long shared = first_face[first_local];
+                    if (std::find(
+                            shared_ids.begin(),
+                            shared_ids.begin() + shared_vertices,
+                            shared)
+                        == shared_ids.begin() + shared_vertices) {
+                        shared_ids[shared_vertices++] = shared;
+                    }
+                }
+            }
+        }
+        if (shared_vertices >= shared_vertex_threshold) {
+            continue;
+        }
+        ++result.tested;
+
+        std::array<Point3, 3> first{};
+        std::array<Point3, 3> second{};
+        for (size_t local = 0U; local < 3U; ++local) {
+            const double* const first_point = vertices
+                + static_cast<size_t>(first_face[local]) * 3U;
+            const double* const second_point = vertices
+                + static_cast<size_t>(second_face[local]) * 3U;
+            first[local] = {first_point[0], first_point[1], first_point[2]};
+            second[local] = {second_point[0], second_point[1], second_point[2]};
+        }
+        const bool intersects = predicate == TrianglePredicate::Segment
+            ? segment_triangle_intersection(first, second, epsilon)
+            : interval_triangle_intersection(first, second, epsilon);
+        if (intersects) {
+            result.pairs.emplace_back(first_id, second_id);
+        }
+    }
+    return result;
+}
+
+void validate_triangle_intersection_inputs(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& vertices,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& triangles,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& candidates,
+    const double epsilon)
+{
+    if (vertices.ndim() != 2 || vertices.shape(1) != 3) {
+        throw std::invalid_argument("vertices must have shape (N, 3)");
+    }
+    if (triangles.ndim() != 2 || triangles.shape(1) != 3) {
+        throw std::invalid_argument("triangles must have shape (F, 3)");
+    }
+    if (candidates.ndim() != 2 || candidates.shape(1) != 2) {
+        throw std::invalid_argument("candidates must have shape (K, 2)");
+    }
+    if (!std::isfinite(epsilon) || epsilon < 0.0) {
+        throw std::invalid_argument("epsilon must be finite and non-negative");
+    }
+    const long long vertex_count = static_cast<long long>(vertices.shape(0));
+    const long long face_count = static_cast<long long>(triangles.shape(0));
+    const long long* const face_data = triangles.data();
+    for (py::ssize_t index = 0; index < triangles.size(); ++index) {
+        if (face_data[index] < 0 || face_data[index] >= vertex_count) {
+            throw std::invalid_argument("triangle vertex index is out of bounds");
+        }
+    }
+    const long long* const candidate_data = candidates.data();
+    for (py::ssize_t index = 0; index < candidates.shape(0); ++index) {
+        const long long first = candidate_data[index * 2];
+        const long long second = candidate_data[index * 2 + 1];
+        if (first < 0 || second < 0 || first >= face_count || second >= face_count) {
+            throw std::invalid_argument("candidate face index is out of bounds");
+        }
+        if (first >= second) {
+            throw std::invalid_argument("candidate pairs must satisfy i < j");
+        }
+    }
+}
+
+py::array_t<long long> copy_triangle_pairs(
+    const std::vector<std::pair<long long, long long>>& pairs)
+{
+    py::array_t<long long> result({
+        static_cast<py::ssize_t>(pairs.size()), static_cast<py::ssize_t>(2)});
+    long long* const output = result.mutable_data();
+    for (size_t index = 0U; index < pairs.size(); ++index) {
+        output[index * 2U] = pairs[index].first;
+        output[index * 2U + 1U] = pairs[index].second;
+    }
+    return result;
+}
+
+py::tuple triangle_intersections_segment(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& vertices,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& triangles,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& candidates,
+    const double epsilon)
+{
+    validate_triangle_intersection_inputs(vertices, triangles, candidates, epsilon);
+    TriangleIntersectionResult result;
+    {
+        py::gil_scoped_release release;
+        result = triangle_intersections_impl(
+            vertices.data(), triangles.data(), candidates.data(),
+            static_cast<size_t>(candidates.shape(0)), 1U, epsilon,
+            TrianglePredicate::Segment);
+    }
+    return py::make_tuple(result.tested, copy_triangle_pairs(result.pairs));
+}
+
+py::array_t<long long> triangle_intersections_interval(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& vertices,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& triangles,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& candidates,
+    const double epsilon)
+{
+    validate_triangle_intersection_inputs(vertices, triangles, candidates, epsilon);
+    TriangleIntersectionResult result;
+    {
+        py::gil_scoped_release release;
+        result = triangle_intersections_impl(
+            vertices.data(), triangles.data(), candidates.data(),
+            static_cast<size_t>(candidates.shape(0)), 2U, epsilon,
+            TrianglePredicate::Interval);
+    }
+    return copy_triangle_pairs(result.pairs);
+}
+
 py::array_t<long long> aabb_overlap_pairs(
     const py::array_t<double, py::array::c_style | py::array::forcecast>& aabb_min,
     const py::array_t<double, py::array::c_style | py::array::forcecast>& aabb_max,
@@ -2136,4 +2514,10 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("aabb_overlap_pairs", &aabb_overlap_pairs,
           py::arg("aabb_min"), py::arg("aabb_max"),
           py::arg("epsilon") = 1e-12);
+    m.def("triangle_intersections_segment", &triangle_intersections_segment,
+          py::arg("vertices"), py::arg("triangles"),
+          py::arg("candidates"), py::arg("epsilon") = 1e-12);
+    m.def("triangle_intersections_interval", &triangle_intersections_interval,
+          py::arg("vertices"), py::arg("triangles"),
+          py::arg("candidates"), py::arg("epsilon") = 1e-10);
 }

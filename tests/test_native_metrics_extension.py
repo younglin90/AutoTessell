@@ -91,6 +91,82 @@ def test_native_aabb_overlap_pairs_empty_and_invalid_inputs() -> None:
         module.aabb_overlap_pairs(np.zeros((1, 3)), np.ones((1, 3)), -1.0)
 
 
+def test_native_triangle_intersection_modes_match_python_oracles() -> None:
+    from core.preprocessor import native_remesh
+    from core.preprocessor.native_repair import self_intersect
+
+    module = _native_metrics_or_skip()
+    if not hasattr(module, "triangle_intersections_segment"):
+        pytest.skip("native triangle narrow-phase kernels are not built")
+
+    rng = np.random.default_rng(20260730)
+    vertices = rng.normal(size=(160, 3))
+    triangles = np.asarray(
+        [rng.choice(len(vertices), 3, replace=False) for _ in range(120)],
+        dtype=np.int64,
+    )
+    minimum, maximum = self_intersect._tri_aabbs(vertices, triangles)
+    candidates = np.asarray(
+        module.aabb_overlap_pairs(minimum, maximum, 0.0), dtype=np.int64
+    )
+
+    expected_public: list[tuple[int, int]] = []
+    expected_tested = 0
+    expected_interval: list[tuple[int, int]] = []
+    for raw_first, raw_second in candidates:
+        first = int(raw_first)
+        second = int(raw_second)
+        if not self_intersect._shares_vertex(triangles, first, second):
+            expected_tested += 1
+            if self_intersect._tri_tri_intersect(
+                *vertices[triangles[first]], *vertices[triangles[second]]
+            ):
+                expected_public.append((first, second))
+        if len(np.intersect1d(triangles[first], triangles[second])) < 2:
+            if native_remesh._moller_tri_tri(
+                vertices[triangles[first]], vertices[triangles[second]]
+            ):
+                expected_interval.append((first, second))
+
+    tested, public_pairs = module.triangle_intersections_segment(
+        vertices, triangles, candidates, 1e-12
+    )
+    interval_pairs = module.triangle_intersections_interval(
+        vertices, triangles, candidates, 1e-10
+    )
+
+    assert int(tested) == expected_tested
+    assert [tuple(map(int, pair)) for pair in np.asarray(public_pairs)] == (
+        expected_public
+    )
+    assert [tuple(map(int, pair)) for pair in np.asarray(interval_pairs)] == (
+        expected_interval
+    )
+
+
+def test_native_triangle_intersection_modes_reject_invalid_candidates() -> None:
+    module = _native_metrics_or_skip()
+    if not hasattr(module, "triangle_intersections_segment"):
+        pytest.skip("native triangle narrow-phase kernels are not built")
+
+    vertices = np.eye(3, dtype=np.float64)
+    triangles = np.asarray(((0, 1, 2),), dtype=np.int64)
+    with pytest.raises(ValueError, match="shape"):
+        module.triangle_intersections_segment(
+            vertices, triangles, np.zeros((1, 3), dtype=np.int64)
+        )
+    with pytest.raises(ValueError, match="out of bounds"):
+        module.triangle_intersections_segment(
+            vertices, triangles, np.asarray(((0, 1),), dtype=np.int64)
+        )
+    with pytest.raises(ValueError, match="i < j"):
+        module.triangle_intersections_interval(
+            vertices,
+            np.asarray(((0, 1, 2), (0, 2, 1)), dtype=np.int64),
+            np.asarray(((1, 0),), dtype=np.int64),
+        )
+
+
 def _python_faces_not_upper_triangular(
     owner: np.ndarray, neighbour: np.ndarray
 ) -> int:

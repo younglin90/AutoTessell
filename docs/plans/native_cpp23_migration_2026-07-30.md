@@ -416,6 +416,39 @@ CGAL 6.2 documents exact self-intersection reporting atop iso-oriented box
 intersection as an architectural reference.  Teschner et al. provide the
 spatial broad-phase background.  Neither source code nor dependency is used.
 
+## Surface self-intersection narrow-phase card
+
+Exact broad-phase activation exposed the remaining Python bottleneck: dense
+candidate sets performed set intersection, NumPy gathers, cross products,
+norms, dot products, and temporary arrays per triangle pair.  A legacy
+`1,500`-random-triangle test grew to about `106 s`; restoring approximate
+candidate loss would violate shape preservation.
+
+Two separate first-party C++23 kernels now preserve the distinct contracts.
+The public repair mode excludes any shared vertex, uses the existing
+`1e-12` plane/segment Möller--Trumbore predicate, returns tested count, and
+preserves candidate order.  The Tet-private mode excludes at least two unique
+shared vertices and uses the existing `1e-10` projected-interval predicate.
+Both reject coplanar pairs exactly as before.  Candidate and connectivity
+arrays are validated before GIL release; all pair traversal then uses fixed
+`std::array<double,3>` values and contiguous buffers without Python objects or
+per-pair allocation.  Output allocation happens only after GIL reacquisition.
+
+On `12,020` deterministic random candidates, public `4,477` hits and private
+`4,899` hits match their Python oracles in exact order.  On the `1,280`-face
+sphere, public complete detection changes from `0.082783340 s` to
+`0.001095325 s` (`75.58x`) with `216/0` tested/intersections; Tet-private
+detection changes from `0.749367660 s` to `0.001488219 s` (`503.53x`) with all
+`4,750` legacy detections unchanged.  The dense legacy detector suite returns
+to `2.94 s`.  Combined native metrics, self-intersection, surface-defect,
+repair, and native-tri validation reports `136 passed`; the two existing
+all-NaN metric warnings remain unrelated.
+
+No fast-math, parallel reduction, epsilon change, adjacency-policy merge,
+geometry mutation, `third_party/` edit, or external source was introduced.
+The C++ functions are independently derived from the existing project Python
+oracles and verified against them.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:
