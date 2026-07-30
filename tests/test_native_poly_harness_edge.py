@@ -1,4 +1,5 @@
 """beta56 — run_native_poly_harness dedicated edge case 회귀."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,14 +7,17 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from core.generator.native_poly.dual import PolyDualResult
 from core.generator.native_poly.harness import (
     PolyHarnessResult,
     run_native_poly_harness,
 )
+from core.generator.native_tet import NativeTetResult
 
 
-def _sphere_mesh(subdivisions: int = 1):
+def _sphere_mesh(subdivisions: int = 1) -> tuple[np.ndarray, np.ndarray]:
     import trimesh
+
     sp = trimesh.creation.icosphere(subdivisions=subdivisions, radius=1.0)
     return (
         np.asarray(sp.vertices, dtype=np.float64),
@@ -24,7 +28,7 @@ def _sphere_mesh(subdivisions: int = 1):
 def test_empty_input_fails_gracefully(tmp_path: Path) -> None:
     """빈 input → crash 없이 PolyHarnessResult(success=False)."""
     V = np.zeros((0, 3))
-    F = np.zeros((0, 3), dtype=np.int64)
+    F: np.ndarray = np.zeros((0, 3), dtype=np.int64)
     result = run_native_poly_harness(V, F, tmp_path, max_iter=1)
     assert isinstance(result, PolyHarnessResult)
     assert result.success is False
@@ -35,7 +39,11 @@ def test_max_iter_respected(tmp_path: Path) -> None:
     """max_iter=1 에서 iterations <= 1."""
     V, F = _sphere_mesh(subdivisions=1)
     result = run_native_poly_harness(
-        V, F, tmp_path, max_iter=1, seed_density=8,
+        V,
+        F,
+        tmp_path,
+        max_iter=1,
+        seed_density=8,
     )
     assert isinstance(result, PolyHarnessResult)
     assert result.iterations <= 1
@@ -55,7 +63,12 @@ def test_max_tet_cells_cap_triggers_safety(tmp_path: Path) -> None:
     """max_tet_cells 를 매우 작게 → safety cap 동작, crash 없이 반환."""
     V, F = _sphere_mesh(subdivisions=1)
     result = run_native_poly_harness(
-        V, F, tmp_path, max_iter=1, seed_density=6, max_tet_cells=50,
+        V,
+        F,
+        tmp_path,
+        max_iter=1,
+        seed_density=6,
+        max_tet_cells=50,
     )
     # cell 수 cap 발동해도 결과는 반환 (failure 여도 instance).
     assert isinstance(result, PolyHarnessResult)
@@ -76,40 +89,106 @@ def test_sphere_mesh_produces_some_cells(tmp_path: Path) -> None:
 
 
 def test_best_candidate_tracking_keeps_better_iter(
-    tmp_path: Path, monkeypatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """beta60 — iter 1 이 iter 2 보다 좋으면 최종 case_dir 은 iter 1 결과.
+    """Restore all iter-1 polyMesh bytes after a worse iter-2 candidate.
 
-    buggy 버전 (beta59 이전) 에서는 best_metrics 없이 ``metrics < metrics`` 로
-    자기 자신과 비교해 항상 False → 첫 iter 결과가 유지되었지만, 이는 "우연"
-    이었다. 이 테스트는 iter 1 = 좋은 결과, iter 2 = 나쁜 결과 시나리오에서
-    명시적으로 iter 1 이 보존되는지를 검증한다.
+    This is a harness-state contract, so it isolates the generator, dual writer,
+    and evaluator seams.  Real sphere generation remains covered separately by
+    ``test_native_poly_dual.py``; a truthful geometry-gate rejection must not
+    prevent this byte-restoration unit test from reaching its owned mechanism.
+    No geometry threshold or shape assertion is removed or weakened here.
     """
-    V, F = _sphere_mesh(subdivisions=1)
-
     import core.generator.native_poly.harness as hm
-    call_idx = {"n": 0}
-    def _fake_eval(case_dir):
-        call_idx["n"] += 1
-        if call_idx["n"] == 1:
-            # 좋은 결과 (neg=0)
+
+    vertices = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = np.array(
+        [[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]],
+        dtype=np.int64,
+    )
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    poly_names = ("points", "faces", "owner", "neighbour", "boundary")
+    candidates = (
+        {name: f"iter-1-best:{name}\n".encode() for name in poly_names},
+        {name: f"iter-2-worse:{name}\n".encode() for name in poly_names},
+    )
+    dual_calls = {"n": 0}
+
+    def _fake_tet(*_args: object, **_kwargs: object) -> NativeTetResult:
+        return NativeTetResult(
+            success=True,
+            elapsed=0.0,
+            n_cells=1,
+            n_points=4,
+            tet_points=vertices.copy(),
+            tets=tets.copy(),
+        )
+
+    def _fake_dual(
+        _points: np.ndarray,
+        _tets: np.ndarray,
+        output: Path,
+        **_kwargs: object,
+    ) -> PolyDualResult:
+        candidate_index = dual_calls["n"]
+        dual_calls["n"] += 1
+        poly_dir = output / "constant" / "polyMesh"
+        poly_dir.mkdir(parents=True)
+        for name, payload in candidates[candidate_index].items():
+            (poly_dir / name).write_bytes(payload)
+        return PolyDualResult(
+            success=True,
+            elapsed=0.0,
+            n_cells=200 if candidate_index == 0 else 100,
+            n_points=120 if candidate_index == 0 else 50,
+        )
+
+    def _fake_eval(output: Path) -> tuple[bool, dict[str, object]]:
+        marker = (output / "constant" / "polyMesh" / "points").read_bytes()
+        if marker == candidates[0]["points"]:
             return False, {
-                "cells": 200, "points": 120, "max_non_orthogonality": 50.0,
-                "max_skewness": 1.5, "negative_volumes": 0, "mesh_ok": False,
+                "cells": 200,
+                "points": 120,
+                "max_non_orthogonality": 50.0,
+                "max_skewness": 1.5,
+                "negative_volumes": 0,
+                "mesh_ok": False,
             }
-        # 2nd call: 나쁜 결과 (neg=5)
+        assert marker == candidates[1]["points"]
         return False, {
-            "cells": 100, "points": 50, "max_non_orthogonality": 70.0,
-            "max_skewness": 2.0, "negative_volumes": 5, "mesh_ok": False,
+            "cells": 100,
+            "points": 50,
+            "max_non_orthogonality": 70.0,
+            "max_skewness": 2.0,
+            "negative_volumes": 5,
+            "mesh_ok": False,
         }
+
+    monkeypatch.setattr(hm, "generate_native_tet", _fake_tet)
+    monkeypatch.setattr(hm, "tet_to_poly_dual", _fake_dual)
     monkeypatch.setattr(hm, "_evaluate_poly_mesh", _fake_eval)
 
     case_dir = tmp_path / "case"
     result = run_native_poly_harness(
-        V, F, case_dir, max_iter=2, seed_density=6,
+        vertices,
+        faces,
+        case_dir,
+        max_iter=2,
+        seed_density=6,
     )
-    # 마지막 iter 실패 후 case_dir 에는 "best" (iter 1) 이 복사된다.
-    # result 의 n_cells / negative_volumes 는 last_metrics (iter 2) 를 반영하지만,
-    # case_dir 의 polyMesh 는 best_case_bytes (iter 1) 를 유지해야 한다.
     assert result.success is False
-    assert (case_dir / "constant" / "polyMesh" / "points").exists()
+    assert result.iterations == 2
+    assert result.n_cells == 100
+    assert result.negative_volumes == 5
+    assert dual_calls["n"] == 2
+    installed = case_dir / "constant" / "polyMesh"
+    assert {name: (installed / name).read_bytes() for name in poly_names} == candidates[0]
