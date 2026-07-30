@@ -23,7 +23,9 @@ def _add_native_extension_paths() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     candidate_dirs.append(repo_root / "auto_tessell_core" / "build")
 
-    for candidate in candidate_dirs:
+    # Insert defaults first and the explicit override last so repeated
+    # ``insert(0, ...)`` leaves AUTOTESSELL_EXT_BUILD_DIR at highest priority.
+    for candidate in reversed(candidate_dirs):
         if candidate.is_dir():
             candidate_s = str(candidate)
             if candidate_s not in sys.path:
