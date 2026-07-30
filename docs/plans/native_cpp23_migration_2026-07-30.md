@@ -258,6 +258,26 @@ warnings remain.  Invalid degenerate, duplicate, zero-area, inconsistent-edge,
 non-manifold-edge, and non-manifold-vertex fixtures assert exact native/Python
 error parity.
 
+## Tet P4C immutable-source acceptance card
+
+Repeated cube diagnostics localized the source-corner loss to the external
+P4C candidate itself, before any post-fallback pass.  Four of twelve identical
+calls returned only seven of eight exact source corners; a separate five-run
+test observed a six-of-eight result.  The old acceptance rule considered only
+mean quality and a coarse cell-count floor, so those candidates replaced the
+shape-preserving native mesh.
+
+P4C tier acceptance now requires exact presence of every immutable input
+vertex before quality or cell count can authorize replacement.  A rejected
+tier proceeds to the next configured tier; if every tier rejects, the original
+native candidate remains.  This is a read-only `O(S + C)` membership audit for
+`S` source and `C` candidate vertices.  It intentionally uses no tolerance:
+an approximately nearby point is not valid provenance for a displaced source
+corner.  Twelve independent stochastic P4C regression runs passed the eight-
+corner contract; four runs exercised a slower retry tier.  This closes the
+known corner-loss acceptance hole, but it does not claim deterministic P4C
+topology because the external solver still returns varying point/tet hashes.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

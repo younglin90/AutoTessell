@@ -52,6 +52,33 @@ def _input_vertices_exactly_present_l0(
     return missing == 0, missing
 
 
+def _p4c_candidate_meets_acceptance_l0(
+    source_vertices: object,
+    candidate_vertices: object,
+    *,
+    old_mean_quality: float,
+    candidate_mean_quality: float,
+    old_cell_count: int,
+    candidate_cell_count: int,
+) -> tuple[bool, int]:
+    """Apply the immutable-source gate before accepting a P4C candidate.
+
+    Cell count is deliberately only a coarse safety floor here.  An external
+    fallback may improve quality while simplifying away an exact source
+    corner; that candidate must never replace the shape-preserving native
+    mesh.
+    """
+    source_preserved, missing_source_vertices = _input_vertices_exactly_present_l0(
+        source_vertices, candidate_vertices
+    )
+    accepted = bool(
+        source_preserved
+        and float(candidate_mean_quality) > float(old_mean_quality)
+        and int(candidate_cell_count) >= max(50, int(old_cell_count) // 4)
+    )
+    return accepted, missing_source_vertices
+
+
 def _native_tet_large_pass_enabled(n_cells: int) -> bool:
     """Return whether optional large-mesh passes may run.
 
@@ -5826,15 +5853,20 @@ def generate_native_tet(
                 else:
                     _g = "D"
                 _n_cells_new = int(_tw_f.shape[0])
-                _accept = bool(
-                    _mq_new > _mq_old
-                    and _n_cells_new >= max(50, _n_cells_old // 4)
+                _accept, _missing_source_vertices = _p4c_candidate_meets_acceptance_l0(
+                    V,
+                    _tw_v,
+                    old_mean_quality=_mq_old,
+                    candidate_mean_quality=_mq_new,
+                    old_cell_count=_n_cells_old,
+                    candidate_cell_count=_n_cells_new,
                 )
                 log.info(
                     "native_tet_p4d_chain_tier",
                     tier=_label, grade=_g,
                     n_cells=_n_cells_new, mq=round(_mq_new, 3),
                     elapsed=round(_t_fb, 2), accepted=_accept,
+                    missing_source_vertices=_missing_source_vertices,
                 )
                 if not _accept:
                     continue
