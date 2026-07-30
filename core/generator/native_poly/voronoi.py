@@ -876,6 +876,53 @@ def _ccw_sort_face_vertices(
     return [int(verts_idx[k]) for k in order]
 
 
+def _orient_poly_cell_faces_outward(
+    vertices: np.ndarray,
+    cells: list[list[list[int]]],
+) -> tuple[list[list[list[int]]], int, int]:
+    """Orient each final face away from its cell without changing membership."""
+    points = np.asarray(vertices, dtype=np.float64)
+    if points.size == 0:
+        return [[list(face) for face in cell] for cell in cells], 0, 0
+    bbox_diag = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
+    alignment_tol = 128.0 * np.finfo(np.float64).eps * max(
+        bbox_diag**3,
+        np.finfo(np.float64).tiny,
+    )
+    oriented: list[list[list[int]]] = []
+    n_reversed = 0
+    n_ambiguous = 0
+    for cell in cells:
+        unique_vertices = sorted({vertex for face in cell for vertex in face})
+        if len(unique_vertices) < 4:
+            oriented.append([list(face) for face in cell])
+            n_ambiguous += len(cell)
+            continue
+        cell_center = points[unique_vertices].mean(axis=0)
+        oriented_cell: list[list[int]] = []
+        for source_face in cell:
+            face = list(source_face)
+            if len(face) < 3:
+                oriented_cell.append(face)
+                n_ambiguous += 1
+                continue
+            polygon = points[face]
+            face_center = polygon.mean(axis=0)
+            normal = np.zeros(3, dtype=np.float64)
+            for index, current in enumerate(polygon):
+                normal += np.cross(current, polygon[(index + 1) % len(polygon)])
+            alignment = float(np.dot(normal, face_center - cell_center))
+            if abs(alignment) <= alignment_tol:
+                n_ambiguous += 1
+            elif alignment < 0.0:
+                # Reverse winding while retaining the provenance anchor vertex.
+                face = [face[0], *reversed(face[1:])]
+                n_reversed += 1
+            oriented_cell.append(face)
+        oriented.append(oriented_cell)
+    return oriented, n_reversed, n_ambiguous
+
+
 def _detect_cell_self_intersect(
     cell_faces: list[list[int]],
     points: np.ndarray,
@@ -2624,6 +2671,19 @@ def _generate_native_poly_voronoi_inner(
         delta=_pol_val3_cur - _pol_val3_prev,
     )
     _pol_val3_prev = _pol_val3_cur
+
+    # Cell-local outward winding.  The PCA normal used for CCW face sorting has
+    # arbitrary sign; resolve only that sign after all geometry passes.  Face
+    # membership, cell order, coordinates, and provenance keys remain intact.
+    final_cells, _n_face_reversed, _n_face_ambiguous = (
+        _orient_poly_cell_faces_outward(final_vertices, final_cells)
+    )
+    log.info(
+        "native_poly_face_orientation",
+        n_reversed=_n_face_reversed,
+        n_ambiguous=_n_face_ambiguous,
+        n_cells=len(final_cells),
+    )
 
     # VAL2 (beta2148) — mandatory pre-write validity admission.  The diagnostic
     # disable switch must not bypass release-critical negative/degenerate-cell
