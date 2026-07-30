@@ -32,6 +32,16 @@ class TetBoundaryAudit:
         )
 
 
+def has_strict_writer_topology(points: np.ndarray, tets: np.ndarray) -> bool:
+    """Strict writer face contract; disconnected components remain supported."""
+    audit = audit_tet_boundary(points, tets)
+    return bool(
+        audit.n_nonmanifold_faces == 0
+        and audit.n_duplicate_tets == 0
+        and audit.n_degenerate_tets == 0
+    )
+
+
 def audit_tet_boundary(
     points: np.ndarray,
     tets: np.ndarray,
@@ -139,4 +149,4 @@ def audit_tet_boundary(
     )
 
 
-__all__ = ["TetBoundaryAudit", "audit_tet_boundary"]
+__all__ = ["TetBoundaryAudit", "audit_tet_boundary", "has_strict_writer_topology"]

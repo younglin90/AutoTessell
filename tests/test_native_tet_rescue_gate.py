@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from core.generator.native_tet.rescue_gate import audit_tet_boundary
+from core.generator.native_tet.rescue_gate import audit_tet_boundary, has_strict_writer_topology
 
 
 def _cube() -> tuple[np.ndarray, np.ndarray]:
@@ -56,6 +56,7 @@ def test_duplicate_tet_is_rejected() -> None:
     assert not audit.valid
     assert audit.n_duplicate_tets == 1
     assert audit.n_nonmanifold_faces > 0
+    assert not has_strict_writer_topology(points, np.vstack([tets, tets[:1]]))
 
 
 def test_degenerate_tet_is_rejected() -> None:

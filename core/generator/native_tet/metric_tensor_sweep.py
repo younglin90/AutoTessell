@@ -38,6 +38,7 @@ class MetricTensorSweepResult:
     metric_aniso_max: float = 1.0
     accepted: bool = False
     elapsed_s: float = 0.0
+    reason: str = ""
 
 
 def compute_isotropic_metric(
@@ -351,15 +352,20 @@ def metric_tensor_sweep(
     post_q = _qs(cur_pts, cur_tets)
     post_min = float(post_q.min_q)
     post_mean = float(post_q.mean_q)
+    from core.generator.native_tet.rescue_gate import has_strict_writer_topology
+
+    topology_safe = has_strict_writer_topology(cur_pts, cur_tets)
     accepted = (
         post_mean >= pre_mean
         and (pre_min - post_min) <= float(monotone_min_drop)
+        and topology_safe
     )
     if not accepted:
         cur_pts = pts.copy()
         cur_tets = tets.copy()
         post_min = pre_min
         post_mean = pre_mean
+        n_collapse_total = n_split_total = n_flip_total = n_smooth_total = 0
 
     return cur_pts, cur_tets, MetricTensorSweepResult(
         n_cycles_used=cycles_used,
@@ -372,4 +378,9 @@ def metric_tensor_sweep(
         metric_aniso_max=aniso_max,
         accepted=accepted,
         elapsed_s=time.perf_counter() - t0,
+        reason=(
+            "ok" if accepted else
+            "strict_writer_topology_rejected"
+            if not topology_safe else "quality_rejected"
+        ),
     )
