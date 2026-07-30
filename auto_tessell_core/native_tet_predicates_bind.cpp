@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <compare>
 #include <cstdint>
 #include <cstddef>
 #include <functional>
@@ -21,6 +22,7 @@
 #include <limits>
 #include <mutex>
 #include <numbers>
+#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -80,6 +82,19 @@ void validate_cdt_array(
         throw py::value_error(
             std::string(name) + " must have shape (N, "
             + std::to_string(columns) + ")");
+    }
+    if ((array.flags() & py::array::c_style) == 0) {
+        throw py::value_error(std::string(name) + " must be C-contiguous");
+    }
+}
+
+void validate_point_array(const py::array& array, const char* const name)
+{
+    if (!array.dtype().is(py::dtype::of<double>())) {
+        throw py::type_error(std::string(name) + " must have dtype float64");
+    }
+    if (array.ndim() != 2 || array.shape(1) != 3) {
+        throw py::value_error(std::string(name) + " must have shape (N, 3)");
     }
     if ((array.flags() & py::array::c_style) == 0) {
         throw py::value_error(std::string(name) + " must be C-contiguous");
@@ -699,6 +714,423 @@ py::tuple audit_tet_boundary_native(
     return py::make_tuple(
         stats[0], stats[1], stats[2], stats[3],
         stats[4], stats[5], stats[6], stats[7]);
+}
+
+struct SourceComponentAuditResult {
+    size_t n_source_components{};
+    size_t n_candidate_boundary_components{};
+    size_t n_source_surface_vertices{};
+    size_t n_source_vertices_on_boundary{};
+    size_t n_missing_source_vertices{};
+    size_t n_matched_source_components{};
+    size_t n_mixed_candidate_components{};
+    size_t n_split_source_components{};
+    size_t n_unanchored_candidate_components{};
+    size_t n_unknown_source_vertex_anchors{};
+    bool bijective{};
+};
+
+using EdgeFaceRecord = std::pair<CdtEdge, size_t>;
+using ComponentPair = std::array<size_t, 2>;
+
+struct PointRecord {
+    std::array<double, 3> coordinates;
+    size_t index;
+
+    auto operator<=>(const PointRecord&) const = default;
+};
+
+std::vector<size_t> face_component_roots(const std::vector<CdtFace>& faces)
+{
+    if (faces.empty()) {
+        return {};
+    }
+    std::vector<EdgeFaceRecord> edge_faces;
+    edge_faces.reserve(checked_entity_count(faces.size(), 3U, "faces"));
+    const auto edge = [](const int64_t first, const int64_t second) {
+        return first <= second ? CdtEdge{first, second} : CdtEdge{second, first};
+    };
+    for (size_t face_index = 0; face_index < faces.size(); ++face_index) {
+        const CdtFace& face = faces[face_index];
+        edge_faces.emplace_back(edge(face[0], face[1]), face_index);
+        edge_faces.emplace_back(edge(face[1], face[2]), face_index);
+        edge_faces.emplace_back(edge(face[0], face[2]), face_index);
+    }
+    std::sort(edge_faces.begin(), edge_faces.end());
+
+    DisjointSet components(faces.size());
+    size_t start = 0;
+    while (start < edge_faces.size()) {
+        size_t end = start + 1U;
+        while (end < edge_faces.size()
+               && edge_faces[end].first == edge_faces[start].first) {
+            ++end;
+        }
+        const size_t first_face = edge_faces[start].second;
+        for (size_t index = start + 1U; index < end; ++index) {
+            components.unite(first_face, edge_faces[index].second);
+        }
+        start = end;
+    }
+
+    std::vector<size_t> roots(faces.size());
+    for (size_t face_index = 0; face_index < faces.size(); ++face_index) {
+        roots[face_index] = components.find(face_index);
+    }
+    return roots;
+}
+
+SourceComponentAuditResult audit_source_component_bijection_impl(
+    const std::span<const double> source_points_flat,
+    const std::span<const int64_t> source_faces_flat,
+    const std::span<const double> candidate_points_flat,
+    const std::span<const int64_t> tets_flat)
+{
+    const size_t source_vertex_count = source_points_flat.size() / 3U;
+    const size_t candidate_vertex_count = candidate_points_flat.size() / 3U;
+    const size_t source_face_count = source_faces_flat.size() / 3U;
+    const size_t tet_count = tets_flat.size() / 4U;
+    if (source_vertex_count == 0U) {
+        throw std::invalid_argument("source_points must not be empty");
+    }
+    if (candidate_vertex_count == 0U) {
+        throw std::invalid_argument("candidate_points must not be empty");
+    }
+    if (source_face_count == 0U) {
+        throw std::invalid_argument("source_faces must not be empty");
+    }
+    if (tet_count == 0U) {
+        throw std::invalid_argument("tets must not be empty");
+    }
+
+    const auto point_records = [](const std::span<const double> flat) {
+        std::vector<PointRecord> records;
+        records.reserve(flat.size() / 3U);
+        for (size_t index = 0; index < flat.size() / 3U; ++index) {
+            const std::array<double, 3> coordinates{
+                flat[3U * index], flat[3U * index + 1U], flat[3U * index + 2U]};
+            if (!std::ranges::all_of(coordinates, [](const double value) {
+                    return std::isfinite(value);
+                })) {
+                throw std::invalid_argument("point coordinates must be finite");
+            }
+            records.push_back(PointRecord{coordinates, index});
+        }
+        std::sort(records.begin(), records.end());
+        return records;
+    };
+    const std::vector<PointRecord> source_points = point_records(source_points_flat);
+    const std::vector<PointRecord> candidate_points = point_records(candidate_points_flat);
+    const auto same_coordinates = [](const PointRecord& left, const PointRecord& right) {
+        return left.coordinates == right.coordinates;
+    };
+    if (std::adjacent_find(
+            source_points.begin(), source_points.end(), same_coordinates)
+        != source_points.end()) {
+        throw std::invalid_argument(
+            "source_points contains ambiguous duplicate coordinates");
+    }
+    if (source_vertex_count > static_cast<size_t>(std::numeric_limits<int64_t>::max())
+        || candidate_vertex_count
+            > static_cast<size_t>(std::numeric_limits<int64_t>::max())
+                - source_vertex_count) {
+        throw std::overflow_error("point provenance index range is too large");
+    }
+
+    // Candidate ordering is not a provenance contract: external P4C paths may
+    // reorder vertices.  Recover immutable source identity by exact finite
+    // coordinates, and assign collision-free synthetic IDs to new vertices.
+    std::vector<int64_t> candidate_provenance(candidate_vertex_count);
+    for (size_t start = 0; start < candidate_points.size();) {
+        size_t end = start + 1U;
+        while (end < candidate_points.size()
+               && same_coordinates(candidate_points[start], candidate_points[end])) {
+            ++end;
+        }
+        const auto source_match = std::lower_bound(
+            source_points.begin(), source_points.end(), candidate_points[start],
+            [](const PointRecord& left, const PointRecord& right) {
+                return left.coordinates < right.coordinates;
+            });
+        const bool matches_source = source_match != source_points.end()
+            && source_match->coordinates == candidate_points[start].coordinates;
+        if (matches_source && end != start + 1U) {
+            throw std::invalid_argument(
+                "candidate_points duplicates a source coordinate");
+        }
+        for (size_t index = start; index < end; ++index) {
+            const size_t candidate_index = candidate_points[index].index;
+            candidate_provenance[candidate_index] = matches_source
+                ? static_cast<int64_t>(source_match->index)
+                : static_cast<int64_t>(source_vertex_count + candidate_index);
+        }
+        start = end;
+    }
+
+    const auto face = [](const int64_t a, const int64_t b, const int64_t c) {
+        CdtFace result{a, b, c};
+        std::sort(result.begin(), result.end());
+        return result;
+    };
+
+    std::vector<CdtFace> source_faces;
+    source_faces.reserve(source_face_count);
+    for (size_t row = 0; row < source_face_count; ++row) {
+        const int64_t a = source_faces_flat[3U * row];
+        const int64_t b = source_faces_flat[3U * row + 1U];
+        const int64_t c = source_faces_flat[3U * row + 2U];
+        if (a < 0 || b < 0 || c < 0
+            || static_cast<size_t>(a) >= source_vertex_count
+            || static_cast<size_t>(b) >= source_vertex_count
+            || static_cast<size_t>(c) >= source_vertex_count) {
+            throw std::invalid_argument("source_faces vertex index out of range");
+        }
+        if (a == b || a == c || b == c) {
+            throw std::invalid_argument("source_faces contains a repeated vertex");
+        }
+        source_faces.push_back(face(a, b, c));
+    }
+    {
+        std::vector<CdtFace> sorted_source = source_faces;
+        std::sort(sorted_source.begin(), sorted_source.end());
+        if (std::adjacent_find(sorted_source.begin(), sorted_source.end())
+            != sorted_source.end()) {
+            throw std::invalid_argument("source_faces contains a duplicate face");
+        }
+    }
+
+    std::vector<CdtFace> tet_faces;
+    tet_faces.reserve(checked_entity_count(tet_count, 4U, "tets"));
+    for (size_t row = 0; row < tet_count; ++row) {
+        const int64_t raw_a = tets_flat[4U * row];
+        const int64_t raw_b = tets_flat[4U * row + 1U];
+        const int64_t raw_c = tets_flat[4U * row + 2U];
+        const int64_t raw_d = tets_flat[4U * row + 3U];
+        if (raw_a < 0 || raw_b < 0 || raw_c < 0 || raw_d < 0
+            || static_cast<size_t>(raw_a) >= candidate_vertex_count
+            || static_cast<size_t>(raw_b) >= candidate_vertex_count
+            || static_cast<size_t>(raw_c) >= candidate_vertex_count
+            || static_cast<size_t>(raw_d) >= candidate_vertex_count) {
+            throw std::invalid_argument("tets vertex index out of range");
+        }
+        if (raw_a == raw_b || raw_a == raw_c || raw_a == raw_d
+            || raw_b == raw_c || raw_b == raw_d || raw_c == raw_d) {
+            throw std::invalid_argument("tets contains a repeated vertex");
+        }
+        const int64_t a = candidate_provenance[static_cast<size_t>(raw_a)];
+        const int64_t b = candidate_provenance[static_cast<size_t>(raw_b)];
+        const int64_t c = candidate_provenance[static_cast<size_t>(raw_c)];
+        const int64_t d = candidate_provenance[static_cast<size_t>(raw_d)];
+        tet_faces.push_back(face(a, b, c));
+        tet_faces.push_back(face(a, b, d));
+        tet_faces.push_back(face(a, c, d));
+        tet_faces.push_back(face(b, c, d));
+    }
+    std::sort(tet_faces.begin(), tet_faces.end());
+    std::vector<CdtFace> boundary_faces;
+    boundary_faces.reserve(tet_faces.size());
+    size_t face_start = 0;
+    while (face_start < tet_faces.size()) {
+        size_t face_end = face_start + 1U;
+        while (face_end < tet_faces.size()
+               && tet_faces[face_end] == tet_faces[face_start]) {
+            ++face_end;
+        }
+        if (face_end == face_start + 1U) {
+            boundary_faces.push_back(tet_faces[face_start]);
+        }
+        face_start = face_end;
+    }
+    if (boundary_faces.empty()) {
+        return SourceComponentAuditResult{};
+    }
+
+    const std::vector<size_t> source_roots = face_component_roots(source_faces);
+    const std::vector<size_t> candidate_roots = face_component_roots(boundary_faces);
+    std::vector<size_t> unique_source_roots = source_roots;
+    std::vector<size_t> unique_candidate_roots = candidate_roots;
+    sort_unique(unique_source_roots);
+    sort_unique(unique_candidate_roots);
+
+    constexpr size_t absent = std::numeric_limits<size_t>::max();
+    std::vector<size_t> source_component_for_vertex(source_vertex_count, absent);
+    std::vector<unsigned char> source_surface_vertex(source_vertex_count, 0U);
+    for (size_t face_index = 0; face_index < source_faces.size(); ++face_index) {
+        const size_t root = source_roots[face_index];
+        for (const int64_t vertex : source_faces[face_index]) {
+            const size_t index = static_cast<size_t>(vertex);
+            source_surface_vertex[index] = 1U;
+            if (source_component_for_vertex[index] == absent) {
+                source_component_for_vertex[index] = root;
+            } else if (source_component_for_vertex[index] != root) {
+                throw std::invalid_argument(
+                    "source vertex belongs to multiple edge-connected components");
+            }
+        }
+    }
+
+    std::vector<unsigned char> source_vertex_on_boundary(source_vertex_count, 0U);
+    std::vector<ComponentPair> component_pairs;
+    component_pairs.reserve(checked_entity_count(
+        boundary_faces.size(), 3U, "boundary_faces"));
+    std::vector<size_t> anchored_candidate_roots;
+    anchored_candidate_roots.reserve(boundary_faces.size());
+    size_t unknown_source_vertex_anchors = 0U;
+    std::vector<unsigned char> unknown_seen(source_vertex_count, 0U);
+    for (size_t face_index = 0; face_index < boundary_faces.size(); ++face_index) {
+        const size_t candidate_root = candidate_roots[face_index];
+        bool anchored = false;
+        for (const int64_t vertex : boundary_faces[face_index]) {
+            const size_t index = static_cast<size_t>(vertex);
+            if (index >= source_vertex_count) {
+                continue;
+            }
+            const size_t source_root = source_component_for_vertex[index];
+            if (source_root == absent) {
+                if (unknown_seen[index] == 0U) {
+                    unknown_seen[index] = 1U;
+                    ++unknown_source_vertex_anchors;
+                }
+                continue;
+            }
+            source_vertex_on_boundary[index] = 1U;
+            component_pairs.push_back(ComponentPair{source_root, candidate_root});
+            anchored = true;
+        }
+        if (anchored) {
+            anchored_candidate_roots.push_back(candidate_root);
+        }
+    }
+    sort_unique(component_pairs);
+    sort_unique(anchored_candidate_roots);
+
+    size_t source_surface_vertices = 0U;
+    size_t source_vertices_on_boundary = 0U;
+    for (size_t vertex = 0; vertex < source_vertex_count; ++vertex) {
+        source_surface_vertices += source_surface_vertex[vertex] != 0U;
+        source_vertices_on_boundary += source_vertex_on_boundary[vertex] != 0U;
+    }
+
+    size_t matched_source_components = 0U;
+    size_t split_source_components = 0U;
+    for (size_t index = 0; index < component_pairs.size();) {
+        const size_t source_root = component_pairs[index][0];
+        size_t end = index + 1U;
+        size_t candidate_count = 1U;
+        while (end < component_pairs.size()
+               && component_pairs[end][0] == source_root) {
+            if (component_pairs[end][1] != component_pairs[end - 1U][1]) {
+                ++candidate_count;
+            }
+            ++end;
+        }
+        ++matched_source_components;
+        split_source_components += candidate_count > 1U;
+        index = end;
+    }
+
+    std::vector<ComponentPair> candidate_source_pairs;
+    candidate_source_pairs.reserve(component_pairs.size());
+    for (const ComponentPair& pair : component_pairs) {
+        candidate_source_pairs.push_back(ComponentPair{pair[1], pair[0]});
+    }
+    sort_unique(candidate_source_pairs);
+    size_t mixed_candidate_components = 0U;
+    for (size_t index = 0; index < candidate_source_pairs.size();) {
+        const size_t candidate_root = candidate_source_pairs[index][0];
+        size_t end = index + 1U;
+        size_t source_count = 1U;
+        while (end < candidate_source_pairs.size()
+               && candidate_source_pairs[end][0] == candidate_root) {
+            if (candidate_source_pairs[end][1]
+                != candidate_source_pairs[end - 1U][1]) {
+                ++source_count;
+            }
+            ++end;
+        }
+        mixed_candidate_components += source_count > 1U;
+        index = end;
+    }
+
+    SourceComponentAuditResult result;
+    result.n_source_components = unique_source_roots.size();
+    result.n_candidate_boundary_components = unique_candidate_roots.size();
+    result.n_source_surface_vertices = source_surface_vertices;
+    result.n_source_vertices_on_boundary = source_vertices_on_boundary;
+    result.n_missing_source_vertices =
+        source_surface_vertices - source_vertices_on_boundary;
+    result.n_matched_source_components = matched_source_components;
+    result.n_mixed_candidate_components = mixed_candidate_components;
+    result.n_split_source_components = split_source_components;
+    result.n_unanchored_candidate_components =
+        unique_candidate_roots.size() - anchored_candidate_roots.size();
+    result.n_unknown_source_vertex_anchors = unknown_source_vertex_anchors;
+    result.bijective = result.n_source_components > 0U
+        && result.n_source_components == result.n_candidate_boundary_components
+        && result.n_source_components == result.n_matched_source_components
+        && result.n_missing_source_vertices == 0U
+        && result.n_mixed_candidate_components == 0U
+        && result.n_split_source_components == 0U
+        && result.n_unanchored_candidate_components == 0U
+        && result.n_unknown_source_vertex_anchors == 0U;
+    return result;
+}
+
+py::dict audit_source_component_bijection(
+    const py::array& source_points,
+    const py::array& source_faces,
+    const py::array& candidate_points,
+    const py::array& tets)
+{
+    validate_point_array(source_points, "source_points");
+    validate_cdt_array(source_faces, 3, "source_faces");
+    validate_point_array(candidate_points, "candidate_points");
+    validate_cdt_array(tets, 4, "tets");
+    const auto source_point_info = source_points.request();
+    const auto source_info = source_faces.request();
+    const auto candidate_point_info = candidate_points.request();
+    const auto tet_info = tets.request();
+    const auto source_point_view = std::span{
+        static_cast<const double*>(source_point_info.ptr),
+        static_cast<size_t>(source_point_info.size)};
+    const auto source_view = std::span{
+        static_cast<const int64_t*>(source_info.ptr),
+        static_cast<size_t>(source_info.size)};
+    const auto candidate_point_view = std::span{
+        static_cast<const double*>(candidate_point_info.ptr),
+        static_cast<size_t>(candidate_point_info.size)};
+    const auto tet_view = std::span{
+        static_cast<const int64_t*>(tet_info.ptr),
+        static_cast<size_t>(tet_info.size)};
+
+    SourceComponentAuditResult audit;
+    {
+        py::gil_scoped_release release;
+        audit = audit_source_component_bijection_impl(
+            source_point_view,
+            source_view,
+            candidate_point_view,
+            tet_view);
+    }
+
+    py::dict result;
+    result["n_source_components"] = audit.n_source_components;
+    result["n_candidate_boundary_components"] =
+        audit.n_candidate_boundary_components;
+    result["n_source_surface_vertices"] = audit.n_source_surface_vertices;
+    result["n_source_vertices_on_boundary"] =
+        audit.n_source_vertices_on_boundary;
+    result["n_missing_source_vertices"] = audit.n_missing_source_vertices;
+    result["n_matched_source_components"] = audit.n_matched_source_components;
+    result["n_mixed_candidate_components"] =
+        audit.n_mixed_candidate_components;
+    result["n_split_source_components"] = audit.n_split_source_components;
+    result["n_unanchored_candidate_components"] =
+        audit.n_unanchored_candidate_components;
+    result["n_unknown_source_vertex_anchors"] =
+        audit.n_unknown_source_vertex_anchors;
+    result["bijective"] = audit.bijective;
+    return result;
 }
 
 double tet_mean_ratio_quality(
@@ -1556,6 +1988,13 @@ PYBIND11_MODULE(native_tet_predicates, m)
           "Audit exact CDT edge/face membership without copying input arrays.\n\n"
           "Inputs must be immutable for the duration of this call because the GIL "
           "is released while their C-contiguous int64 storage is read.");
+    m.def("audit_source_component_bijection", &audit_source_component_bijection,
+          py::arg("source_points").noconvert(),
+          py::arg("source_faces").noconvert(),
+          py::arg("candidate_points").noconvert(),
+          py::arg("tets").noconvert(),
+          "Audit exact source-to-boundary component provenance without geometry "
+          "mutation. Inputs must be immutable while the GIL is released.");
     m.def("recover_targeted_edges_23", &recover_targeted_edges_23,
           py::arg("points"), py::arg("tets"), py::arg("edges"),
           py::arg("max_attempts") = 200);

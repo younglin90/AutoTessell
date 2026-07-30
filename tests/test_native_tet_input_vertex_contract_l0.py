@@ -9,6 +9,8 @@ from core.generator.native_tet.mesher import (
     _p4c_candidate_meets_acceptance_l0,
 )
 
+_TET_FACES = np.asarray(((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)), dtype=np.int64)
+
 
 def test_input_vertex_presence_accepts_a_reordered_exact_copy() -> None:
     source = np.asarray(((0, 0, 0), (1, 0, 0), (0, 1, 0)), dtype=np.float64)
@@ -43,9 +45,7 @@ def test_input_vertex_presence_fails_closed_for_a_malformed_candidate() -> None:
 
 
 def test_p4c_acceptance_rejects_better_quality_when_a_source_corner_is_missing() -> None:
-    source = np.asarray(
-        ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64
-    )
+    source = np.asarray(((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64)
     candidate = np.asarray(
         ((0, 0, 0), (1, 0, 0), (0, 1 + 1e-12, 0), (0, 0, 1)),
         dtype=np.float64,
@@ -53,6 +53,7 @@ def test_p4c_acceptance_rejects_better_quality_when_a_source_corner_is_missing()
 
     accepted, missing, topology = _p4c_candidate_meets_acceptance_l0(
         source,
+        _TET_FACES,
         candidate,
         np.asarray(((0, 1, 2, 3),), dtype=np.int64),
         old_mean_quality=0.1,
@@ -67,13 +68,12 @@ def test_p4c_acceptance_rejects_better_quality_when_a_source_corner_is_missing()
 
 
 def test_p4c_acceptance_keeps_quality_and_cell_floor_after_source_gate() -> None:
-    source = np.asarray(
-        ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64
-    )
+    source = np.asarray(((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64)
     candidate = source[[2, 0, 3, 1]].copy()
 
     accepted, missing, topology = _p4c_candidate_meets_acceptance_l0(
         source,
+        _TET_FACES,
         candidate,
         np.asarray(((1, 3, 0, 2),), dtype=np.int64),
         old_mean_quality=0.1,
@@ -87,16 +87,40 @@ def test_p4c_acceptance_keeps_quality_and_cell_floor_after_source_gate() -> None
     assert topology.valid
 
 
+def test_p4c_acceptance_supports_two_reordered_source_components() -> None:
+    first = np.asarray(((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64)
+    source = np.vstack([first, first + np.asarray((3.0, 0.0, 0.0))])
+    source_faces = np.vstack([_TET_FACES, _TET_FACES + 4])
+    source_tets = np.asarray(((0, 1, 2, 3), (4, 5, 6, 7)), dtype=np.int64)
+    point_order = np.asarray((6, 1, 4, 3, 0, 7, 2, 5), dtype=np.int64)
+    old_to_new = np.argsort(point_order)
+    candidate = source[point_order].copy()
+    candidate_tets = old_to_new[source_tets]
+
+    accepted, missing, topology = _p4c_candidate_meets_acceptance_l0(
+        source,
+        source_faces,
+        candidate,
+        candidate_tets,
+        old_mean_quality=0.1,
+        candidate_mean_quality=0.2,
+        old_cell_count=100,
+        candidate_cell_count=50,
+    )
+
+    assert accepted
+    assert missing == 0
+    assert topology.n_boundary_components == 2
+    assert not topology.valid  # Standalone audit has no source topology context.
+
+
 def test_p4c_acceptance_rejects_duplicate_tet_topology() -> None:
-    points = np.asarray(
-        ((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64
-    )
-    duplicate_tets = np.asarray(
-        ((0, 1, 2, 3), (0, 1, 2, 3)), dtype=np.int64
-    )
+    points = np.asarray(((0, 0, 0), (1, 0, 0), (0, 1, 0), (0, 0, 1)), dtype=np.float64)
+    duplicate_tets = np.asarray(((0, 1, 2, 3), (0, 1, 2, 3)), dtype=np.int64)
 
     accepted, missing, topology = _p4c_candidate_meets_acceptance_l0(
         points,
+        _TET_FACES,
         points.copy(),
         duplicate_tets,
         old_mean_quality=0.1,

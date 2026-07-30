@@ -87,10 +87,13 @@ def test_degenerate_tet_is_rejected() -> None:
     assert audit.n_degenerate_tets == 1
 
 
-def test_disconnected_tet_components_are_rejected() -> None:
-    points, _ = _cube()
-    shifted = points[:4] + np.array([3.0, 0.0, 0.0])
-    all_points = np.vstack([points[:4], shifted])
+def test_disconnected_tet_components_require_source_aware_acceptance() -> None:
+    points = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        dtype=np.float64,
+    )
+    shifted = points + np.array([3.0, 0.0, 0.0])
+    all_points = np.vstack([points, shifted])
     tets = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int64)
     audit = audit_tet_boundary(all_points, tets)
     assert not audit.valid
