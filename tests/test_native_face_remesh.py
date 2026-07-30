@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from hashlib import sha256
+
 import numpy as np
 import trimesh
 
 from core.preprocessor.native_remesh import SurfaceRemeshConfig, native_face_remesh
+from core.preprocessor.native_remesh.isotropic import isotropic_remesh
 
 
 def test_closed_surface_accepts_all_native_face_gates() -> None:
@@ -64,6 +67,49 @@ def test_explicit_protected_edge_is_preserved_and_reported() -> None:
     assert result.diagnostics.protected_edges == 1
     assert result.diagnostics.protected_edges_preserved is True
     assert result.diagnostics.gates["protected_edges"] is True
+
+
+def test_protected_edge_result_is_deterministic_across_three_runs() -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=1)
+    edge = tuple(int(value) for value in mesh.faces[0, :2])
+    hashes: list[str] = []
+    for _ in range(3):
+        result = native_face_remesh(
+            mesh.vertices,
+            mesh.faces,
+            config=SurfaceRemeshConfig(
+                target_edge_length=2.0,
+                iterations=1,
+                protected_edges=(edge,),
+            ),
+        )
+        assert result.accepted is True
+        assert result.diagnostics.gates["protected_edges"] is True
+        digest = sha256()
+        digest.update(np.ascontiguousarray(result.vertices).tobytes())
+        digest.update(np.ascontiguousarray(result.faces).tobytes())
+        hashes.append(digest.hexdigest())
+    assert hashes[0] == hashes[1] == hashes[2]
+
+
+def test_isotropic_never_splits_or_moves_an_explicit_protected_edge() -> None:
+    mesh = trimesh.creation.icosphere(subdivisions=1)
+    edge = tuple(sorted(int(value) for value in mesh.faces[0, :2]))
+    vertices, faces = isotropic_remesh(
+        mesh.vertices,
+        mesh.faces,
+        target_edge_length=0.1,
+        n_iter=1,
+        protected_edges=frozenset((edge,)),
+    )
+    output_edges = {
+        tuple(sorted((int(triangle[index]), int(triangle[(index + 1) % 3]))))
+        for triangle in faces
+        for index in range(3)
+    }
+
+    assert edge in output_edges
+    np.testing.assert_array_equal(vertices[list(edge)], mesh.vertices[list(edge)])
 
 
 def test_invalid_protected_edge_fails_closed() -> None:

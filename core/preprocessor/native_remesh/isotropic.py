@@ -65,7 +65,11 @@ def _edge_lengths(
 
 
 def _split_edges_above(
-    V: np.ndarray, F: np.ndarray, h_hi: float,
+    V: np.ndarray,
+    F: np.ndarray,
+    h_hi: float,
+    *,
+    protected_edges: frozenset[tuple[int, int]] = frozenset(),
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge 가 h_hi 초과면 edge 중점에 vertex 삽입 + 두 삼각형 분할.
 
@@ -109,6 +113,13 @@ def _split_edges_above(
         longest = float(longest_all[fi])
         # 가장 긴 edge 만 분할 (한 번에 한 edge — 안정적)
         if longest <= h_hi:
+            new_F.append([v0, v1, v2])
+            continue
+        if (
+            (longest == e01 and _edge_key(v0, v1) in protected_edges)
+            or (longest == e12 and _edge_key(v1, v2) in protected_edges)
+            or (longest == e20 and _edge_key(v2, v0) in protected_edges)
+        ):
             new_F.append([v0, v1, v2])
             continue
         n_split += 1
@@ -216,6 +227,7 @@ def _is_boundary_vertex(v: int, edge_map: dict[tuple[int, int], list[int]]) -> b
 def _flip_edges_to_improve_valence(
     V: np.ndarray, F: np.ndarray,
     valence_constraint: bool = False,
+    protected_edges: frozenset[tuple[int, int]] = frozenset(),
 ) -> tuple[np.ndarray, int]:
     """각 internal edge 에 대해 flip 전후 valence 편차가 줄어들면 flip.
 
@@ -254,6 +266,8 @@ def _flip_edges_to_improve_valence(
         visited_edges: set[tuple[int, int]] = set()
         for (a, b), fl in edge_map.items():
             if len(fl) != 2 or (a, b) in visited_edges:
+                continue
+            if (a, b) in protected_edges:
                 continue
             f1_idx, f2_idx = fl[0], fl[1]
             f1 = F_list[f1_idx]; f2 = F_list[f2_idx]
@@ -402,6 +416,7 @@ def isotropic_remesh(
     feature_angle_deg: float = 45.0,
     lock_features: bool = False,
     valence_constraint: bool = False,
+    protected_edges: frozenset[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """isotropic remesh 알고리즘 — split / collapse / flip / relocate 반복.
 
@@ -425,14 +440,25 @@ def isotropic_remesh(
     h_hi = h * (4.0 / 3.0)
     h_lo = h * (4.0 / 5.0)
 
+    immutable_edges = protected_edges or frozenset()
     feature_verts: frozenset[int] = frozenset()
     if lock_features:
         feature_verts = _detect_feature_verts(V, F, feature_angle_deg)
+    if immutable_edges:
+        feature_verts = feature_verts | frozenset(
+            vertex for edge in immutable_edges for vertex in edge
+        )
 
     for _ in range(max(1, int(n_iter))):
-        V, F, _ = _split_edges_above(V, F, h_hi)
-        V, F, _ = _collapse_edges_below(V, F, h_lo)
-        F, _ = _flip_edges_to_improve_valence(V, F, valence_constraint=valence_constraint)
+        V, F, _ = _split_edges_above(V, F, h_hi, protected_edges=immutable_edges)
+        if not immutable_edges:
+            V, F, _ = _collapse_edges_below(V, F, h_lo)
+        F, _ = _flip_edges_to_improve_valence(
+            V,
+            F,
+            valence_constraint=valence_constraint,
+            protected_edges=immutable_edges,
+        )
         V = _tangential_relocate(
             V, F, lam=relocation_lambda,
             feature_verts=feature_verts if feature_verts else None,
