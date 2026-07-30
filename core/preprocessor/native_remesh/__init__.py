@@ -23,6 +23,12 @@ import numpy as np
 
 from core.preprocessor.native_remesh.cvt import lloyd_cvt
 from core.preprocessor.native_remesh.isotropic import isotropic_remesh
+from core.preprocessor.native_remesh.quad_dominant import (
+    QuadDominantConfig,
+    QuadDominantDiagnostics,
+    QuadDominantResult,
+    native_quad_dominant_remesh,
+)
 
 _UUU1_SI_DETECT = True
 _UUU3_REPAIR_CANDIDATES = True
