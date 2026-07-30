@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `24`
+- cycle: `31`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `b99966a87c3014a4353e3133840ba1dc58d4c840`
+- last_verified_master: `db48ba4bd2fc1e9e9efe7a11f8baddf3c6622764`
 - allowed_to_stop: `false`
-- next_action: `Prevent duplicate native-BL insertion in poly_bl_transition and repair the resulting prism/hybrid face winding so the valid PolyMeshWriter single-tet fixture remains signed-positive after transition; preserve requested layer reporting and wall geometry.`
+- next_action: `Run the Cycle-32 Tet strict-topology and Poly target-control baselines selected by the parallel audit; keep Tet target count deferred behind topology and preserve the exact input surface.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -1759,3 +1759,101 @@ scope. Future MIT-core boundary follows
   unresolved dependency licenses.  Do not delete the tracked installer binary
   without a separate reviewed artifact-retention decision.  Keep shape,
   topology, and provenance ahead of target-cell count.
+
+## Cycle 31 checkpoint -- 2026-07-31
+
+### Single-source release identity
+
+- `e8964a42` makes `core/version.py` the canonical `1.2.0` source for runtime,
+  API, wheel/sdist metadata, Qt, Electron, Godot, frontend, and installer
+  declarations.  PEP 621 metadata uses the scikit-build-core regex provider;
+  local Python fallback constants were removed.
+- A fresh tracked snapshot produced `auto_tessell-1.2.0` wheel and source
+  archive.  The wheel contains exactly eight first-party native modules; all
+  eight installed kernels smoke-tested.  Independent wheel bytes still differ,
+  so binary reproducibility remains open.
+- Version focused/packaging validation passes `12` post-merge.  Bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\release-version-single-source-1-9ccca2b7.bundle`,
+  SHA-256 `e758250b30119984ff2f2f7bb0d3f9688c48121c60e34071daa3297c2d1259f8`.
+
+### Exact Python-wheel dependency evidence
+
+- `779f6b3c` records exact PyPI wheel URL, SHA-256, METADATA, declared license
+  fields, and license-file hashes for nine direct runtime and two direct build
+  dependencies.  PEP 639 expressions are copied only when present; legacy
+  metadata remains unnormalized and no SPDX expression is inferred.
+- `python-wheel-core --require-resolved` passes.  Global
+  `--require-resolved` truthfully fails with eight remaining CMake/external/
+  Boost rows.  Focused post-merge validation passes `16`.
+- Bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\license-python-wheel-evidence-1-779f6b3c.bundle`,
+  SHA-256 `5ef73650e4eb2922ead76ee0cbeaff369e77da8d39c489a28f593f84f0066e49`.
+
+### Native Hex C++23 feature-edge extraction
+
+- `99f8af8c` ports feature-edge classification to first-party C++23 using one
+  contiguous `3F` edge-record array, one normal array, deterministic sort/run
+  scans, exact output reservation, and GIL release after strict ABI validation.
+  Python dictionaries, per-edge lists, and scalar NumPy dispatch leave the hot
+  path.  Surface coordinates, feature threshold, ordering, weights, topology,
+  and provenance are unchanged byte-for-byte.
+- On `115,200` triangles, Python median `0.829629 s` becomes native
+  `0.020881 s` (`39.73x`); maximum RSS changes `169,448 -> 73,220 KiB`
+  (`56.79%` lower).  Full Hex/snap validation passes `200`, with `9` existing
+  skips; strict GCC 13.3 C++23 build reports zero warnings.
+- Advisor verification found a stale repo-local extension outranking
+  `AUTOTESSELL_EXT_BUILD_DIR`.  `21667a07` loads the explicit binary through a
+  path-stable package alias even after a single-phase extension was cached;
+  `a6fc5dec` makes an existing explicit candidate fail closed on import error.
+  Post-merge focused validation passes `23`; advisor benchmark remains exact at
+  `39.51x`.  Promotion is `L1_PASS / EXPERIMENTAL_KEEP`.
+- Final bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-hex-feature-edges-1-a6fc5dec-v3.bundle`,
+  SHA-256 `2c3ba7b9bca3d362c50bf1db26aa3a6bc5b5d4a92132b5b6c3e12edd77495d32`.
+
+### Native Tri/Quad C++23 bulk pair-quality selection
+
+- `0b2a0ab5` fuses oriented-quad construction, scaled-Jacobian/aspect/warpage
+  evaluation, stable candidate ordering, and greedy face consumption into
+  `native_metrics.select_quad_pairs`.  Exact contiguous `float64`/`int64`
+  inputs, contiguous POD candidates, a dense consumed-face byte vector, strict
+  output provenance checks, and GIL release replace per-candidate NumPy arrays
+  and Python objects.  Python remains the independent fallback/oracle.
+- On `7,200` triangles and `10,680` candidate pairs, kernel median changes
+  `2.090906 -> 0.001536 s` (`1361.13x`); public route changes
+  `2.294814 -> 0.228755 s` (`10.03x`); traced Python heap falls `95.95%`.
+  Topology/order/classification match exactly and quality differs by at most
+  `1e-14`.  Derived non-finite quality from huge finite coordinates is rejected.
+- Focused validation passes `51`; wider related regression passes `134`;
+  advisor post-merge validation passes `38`.  GCC 13.3 strict C++23 reports zero
+  warnings.  No permanent quality threshold or routing default changed.
+- Bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-triquad-pair-quality-1-0b2a0ab5.bundle`,
+  SHA-256 `7c5bc29dd9df3951314117243551c9a566ac6544cad8f3523c300a7b85d8b07d`.
+
+### Cycle-31 gate re-evaluation
+
+| Gate | Status | Cycle-31 evidence / next evidence |
+|---|---|---|
+| 1 Repository | FAIL | `master` is clean with one worktree and one branch, but tracked `installer/dist/AutoTessell-1.2.0-Setup.exe` remains an unresolved build artifact. |
+| 2 Build | UNVERIFIED | New Hex and Tri/Quad targets pass strict GCC 13.3 C++23; supported OS/compiler matrix remains incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/wider engine and packaging suites pass; immutable-head full suite remains. |
+| 4 Shape preservation | UNVERIFIED | Feature segments and Tri/Quad connectivity are exact against Python oracles; full corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Non-finite derived quad quality now fails closed; all-engine validity corpus remains. |
+| 6 Cell count | FAIL | Tet target remains deferred behind strict topology; Poly target response remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | No boundary-layer contract changed; full wall corpus remains. |
+| 8 Quality | UNVERIFIED | Tri/Quad metric and classification parity pass; complete fixture matrix remains. |
+| 9 Reproducibility | FAIL | New kernels are deterministic, but independently built wheel bytes and external P4C topology hashes still differ. |
+| 10 Robustness | UNVERIFIED | Strict input/output ABI, huge-finite rejection, stale-extension override, and explicit-load failure pass; adverse corpus remains. |
+| 11 Performance | UNVERIFIED | Hex `39.73x` and Tri/Quad public `10.03x` pass card targets; frozen all-engine budgets remain. |
+| 12 Packaging | FAIL | Version identity and source evidence improved; Windows wheel/installer/UI/uninstall matrix remains. |
+| 13 License/provenance | UNVERIFIED | Python core profile resolves 11 exact artifacts; global inventory still reports eight unresolved rows. |
+| 14 Documentation/operations | UNVERIFIED | Version checker and research evidence improved; release/rollback operations remain incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Execute the Cycle-32 Tet strict-topology and Poly target-control cards selected
+  by the parallel audit.  Tet target count stays deferred until topology and
+  validity are truthful.  Do not weaken exact surface, provenance, orientation,
+  or positive-volume gates.
