@@ -48,6 +48,40 @@ class AMIPSResult:
     energy_after: float
 
 
+def _boundary_vertex_mask_python(
+    tets: np.ndarray,
+    n_vertices: int,
+) -> np.ndarray:
+    """Fallback exact one-owner-face boundary mask."""
+    from core.generator.native_tet.plane_coverage import _tet_boundary_faces
+
+    mask: np.ndarray = np.zeros(int(n_vertices), dtype=np.bool_)
+    boundary_faces = _tet_boundary_faces(np.asarray(tets, dtype=np.int64))
+    if boundary_faces.size:
+        mask[np.unique(boundary_faces)] = True
+    return mask
+
+
+def _boundary_vertex_mask(
+    tets: np.ndarray,
+    n_vertices: int,
+) -> np.ndarray:
+    """Prefer C++23 exact face incidence; preserve Python-only installs."""
+    from core.utils.native_extensions import load_native_tet_predicates
+
+    cells = np.asarray(tets, dtype=np.int64)
+    native = load_native_tet_predicates()
+    kernel = getattr(native, "tet_boundary_vertex_mask", None) if native is not None else None
+    if kernel is not None and cells.flags.c_contiguous:
+        result: np.ndarray = np.asarray(
+            kernel(cells, int(n_vertices)), dtype=np.bool_
+        )
+        if result.shape != (int(n_vertices),):
+            raise RuntimeError("native boundary mask returned an invalid shape")
+        return result
+    return _boundary_vertex_mask_python(cells, int(n_vertices))
+
+
 def _tet_amips_energy(v0, v1, v2, v3, alpha: float = 1.0) -> np.ndarray:
     """batch AMIPS energy per tet. v0..v3: (T, 3)."""
     J = np.stack([v1 - v0, v2 - v0, v3 - v0], axis=2)   # (T, 3, 3) world.
@@ -189,7 +223,10 @@ def smooth_amips_analytic(
     if tets.size == 0:
         return AMIPSResult(0, 0, 0.0, 0.0, 0.0), pts
 
-    locked_mask = np.zeros(n, dtype=bool)
+    # AMIPS is an interior relocation pass.  Source-prefix locks are not
+    # sufficient after surface recovery adds boundary vertices, so derive the
+    # exact current boundary from tetrahedral face incidence at every call.
+    locked_mask = _boundary_vertex_mask(tets, n)
     if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
         locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
 
@@ -353,7 +390,9 @@ def smooth_amips(
     if tets.size == 0:
         return AMIPSResult(0, 0, 0.0, 0.0, 0.0), pts
 
-    locked_mask = np.zeros(n, dtype=bool)
+    # Keep the finite-difference path under the same interior-only contract as
+    # the analytic path; callers may supply additional locks, never fewer.
+    locked_mask = _boundary_vertex_mask(tets, n)
     if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
         locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
 

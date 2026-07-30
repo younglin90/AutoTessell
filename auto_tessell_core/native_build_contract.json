@@ -103,6 +103,7 @@
         "recover_targeted_edges_23",
         "regularize_weighted_23",
         "regularize_weighted_32",
+        "tet_boundary_vertex_mask",
         "tet_quality_metrics"
       ],
       "sources": [

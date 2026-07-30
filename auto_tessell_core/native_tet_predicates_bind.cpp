@@ -437,6 +437,8 @@ struct FaceKeyHash {
     }
 };
 
+using FaceIncidence = std::unordered_map<FaceKey, size_t, FaceKeyHash>;
+
 struct EdgeKey {
     std::array<long long, 2> vertices;
 
@@ -520,6 +522,76 @@ FaceKey make_face_key(const Tet& tet, const size_t excluded)
     }
     std::sort(key.vertices.begin(), key.vertices.end());
     return key;
+}
+
+void add_tet_face_incidence(FaceIncidence& face_counts, const Tet& tet)
+{
+    for (size_t excluded = 0; excluded < tet.size(); ++excluded) {
+        ++face_counts[make_face_key(tet, excluded)];
+    }
+}
+
+py::array_t<bool> tet_boundary_vertex_mask(
+    const py::array& tets_array,
+    const py::ssize_t vertex_count)
+{
+    validate_cdt_array(tets_array, 4, "tets");
+    if (vertex_count < 0) {
+        throw std::invalid_argument("vertex_count must be non-negative");
+    }
+
+    const py::buffer_info tets_info = tets_array.request();
+    const auto tet_count = static_cast<size_t>(tets_info.shape[0]);
+    const auto n_vertices = static_cast<size_t>(vertex_count);
+    const size_t index_count = checked_entity_count(tet_count, 4U, "tets");
+    const auto* const tets = static_cast<const int64_t*>(tets_info.ptr);
+
+    // Validate Python-owned storage before releasing the GIL.  The native
+    // census below reads only this immutable C-contiguous buffer.
+    for (size_t index = 0; index < index_count; ++index) {
+        const int64_t vertex = tets[index];
+        if (vertex < 0 || static_cast<size_t>(vertex) >= n_vertices) {
+            throw std::invalid_argument("tet vertex index out of range");
+        }
+    }
+    for (size_t row = 0; row < tet_count; ++row) {
+        Tet tet{};
+        for (size_t local = 0; local < tet.size(); ++local) {
+            tet[local] = tets[4U * row + local];
+        }
+        std::sort(tet.begin(), tet.end());
+        if (std::adjacent_find(tet.begin(), tet.end()) != tet.end()) {
+            throw std::invalid_argument("tets contains a repeated vertex");
+        }
+    }
+
+    py::array_t<bool> result({vertex_count});
+    py::buffer_info result_info = result.request();
+    auto* const boundary_mask = static_cast<bool*>(result_info.ptr);
+    {
+        py::gil_scoped_release release;
+        std::fill(boundary_mask, boundary_mask + n_vertices, false);
+        FaceIncidence face_counts;
+        face_counts.reserve(checked_entity_count(tet_count, 4U, "tets"));
+        for (size_t row = 0; row < tet_count; ++row) {
+            const Tet tet{
+                tets[4U * row],
+                tets[4U * row + 1U],
+                tets[4U * row + 2U],
+                tets[4U * row + 3U],
+            };
+            add_tet_face_incidence(face_counts, tet);
+        }
+        for (const auto& [face, count] : face_counts) {
+            if (count != 1U) {
+                continue;
+            }
+            for (const int64_t vertex : face.vertices) {
+                boundary_mask[static_cast<size_t>(vertex)] = true;
+            }
+        }
+    }
+    return result;
 }
 
 bool has_distinct_valid_indices(const Tet& tet, const py::ssize_t point_count)
@@ -633,7 +705,7 @@ py::tuple audit_tet_boundary_native(
 
         std::unordered_set<Tet, TetHash> unique_tets;
         unique_tets.reserve(tet_count);
-        std::unordered_map<FaceKey, size_t, FaceKeyHash> face_counts;
+        FaceIncidence face_counts;
         face_counts.reserve(tet_count * 4U);
         size_t duplicate_tets = 0;
         size_t degenerate_tets = 0;
@@ -669,9 +741,7 @@ py::tuple audit_tet_boundary_native(
             if (orientation_sign < 0) {
                 ++inverted_tets;
             }
-            for (size_t excluded = 0; excluded < 4; ++excluded) {
-                ++face_counts[make_face_key(tet, excluded)];
-            }
+            add_tet_face_incidence(face_counts, tet);
         }
 
         std::vector<FaceKey> boundary_faces;
@@ -2793,6 +2863,11 @@ PYBIND11_MODULE(native_tet_predicates, m)
     m.def("audit_tet_boundary", &audit_tet_boundary_native,
           py::arg("points"), py::arg("tets"),
           py::arg("relative_volume_tolerance") = 1e-12);
+    m.def("tet_boundary_vertex_mask", &tet_boundary_vertex_mask,
+          py::arg("tets").noconvert(), py::arg("vertex_count"),
+          "Return an ascending deterministic mask of exact one-owner-face vertices. "
+          "The C-contiguous int64 tetrahedron array must remain immutable while "
+          "the GIL is released.");
     m.def("audit_cdt_constraints", &audit_cdt_constraints,
           py::arg("surface_faces").noconvert(), py::arg("tets").noconvert(),
           "Audit exact CDT edge/face membership without copying input arrays.\n\n"

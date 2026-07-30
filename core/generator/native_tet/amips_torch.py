@@ -12,6 +12,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from core.generator.native_tet.amips import _boundary_vertex_mask
+
 # Optional torch import.
 _HAS_TORCH = False
 _HAS_CUDA = False
@@ -83,7 +85,14 @@ def smooth_amips_torch(
     n = pts_t.shape[0]
     REF_INV_t = torch.as_tensor(_REF_INV, dtype=torch.float64, device=device)
 
-    locked = torch.zeros(n, dtype=torch.bool, device=device)
+    # Match both NumPy AMIPS paths: current tetrahedral boundary is immutable,
+    # and caller-provided locks can only extend that exact set.  Compute the
+    # native/fallback face-incidence mask once before transferring it to CPU or
+    # CUDA so both devices receive identical lock semantics.
+    boundary_locked = _boundary_vertex_mask(
+        np.asarray(tets, dtype=np.int64), int(n),
+    )
+    locked = torch.as_tensor(boundary_locked, dtype=torch.bool, device=device).clone()
     if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
         locked[torch.as_tensor(np.asarray(locked_vertex_ids, dtype=np.int64),
                                 device=device)] = True
