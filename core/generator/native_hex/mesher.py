@@ -745,7 +745,10 @@ def _wall_fit_snap(
     from core.generator.native_hex.quality import (  # noqa: PLC0415
         _native_generic_cell_face_signs,
     )
-    from core.generator.native_hex.snap import _closest_point_on_triangle  # noqa: PLC0415
+    from core.generator.native_hex.snap import (  # noqa: PLC0415
+        _closest_point_on_triangle,
+        _load_native_snap,
+    )
     from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
 
     stats = {
@@ -897,17 +900,62 @@ def _wall_fit_snap(
                 best_pt = q
         return best_d2, best_pt
 
+    def _native_initial_projection(
+        query_points: np.ndarray, candidates: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
+        """Run optional batch projection with a strict loaded-module ABI."""
+        native_snap = _load_native_snap()
+        if native_snap is None:
+            return None
+        kernel = getattr(native_snap, "closest_triangle_candidates", None)
+        if kernel is None:
+            raise RuntimeError(
+                "loaded native_snap is missing closest_triangle_candidates"
+            )
+        result = kernel(query_points, tri_A, tri_B, tri_C, candidates)
+        if not isinstance(result, tuple) or len(result) != 3:
+            raise RuntimeError(
+                "native_snap.closest_triangle_candidates returned invalid ABI"
+            )
+        best_points, squared_distances, valid = result
+        count = query_points.shape[0]
+        expected = (
+            (best_points, np.dtype(np.float64), (count, 3)),
+            (squared_distances, np.dtype(np.float64), (count,)),
+            (valid, np.dtype(np.bool_), (count,)),
+        )
+        for value, dtype, shape in expected:
+            if (
+                not isinstance(value, np.ndarray)
+                or value.dtype != dtype
+                or value.shape != shape
+                or not value.flags.c_contiguous
+            ):
+                raise RuntimeError(
+                    "native_snap.closest_triangle_candidates returned invalid ABI"
+                )
+        return best_points, squared_distances, valid
+
     boundary = np.array(sorted(boundary_verts), dtype=np.int64)
     for _ in range(int(iters)):
-        _, nn = tree.query(pts[boundary], k=k)
+        query_points = pts[boundary]
+        _, nn = tree.query(query_points, k=k)
         nn = np.atleast_2d(np.asarray(nn))
+        native_projection = _native_initial_projection(query_points, nn)
         entries: list[tuple[float, np.ndarray, np.ndarray, int]] = []
         for bi, vi in enumerate(boundary.tolist()):
             cand = nn[bi]
             cand = cand[cand < tri_cen.shape[0]]
             if cand.size == 0:
                 continue
-            d2_0, p0 = _project(pts[vi], cand)
+            if native_projection is None:
+                d2_0, p0 = _project(pts[vi], cand)
+            else:
+                best_points, squared_distances, valid = native_projection
+                if not bool(valid[bi]):
+                    continue
+                d2_0 = float(squared_distances[bi])
+                p0 = best_points[bi]
             entries.append((d2_0, p0, cand, vi))
         entries.sort(key=lambda e: -e[0])  # worst deviation first
         moved = 0
