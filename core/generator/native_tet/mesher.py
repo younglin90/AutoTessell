@@ -77,31 +77,23 @@ def _p4c_candidate_meets_acceptance_l0(
         source_vertices, candidate_vertices
     )
     from core.generator.native_tet.rescue_gate import (
-        audit_source_component_bijection,
+        audit_source_topology,
         audit_tet_boundary,
     )
 
-    topology = audit_tet_boundary(candidate_vertices, candidate_tets)
     try:
-        component_audit = audit_source_component_bijection(
+        source_topology = audit_source_topology(
             np.asarray(source_vertices, dtype=np.float64),
             np.asarray(source_faces, dtype=np.int64),
             np.asarray(candidate_vertices, dtype=np.float64),
             np.asarray(candidate_tets, dtype=np.int64),
         )
-        component_bijective = bool(component_audit.bijective)
+        topology = source_topology.boundary
+        source_topology_valid = bool(source_topology.valid)
     except Exception:
-        component_bijective = False
-    topology_preserved = bool(
-        topology.n_tets > 0
-        and topology.n_boundary_faces > 0
-        and topology.n_open_edges == 0
-        and topology.n_nonmanifold_edges == 0
-        and topology.n_nonmanifold_faces == 0
-        and topology.n_duplicate_tets == 0
-        and topology.n_degenerate_tets == 0
-        and component_bijective
-    )
+        topology = audit_tet_boundary(candidate_vertices, candidate_tets)
+        source_topology_valid = False
+    topology_preserved = source_topology_valid
     accepted = bool(
         source_preserved
         and topology_preserved
@@ -698,18 +690,26 @@ def generate_native_tet(
             )
             if _r_ftw.success and _r_ftw.tets.shape[0] > 0:
                 from core.generator.native_tet.rescue_gate import (
-                    audit_source_component_bijection as _audit_components_ftw,
+                    audit_source_topology as _audit_source_topology_ftw,
                 )
 
-                _ftw_component_audit = _audit_components_ftw(
+                _ftw_topology_audit = _audit_source_topology_ftw(
                     np.asarray(V, dtype=np.float64),
                     np.asarray(F, dtype=np.int64),
                     np.asarray(_r_ftw.pts, dtype=np.float64),
                     np.asarray(_r_ftw.tets, dtype=np.int64),
                 )
-                if not _ftw_component_audit.bijective:
-                    raise ValueError(
-                        "ftetwild loop source component topology is not bijective"
+                if not _ftw_topology_audit.valid:
+                    return NativeTetResult(
+                        False,
+                        _time.perf_counter() - _t_ftw,
+                        n_cells=int(_r_ftw.tets.shape[0]),
+                        n_points=int(_r_ftw.pts.shape[0]),
+                        message=(
+                            "ftetwild loop source-aware strict topology is invalid"
+                        ),
+                        tet_points=_r_ftw.pts,
+                        tets=_r_ftw.tets,
                     )
                 try:
                     _PMW().write(_r_ftw.pts, _r_ftw.tets, case_dir)
@@ -6175,25 +6175,69 @@ def generate_native_tet(
             log.debug("native_tet_validate_skipped", reason=str(_val1_exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VAL1", dt_ms=int((time.perf_counter() - _t_val1) * 1000))
 
-    # Strict source-component contract.  A valid input may contain multiple
-    # disconnected bodies or nested shells, so a hard-coded one-component
-    # requirement is not a topology invariant.  Instead, every edge-connected
-    # source surface component must map bijectively to one final boundary
-    # component through exact source-coordinate provenance.  Candidate point
-    # order is irrelevant, including for external P4C fallback output.  This
-    # audit does not move vertices, rewrite connectivity, or alter target-cell
-    # policy.
+    # Native-only provenance canonicalization.  The self-native path keeps
+    # source surface ids as an immutable prefix, but floating arithmetic can
+    # leave a few-ulp coordinate drift.  Restore exact input bits only under a
+    # boundary-membership proof and a scale-relative machine-roundoff cap.
+    # External P4C output may reorder points and is therefore never rewritten.
     try:
         from core.generator.native_tet.rescue_gate import (  # noqa: PLC0415
-            audit_source_component_bijection,
+            restore_source_prefix_roundoff,
         )
 
-        _source_component_audit = audit_source_component_bijection(
+        _source_prefix_restore = restore_source_prefix_roundoff(
+            np.asarray(V, dtype=np.float64),
+            np.asarray(F, dtype=np.int64),
+            np.asarray(final_pts, dtype=np.float64),
+            np.asarray(final_tets, dtype=np.int64),
+            prefix_contract=not bool(_p4c_rewrote),
+        )
+        debug_info["source_prefix_roundoff_restore"] = {
+            "applied": bool(_source_prefix_restore.applied),
+            "reason": _source_prefix_restore.reason,
+            "restored_count": int(_source_prefix_restore.restored_count),
+            "max_delta": float(_source_prefix_restore.max_delta),
+            "cap": float(_source_prefix_restore.cap),
+        }
+        if _source_prefix_restore.applied:
+            final_pts = _source_prefix_restore.points
+        log.info(
+            "native_tet_source_prefix_roundoff_restore",
+            **debug_info["source_prefix_roundoff_restore"],
+        )
+    except Exception as _source_prefix_restore_exc:
+        debug_info["source_prefix_roundoff_restore"] = {
+            "applied": False,
+            "reason": (
+                f"{type(_source_prefix_restore_exc).__name__}: "
+                f"{_source_prefix_restore_exc}"
+            ),
+            "restored_count": 0,
+        }
+        log.warning(
+            "native_tet_source_prefix_roundoff_restore_unverified",
+            reason=str(_source_prefix_restore_exc)[:160],
+        )
+
+    # Source-aware strict topology contract.  Local closed-manifold validity
+    # permits one or more disconnected bodies; exact component provenance then
+    # proves that the output neither loses, merges, splits, nor invents a source
+    # component.  Candidate point order is irrelevant, including for external
+    # P4C output.  This audit does not move vertices, rewrite connectivity, or
+    # alter target-cell policy.
+    try:
+        from core.generator.native_tet.rescue_gate import (  # noqa: PLC0415
+            audit_source_topology,
+        )
+
+        _source_topology_audit = audit_source_topology(
             np.asarray(V, dtype=np.float64),
             np.asarray(F, dtype=np.int64),
             np.asarray(final_pts, dtype=np.float64),
             np.asarray(final_tets, dtype=np.int64),
         )
+        _source_component_audit = _source_topology_audit.components
+        _boundary_topology_audit = _source_topology_audit.boundary
         debug_info["strict_source_component_bijection"] = {
             "bijective": bool(_source_component_audit.bijective),
             "n_source_components": int(
@@ -6227,29 +6271,48 @@ def generate_native_tet(
                 _source_component_audit.n_unknown_source_vertex_anchors
             ),
         }
-        if not _source_component_audit.bijective:
+        debug_info["strict_source_topology"] = {
+            "valid": bool(_source_topology_audit.valid),
+            "n_boundary_faces": int(_boundary_topology_audit.n_boundary_faces),
+            "n_boundary_components": int(
+                _boundary_topology_audit.n_boundary_components
+            ),
+            "n_open_edges": int(_boundary_topology_audit.n_open_edges),
+            "n_nonmanifold_edges": int(
+                _boundary_topology_audit.n_nonmanifold_edges
+            ),
+            "n_nonmanifold_faces": int(
+                _boundary_topology_audit.n_nonmanifold_faces
+            ),
+            "n_duplicate_tets": int(_boundary_topology_audit.n_duplicate_tets),
+            "n_degenerate_tets": int(
+                _boundary_topology_audit.n_degenerate_tets
+            ),
+            "component_bijective": bool(_source_component_audit.bijective),
+        }
+        if not _source_topology_audit.valid:
             log.warning(
-                "native_tet_source_component_bijection_rejected",
-                **debug_info["strict_source_component_bijection"],
+                "native_tet_source_topology_rejected",
+                **debug_info["strict_source_topology"],
             )
             return NativeTetResult(
                 False,
                 time.perf_counter() - t0,
                 n_cells=int(final_tets.shape[0]),
                 n_points=int(final_pts.shape[0]),
-                message="native_tet source component topology is not bijective",
+                message="native_tet source-aware strict topology is invalid",
                 tet_points=final_pts,
                 tets=final_tets,
                 warnings=warnings_list or None,
                 debug_info=debug_info,
             )
-    except Exception as _component_audit_exc:
-        debug_info["strict_source_component_bijection_error"] = (
-            f"{type(_component_audit_exc).__name__}: {_component_audit_exc}"
+    except Exception as _source_topology_exc:
+        debug_info["strict_source_topology_error"] = (
+            f"{type(_source_topology_exc).__name__}: {_source_topology_exc}"
         )
         log.warning(
-            "native_tet_source_component_bijection_unverified",
-            reason=str(_component_audit_exc)[:160],
+            "native_tet_source_topology_unverified",
+            reason=str(_source_topology_exc)[:160],
         )
         return NativeTetResult(
             False,
@@ -6257,8 +6320,8 @@ def generate_native_tet(
             n_cells=int(final_tets.shape[0]),
             n_points=int(final_pts.shape[0]),
             message=(
-                "native_tet source component topology is unverified: "
-                f"{_component_audit_exc}"
+                "native_tet source-aware strict topology is unverified: "
+                f"{_source_topology_exc}"
             ),
             tet_points=final_pts,
             tets=final_tets,

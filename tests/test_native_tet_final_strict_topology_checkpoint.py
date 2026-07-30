@@ -113,8 +113,9 @@ def test_cube_10000_l1_disabling_degenerate_rewrite_separates_contracts(
     """L1: isolate BETA2825 without changing the production implementation.
 
     The ablation only suppresses the inline degenerate-rewrite candidate in
-    this diagnostic process.  It proves whether the stage trades strict face
-    incidence for validity; it is not a proposed runtime fallback.
+    this diagnostic process.  It proves the final source-aware certificate
+    rejects locally invalid topology before the writer; it is not a proposed
+    runtime fallback.
     """
     import core.generator.native_tet.klingner_full_sweep as klingner
     import core.generator.native_tet.metric_tensor_sweep as metric
@@ -133,16 +134,19 @@ def test_cube_10000_l1_disabling_degenerate_rewrite_separates_contracts(
     monkeypatch.setattr(klingner, "klingner_full_sweep", identity_topology_pass)
     monkeypatch.setattr(metric, "metric_tensor_sweep", identity_topology_pass)
     mesh = read_stl(_CUBE)
+    case_dir = tmp_path / "cube_10000_no_degenerate_rewrite"
     result = generate_native_tet(
         np.asarray(mesh.vertices, dtype=np.float64),
         np.asarray(mesh.faces, dtype=np.int64),
-        tmp_path / "cube_10000_no_degenerate_rewrite",
+        case_dir,
         target_cells=10000,
     )
 
     audit = audit_tet_boundary(result.tet_points, result.tets)
-    assert result.success, result.message
+    assert not result.success
+    assert result.message == "native_tet source-aware strict topology is invalid"
     assert audit.n_nonmanifold_faces == 0
     assert audit.n_duplicate_tets == 0
     assert audit.n_degenerate_tets > 0
+    assert not (case_dir / "constant" / "polyMesh").exists()
     print("TET_FINAL_STRICT_TOPOLOGY_L1", result.n_cells, audit)

@@ -8,9 +8,9 @@ from numbers import Integral
 import numpy as np
 import numpy.typing as npt
 
-_FloatArray = npt.NDArray[np.float64]
-_IntArray = npt.NDArray[np.int64]
-_BoolArray = npt.NDArray[np.bool_]
+type _FloatArray = npt.NDArray[np.float64]
+type _IntArray = npt.NDArray[np.int64]
+type _BoolArray = npt.NDArray[np.bool_]
 
 
 @dataclass(frozen=True)
@@ -26,13 +26,20 @@ class TetBoundaryAudit:
 
     @property
     def valid(self) -> bool:
+        """Whether every reported boundary component is locally manifold.
+
+        Component cardinality is a source-domain contract, not a local mesh
+        validity condition.  A valid tetrahedral mesh may contain multiple
+        disconnected bodies.  Call :func:`audit_source_topology` when source
+        component preservation is required.
+        """
         return (
             self.n_tets > 0
             and self.n_boundary_faces > 0
             and self.n_open_edges == 0
             and self.n_nonmanifold_edges == 0
             and self.n_nonmanifold_faces == 0
-            and self.n_boundary_components == 1
+            and self.n_boundary_components > 0
             and self.n_duplicate_tets == 0
             and self.n_degenerate_tets == 0
         )
@@ -53,6 +60,30 @@ class SourceComponentBijectionAudit:
     n_unanchored_candidate_components: int
     n_unknown_source_vertex_anchors: int
     bijective: bool
+
+
+@dataclass(frozen=True)
+class SourceTopologyAudit:
+    """Source-aware strict topology certificate for a tet candidate."""
+
+    boundary: TetBoundaryAudit
+    components: SourceComponentBijectionAudit
+
+    @property
+    def valid(self) -> bool:
+        return bool(self.boundary.valid and self.components.bijective)
+
+
+@dataclass(frozen=True)
+class SourcePrefixRoundoffRestore:
+    """Bounded bitwise restoration of immutable native source vertices."""
+
+    points: np.ndarray
+    applied: bool
+    reason: str
+    restored_count: int
+    max_delta: float
+    cap: float
 
 
 _COMPONENT_COUNT_FIELDS = (
@@ -388,6 +419,147 @@ def audit_source_component_bijection(
     )
 
 
+def audit_source_topology(
+    source_points: np.ndarray,
+    source_faces: np.ndarray,
+    candidate_points: np.ndarray,
+    tets: np.ndarray,
+    *,
+    relative_volume_tolerance: float = 1e-12,
+) -> SourceTopologyAudit:
+    """Combine local manifold validity with exact source-component identity.
+
+    ``TetBoundaryAudit.valid`` intentionally accepts any positive number of
+    closed components.  This source-aware certificate supplies the missing
+    global contract: every source component must map bijectively to exactly
+    one output boundary component through immutable source coordinates.
+    """
+    boundary = audit_tet_boundary(
+        candidate_points,
+        tets,
+        relative_volume_tolerance=relative_volume_tolerance,
+    )
+    components = audit_source_component_bijection(
+        source_points,
+        source_faces,
+        candidate_points,
+        tets,
+    )
+    return SourceTopologyAudit(boundary=boundary, components=components)
+
+
+def restore_source_prefix_roundoff(
+    source_points: np.ndarray,
+    source_faces: np.ndarray,
+    candidate_points: np.ndarray,
+    tets: np.ndarray,
+    *,
+    prefix_contract: bool,
+    epsilon_multiplier: float = 32.0,
+) -> SourcePrefixRoundoffRestore:
+    """Restore source-surface prefix coordinates only within machine roundoff.
+
+    Native generation preserves source vertex indices as an immutable prefix,
+    but arithmetic can perturb coordinates by a few ulps.  Exact-coordinate
+    provenance must not be weakened to a tolerance match.  Instead, this
+    transaction restores the original bits only when every referenced source
+    surface id is still a boundary id and every coordinate delta is below a
+    scale-relative, predeclared machine-roundoff cap.  Reordered external P4C
+    candidates must call this with ``prefix_contract=False``.
+    """
+    source = _component_point_matrix(source_points, name="source_points")
+    faces = _component_index_matrix(source_faces, columns=3, name="source_faces")
+    candidate = _component_point_matrix(candidate_points, name="candidate_points")
+    cells = _component_index_matrix(tets, columns=4, name="tets")
+    if not np.isfinite(epsilon_multiplier) or epsilon_multiplier < 0.0:
+        raise ValueError("epsilon_multiplier must be finite and non-negative")
+
+    float64_max = float(np.finfo(np.float64).max)
+    maximum_coordinate = float(np.max(np.abs(source)))
+    if maximum_coordinate == 0.0:
+        diagonal = 0.0
+    else:
+        # Normalize before subtraction and norm so finite, opposite-sign
+        # coordinates near float64 max cannot overflow the bbox diagonal.
+        normalized_extent = np.ptp(source / maximum_coordinate, axis=0)
+        normalized_diagonal = float(np.linalg.norm(normalized_extent))
+        diagonal = (
+            float64_max
+            if normalized_diagonal > 0.0
+            and maximum_coordinate > float64_max / normalized_diagonal
+            else maximum_coordinate * normalized_diagonal
+        )
+    tiny = float(np.finfo(np.float64).tiny)
+    epsilon = float(np.finfo(np.float64).eps)
+    scale = max(diagonal, maximum_coordinate, tiny)
+    cap_factor = epsilon_multiplier * epsilon
+    if cap_factor > float64_max / scale:
+        raise ValueError("roundoff cap must be finite")
+    cap = cap_factor * scale
+    if not prefix_contract:
+        return SourcePrefixRoundoffRestore(
+            candidate, False, "prefix_contract_disabled", 0, 0.0, cap
+        )
+
+    source_ids = np.unique(faces)
+    if source_ids.size == 0:
+        return SourcePrefixRoundoffRestore(
+            candidate, False, "source_surface_empty", 0, 0.0, cap
+        )
+    if int(source_ids.min()) < 0 or int(source_ids.max()) >= source.shape[0]:
+        raise ValueError("source_faces vertex index out of range")
+    if candidate.shape[0] < source.shape[0]:
+        return SourcePrefixRoundoffRestore(
+            candidate, False, "candidate_prefix_too_short", 0, 0.0, cap
+        )
+    if cells.shape[0] == 0:
+        return SourcePrefixRoundoffRestore(
+            candidate, False, "candidate_tets_empty", 0, 0.0, cap
+        )
+    if np.any(cells < 0) or np.any(cells >= candidate.shape[0]):
+        raise ValueError("tets vertex index out of range")
+
+    boundary_ids = np.unique(_candidate_boundary_faces(cells))
+    if not bool(np.all(np.isin(source_ids, boundary_ids))):
+        return SourcePrefixRoundoffRestore(
+            candidate, False, "source_prefix_not_on_boundary", 0, 0.0, cap
+        )
+
+    candidate_source = candidate[source_ids]
+    original_source = source[source_ids]
+    deltas = np.abs(candidate_source - original_source)
+    max_delta = float(np.max(deltas))
+    changed = np.any(
+        candidate_source.view(np.uint64) != original_source.view(np.uint64),
+        axis=1,
+    )
+    restored_count = int(np.count_nonzero(changed))
+    if max_delta > cap:
+        return SourcePrefixRoundoffRestore(
+            candidate,
+            False,
+            "source_prefix_delta_exceeds_roundoff_cap",
+            0,
+            max_delta,
+            cap,
+        )
+    if restored_count == 0:
+        return SourcePrefixRoundoffRestore(
+            candidate, False, "source_prefix_already_exact", 0, 0.0, cap
+        )
+
+    restored = candidate.copy()
+    restored[source_ids] = source[source_ids]
+    return SourcePrefixRoundoffRestore(
+        restored,
+        True,
+        "source_prefix_roundoff_restored",
+        restored_count,
+        max_delta,
+        cap,
+    )
+
+
 @dataclass(frozen=True)
 class DuplicateTetGroupRepair:
     """Result of a fail-closed exact-duplicate tetrahedron cleanup.
@@ -539,7 +711,10 @@ def audit_tet_boundary(
             vertices[:, 3] - vertices[:, 0],
         ),
     )
-    diagonal = max(float(np.linalg.norm(np.ptp(pts, axis=0))), np.finfo(float).tiny)
+    diagonal = max(
+        float(np.linalg.norm(np.ptp(pts, axis=0))),
+        float(np.finfo(np.float64).tiny),
+    )
     volume_floor = max(0.0, float(relative_volume_tolerance)) * diagonal**3
     degenerate_tets = int((np.abs(volume6) <= volume_floor).sum())
 
@@ -622,9 +797,13 @@ def audit_tet_boundary(
 __all__ = [
     "DuplicateTetGroupRepair",
     "SourceComponentBijectionAudit",
+    "SourcePrefixRoundoffRestore",
+    "SourceTopologyAudit",
     "TetBoundaryAudit",
     "audit_source_component_bijection",
+    "audit_source_topology",
     "audit_tet_boundary",
     "drop_duplicate_tet_groups_if_strict_topology_restored",
     "has_strict_writer_topology",
+    "restore_source_prefix_roundoff",
 ]
