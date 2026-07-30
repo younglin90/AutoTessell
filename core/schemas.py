@@ -315,6 +315,12 @@ class TierAttempt(BaseModel):
     steps: list[GeneratorStep] = Field(default_factory=list)
     mesh_stats: MeshStats | None = None
     error_message: str | None = None
+    # Native tier wrappers annotate the route actually dispatched by the
+    # wrapper.  These remain optional for legacy and external tiers.
+    route: str | None = None
+    contract: str | None = None
+    contract_details: dict[str, Any] = Field(default_factory=dict)
+    fallback_reason: str | None = None
     native_bl_phase2: "NativeBLPhase2Stats | None" = None  # beta76
     # C-GUI-3 / beta2413 — mesh_integrity_suspect (3-engine catastrophic flag).
     mesh_integrity_suspect: bool = False

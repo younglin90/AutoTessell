@@ -4,8 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
-
 from core.generator._tier_native_common import (
     _parse_target_edge,
     run_native_tier,
@@ -142,8 +140,8 @@ def test_run_native_tier_runner_zero_cells_marks_failed(tmp_path: Path) -> None:
     assert attempt.status == "failed"
 
 
-def test_run_native_tier_partial_success_counts_as_success(tmp_path: Path) -> None:
-    """runner 가 success=False 여도 n_cells>0 이면 'success' 로 기록 (best-effort)."""
+def test_run_native_tier_failure_with_cells_stays_failed(tmp_path: Path) -> None:
+    """Runner failure remains failed while preserving partial-cell diagnostics."""
     stl = tmp_path / "t.stl"
     stl.write_text(
         "solid t\nfacet normal 0 0 1\nouter loop\n"
@@ -164,6 +162,7 @@ def test_run_native_tier_partial_success_counts_as_success(tmp_path: Path) -> No
         _partial_success, "tier_native_tet",
         _mk_strategy(0.1), stl, tmp_path / "case",
     )
-    assert attempt.status == "success"
+    assert attempt.status == "failed"
     assert attempt.mesh_stats is not None
     assert attempt.mesh_stats.num_cells == 100
+    assert attempt.error_message == "best-effort"

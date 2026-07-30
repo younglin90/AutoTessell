@@ -251,6 +251,19 @@ class _NativeRunOutcome(Protocol):
     message: str
 
 
+def _runner_metadata(res: _NativeRunOutcome) -> dict[str, Any]:
+    """Return explicit route metadata supplied by a tier runner, if any."""
+    metadata: dict[str, Any] = {
+        "route": getattr(res, "route", None),
+        "contract": getattr(res, "contract", None),
+        "fallback_reason": getattr(res, "fallback_reason", None),
+    }
+    contract_details = getattr(res, "contract_details", None)
+    if isinstance(contract_details, dict):
+        metadata["contract_details"] = dict(contract_details)
+    return metadata
+
+
 def _parse_target_edge(strategy: MeshStrategy) -> float | None:
     """strategy.surface_mesh.target_cell_size 파싱. 0/음수/오류 시 None."""
     try:
@@ -424,14 +437,6 @@ def run_native_tier(
     success = bool(getattr(res, "success", False))
     n_cells = int(getattr(res, "n_cells", 0) or 0)
 
-    # success=False 이고 cells 도 0 인 경우만 completely failed
-    if not success and n_cells == 0:
-        return TierAttempt(
-            tier=tier_name, status="failed",
-            time_seconds=elapsed,
-            error_message=str(getattr(res, "message", "실패")),
-        )
-
     stats = MeshStats(
         num_cells=n_cells,
         num_points=int(getattr(res, "n_points", 0) or 0),
@@ -439,9 +444,24 @@ def run_native_tier(
         num_internal_faces=0,
         num_boundary_patches=1,
     )
+
+    # A runner's explicit failure is authoritative even when it reports
+    # partial cells.  Preserve those diagnostics, but never promote them to a
+    # successful tier attempt.
+    if not success:
+        return TierAttempt(
+            tier=tier_name, status="failed",
+            time_seconds=elapsed,
+            mesh_stats=stats,
+            error_message=str(getattr(res, "message", "실패")),
+            mesh_integrity_suspect=bool(getattr(res, "mesh_integrity_suspect", False)),
+            **_runner_metadata(res),
+        )
+
     return TierAttempt(
         tier=tier_name, status="success",
         time_seconds=elapsed, mesh_stats=stats,
         # C-GUI-3 / beta2413 — propagate integrity flag from native result.
         mesh_integrity_suspect=bool(getattr(res, "mesh_integrity_suspect", False)),
+        **_runner_metadata(res),
     )

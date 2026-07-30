@@ -21,6 +21,49 @@ log = get_logger(__name__)
 TIER_NAME = "tier_native_poly"
 
 
+def _attach_metadata(
+    result: object,
+    *,
+    route: str,
+    contract_details: dict[str, object],
+    fallback_reason: str | None = None,
+) -> object:
+    """Attach tier-wrapper attribution without inferring native sub-routes."""
+    setattr(result, "route", route)
+    setattr(result, "contract", "native_poly")
+    setattr(result, "contract_details", contract_details)
+    setattr(result, "fallback_reason", fallback_reason)
+    return result
+
+
+def _details_with_optional_budget(
+    *,
+    mode: str,
+    seed_density: int,
+    target_cells: int | None = None,
+    max_cells: int | None = None,
+    bl_layers: int | None = None,
+    boundary_provenance: bool | None = None,
+    prefer_hex_for_budget: bool | None = None,
+) -> dict[str, object]:
+    """Describe only controls actually passed to the selected wrapper route."""
+    details: dict[str, object] = {
+        "mode": mode,
+        "seed_density": int(seed_density),
+    }
+    if target_cells is not None:
+        details["target_cells"] = int(target_cells)
+    if max_cells is not None:
+        details["max_cells"] = int(max_cells)
+    if bl_layers is not None:
+        details["bl_layers"] = int(bl_layers)
+    if boundary_provenance is not None:
+        details["boundary_provenance"] = boundary_provenance
+    if prefer_hex_for_budget is not None:
+        details["prefer_hex_for_budget"] = prefer_hex_for_budget
+    return details
+
+
 def _runner(
     vertices,
     faces,
@@ -56,7 +99,7 @@ def _runner(
             max_cells=int(max_cells or 0),
             bl_layers=int(_n_layers),
         )
-        return generate_native_poly_voronoi(
+        result = generate_native_poly_voronoi(
             vertices,
             faces,
             case_dir,
@@ -69,6 +112,18 @@ def _runner(
             max_cells=max_cells,
             bl_layers=int(_n_layers),
             prefer_hex_for_budget=True,
+        )
+        return _attach_metadata(
+            result,
+            route="poly_voronoi_budget_dispatch",
+            contract_details=_details_with_optional_budget(
+                mode="budget_dispatch",
+                seed_density=int(seed_density),
+                target_cells=target_cells,
+                max_cells=max_cells,
+                bl_layers=_n_layers,
+                prefer_hex_for_budget=True,
+            ),
         )
 
     boundary_face_classifier = None
@@ -97,7 +152,16 @@ def _runner(
         boundary_face_classifier=boundary_face_classifier,
     )
     if hres.success:
-        return hres
+        return _attach_metadata(
+            hres,
+            route="poly_harness",
+            contract_details=_details_with_optional_budget(
+                mode="harness",
+                seed_density=int(seed_density),
+                target_cells=target_cells,
+                boundary_provenance=boundary_face_classifier is not None,
+            ),
+        )
     if hres.message.startswith((
         "target_primal_vertex_floor_unmet:",
         "target_poly_budget_unreachable:",
@@ -106,12 +170,21 @@ def _runner(
             "native_poly_target_contract_refused",
             message=hres.message,
         )
-        return hres
+        return _attach_metadata(
+            hres,
+            route="poly_harness",
+            contract_details=_details_with_optional_budget(
+                mode="harness_refusal",
+                seed_density=int(seed_density),
+                target_cells=target_cells,
+                boundary_provenance=boundary_face_classifier is not None,
+            ),
+        )
     log.warning(
         "native_poly_harness_fail_falling_back_to_voronoi",
         message=hres.message,
     )
-    return generate_native_poly_voronoi(
+    result = generate_native_poly_voronoi(
         vertices,
         faces,
         case_dir,
@@ -123,6 +196,18 @@ def _runner(
         target_cells=target_cells,
         max_cells=max_cells,
         bl_layers=int(_n_layers),
+    )
+    return _attach_metadata(
+        result,
+        route="poly_voronoi_fallback",
+        contract_details=_details_with_optional_budget(
+            mode="harness_fallback",
+            seed_density=int(seed_density),
+            target_cells=target_cells,
+            max_cells=max_cells,
+            bl_layers=_n_layers,
+        ),
+        fallback_reason="harness_failed",
     )
 
 
