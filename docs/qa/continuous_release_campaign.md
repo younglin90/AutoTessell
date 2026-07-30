@@ -1365,3 +1365,64 @@ scope. Future MIT-core boundary follows
   existing hybrid already contains layers.  Then verify oriented volumes,
   wall envelope, requested/used layer report, connectivity, and exact rollback
   semantics before touching the owner-only checker gate.
+
+## Cycle 25 checkpoint -- 2026-07-30
+
+### Native boundary-layer lineage guard evidence
+
+- `01f1a34e` adds a dedicated versioned `native_bl_state.json`.  It streams
+  SHA-256 over the authoritative points/faces/owner/neighbour/boundary files,
+  atomically records `pending` before mutation, and records `completed` plus
+  output digest only after successful generation.  Optional Poly transition
+  rewrites refresh the output digest.
+- A current mesh matching a completed output is rejected before reads, backups,
+  or writes.  A pending state is retryable only while the mesh exactly matches
+  its primal digest.  All other lineage is ambiguous and fails closed.  No
+  topology/prism/patch heuristic is accepted as provenance.
+- `boundary layer = 0` now bypasses BLConfig, allocation, backup, generation,
+  and dual conversion.  A pristine case is byte-identical before/after and
+  reports requested/actual zero.  Zero cannot silently remove an existing
+  layer stack.  Negative layer requests also return before writes.
+- Correct single-tet one-call transition: requested/actual layers `2/2`, prism
+  cells `8`, original four surface coordinates retained, negative volumes `0`.
+  Direct-prelayer then transition and a second transition are both rejected
+  with exact whole-case byte snapshots unchanged.
+- Focused pre-merge validation passes `26` with three optional skips.  Post-
+  merge validation passes `29`.  The wider BL batch passes `143`; its eight
+  failures reproduce unchanged on pre-card master: three native-BL persistence
+  defects and five tet-subdivision contract defects.  They are queued, not
+  hidden or threshold-relaxed.
+- No native geometry threshold, topology rule, dependency, external source, or
+  `third_party/` file changed.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\poly-bl-duplicate-guard-1-01f1a34e.bundle`,
+  SHA-256 `34139717d032f2faaa8b3521aad6428705561c1a5a29d422470c8036eb2b8386`.
+  Worktree and branch were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-25 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | No native ABI changed in this card; supported build matrix remains incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/post-merge pass; eight baseline failures and immutable-head full suite remain. |
+| 4 Shape preservation | UNVERIFIED | Single-tet surface coordinates preserved and duplicate mutation blocked; full corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Duplicate-BL minimal inversion is prevented; persistence defects and all-engine corpus remain. |
+| 6 Cell count | FAIL | Tet target remains intentionally deferred behind topology/validity; Poly target unresolved. |
+| 7 Boundary layer | UNVERIFIED | BL0 exact no-op and duplicate positive-layer rejection pass; full wall corpus remains. |
+| 8 Quality | UNVERIFIED | No threshold changed; aspect/anti-invert accepted-point persistence is queued. |
+| 9 Reproducibility | FAIL | Lineage hashes deterministic; external P4C topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Crash/partial-write lineage fails closed; adverse corpus incomplete. |
+| 11 Performance | UNVERIFIED | Hashing uses bounded 1 MiB reads; frozen all-engine budgets remain. |
+| 12 Packaging | UNVERIFIED | Native extensions and state artifact packaging evidence incomplete. |
+| 13 License/provenance | UNVERIFIED | First-party provenance mechanism; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration and campaign ledger updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Repair the reproduced native-BL persistence defect: an accepted aspect-cap or
+  anti-invert point set must be the single point set written, measured, hashed,
+  and returned.  Preserve wall coordinates and fail closed if a post-write
+  transform diverges.  Then resume C++23 porting at the remaining BL front-
+  topology/allocation hot path.
