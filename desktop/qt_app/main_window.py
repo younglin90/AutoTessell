@@ -810,10 +810,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QFrame, QLabel,
             QScrollArea, QStackedLayout,
         )
-        try:
-            from core.version import APP_VERSION
-        except Exception:
-            APP_VERSION = "0.3.5"
+        from core.version import APP_VERSION
 
         # ── 최상위 윈도우 ───────────────────────────────────
         self._qmain = QMainWindow()
@@ -1249,10 +1246,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             f"color: {PALETTE['text_0']}; font-size: 14px; font-weight: 700; "
             f"letter-spacing: 0.2px; background: transparent;"
         )
-        try:
-            from core.version import APP_VERSION
-        except Exception:
-            APP_VERSION = "0.3.5"
+        from core.version import APP_VERSION
         sub_lbl = QLabel(f"v{APP_VERSION} · Desktop")
         sub_lbl.setStyleSheet(
             f"color: {PALETTE['text_3']}; font-size: 10px; letter-spacing: 2px; "

@@ -20,10 +20,7 @@ _PROJECT_ROOT = _Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_PROJECT_ROOT))
 
-try:
-    from core.version import APP_VERSION
-except ModuleNotFoundError:
-    APP_VERSION = "1.0.0"
+from core.version import APP_VERSION
 
 
 def _configure_pyvista_runtime() -> None:

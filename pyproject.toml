@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "auto-tessell"
-version = "1.0.0"
+dynamic = ["version"]
 description = "CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 CLI 도구"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE", "NOTICE"]
@@ -118,6 +118,7 @@ wheel.exclude = [
 sdist.include = [
     "LICENSE",
     "NOTICE",
+    "core/version.py",
     "auto_tessell_core/CMakeLists.txt",
     "auto_tessell_core/native_*_bind.cpp",
     "core/utils/_shewchuk/predicates.c",
@@ -173,6 +174,12 @@ BUILD_CINOLIB_HEX = "OFF"
 BUILD_ROBUSTHEX = "OFF"
 BUILD_FTETWILD = "OFF"
 BUILD_CFMESH = "OFF"
+
+[[tool.dynamic-metadata]]
+provider = "scikit_build_core.metadata.regex"
+field = "version"
+input = "core/version.py"
+regex = '''(?m)^APP_VERSION\s*=\s*["'](?P<value>[^"']+)["']\s*$'''
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
