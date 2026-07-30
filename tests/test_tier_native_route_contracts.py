@@ -14,6 +14,7 @@ from core.schemas import (
     QualityLevel,
     SurfaceMeshConfig,
     SurfaceQualityLevel,
+    TierAttempt,
 )
 from core.generator.tier_native_hex import _runner as hex_runner
 from core.generator.tier_native_hex import TierNativeHexGenerator
@@ -85,6 +86,15 @@ def _fake_poly_result(success=True, n_cells=12, n_points=10, n_faces=30, message
     )
 
 
+def test_tier_attempt_route_metadata_defaults_are_non_routing():
+    attempt = TierAttempt(tier="tier_native_hex", status="success", time_seconds=0.0)
+
+    assert attempt.route is None
+    assert attempt.contract is None
+    assert attempt.contract_details == {}
+    assert attempt.fallback_reason is None
+
+
 def test_hex_runner_attaches_route_and_contract(monkeypatch):
     seen = {}
 
@@ -113,37 +123,58 @@ def test_hex_runner_attaches_route_and_contract(monkeypatch):
     assert seen["kwargs"]["snap_boundary"] is True
 
 
-def test_poly_runner_boolean_route(monkeypatch):
-    def fake_voronoi(vertices, faces, case_dir, **kwargs):
-        assert kwargs["boolean_input_paths"] == ["b1.stl"]
+def test_poly_runner_boolean_provenance_uses_harness(monkeypatch):
+    seen = {}
+
+    class FakeClassifier:
+        def __init__(self, paths):
+            seen["paths"] = paths
+
+    def fake_harness(vertices, faces, case_dir, **kwargs):
+        seen["kwargs"] = kwargs
         return _fake_poly_result()
 
     monkeypatch.setattr(
-        "core.generator.tier_native_poly.generate_native_poly_voronoi",
-        fake_voronoi,
+        "core.generator.tier_native_poly.run_native_poly_harness",
+        fake_harness,
+    )
+    monkeypatch.setattr(
+        "core.utils.boundary_provenance.SourceSurfacePatchClassifier",
+        FakeClassifier,
     )
 
     result = poly_runner(
         *_mk_mesh(),
         Path("/tmp/case"),
-        boolean_input_paths=["b1.stl"],
-        boolean_source_names=["body"],
+        boolean_input_paths=["a.stl", "b.stl"],
         boolean_operation="union",
         seed_density=9,
     )
 
-    assert result.route == "poly_voronoi_boolean"
+    assert seen["paths"] == ["a.stl", "b.stl"]
+    assert isinstance(seen["kwargs"]["boundary_face_classifier"], FakeClassifier)
+    assert result.route == "poly_harness"
     assert result.contract == "native_poly"
-    assert result.contract_details["mode"] == "boolean_budget"
+    assert result.contract_details["mode"] == "harness"
+    assert result.contract_details["boundary_provenance"] is True
     assert result.contract_details["seed_density"] == 9
 
 
 def test_poly_runner_budget_route(monkeypatch):
+    def fail_harness(*args, **kwargs):
+        raise AssertionError("budget + layer route must bypass the harness")
+
     def fake_voronoi(vertices, faces, case_dir, **kwargs):
         assert kwargs["target_cells"] == 2_000
         assert kwargs["max_cells"] == 2_500
+        assert kwargs["bl_layers"] == 2
+        assert kwargs["prefer_hex_for_budget"] is True
         return _fake_poly_result()
 
+    monkeypatch.setattr(
+        "core.generator.tier_native_poly.run_native_poly_harness",
+        fail_harness,
+    )
     monkeypatch.setattr(
         "core.generator.tier_native_poly.generate_native_poly_voronoi",
         fake_voronoi,
@@ -154,12 +185,13 @@ def test_poly_runner_budget_route(monkeypatch):
         Path("/tmp/case"),
         target_cells=2_000,
         max_cells=2_500,
+        bl_layers=2,
         seed_density=8,
     )
 
-    assert result.route == "poly_voronoi_budget"
+    assert result.route == "poly_voronoi_budget_dispatch"
     assert result.contract == "native_poly"
-    assert result.contract_details["mode"] == "budget"
+    assert result.contract_details["mode"] == "budget_dispatch"
     assert result.contract_details["target_cells"] == 2_000
     assert result.contract_details["max_cells"] == 2_500
 
@@ -229,6 +261,30 @@ def test_tier_native_hex_generator_propagates_route_and_contract(monkeypatch, tm
     assert attempt.contract == "native_hex"
     assert attempt.mesh_stats is not None
     assert attempt.mesh_stats.num_cells == 21
+
+
+def test_tier_native_hex_failure_with_cells_preserves_truthful_metadata(monkeypatch, tmp_path: Path):
+    stl = tmp_path / "input.stl"
+    stl.write_text("solid t\nendsolid\n")
+
+    monkeypatch.setattr(
+        "core.generator.tier_native_hex.generate_native_hex",
+        lambda *args, **kwargs: _fake_hex_result(success=False, n_cells=13, message="rejected"),
+    )
+    monkeypatch.setattr(
+        "core.analyzer.readers.read_stl",
+        lambda _path: SimpleNamespace(vertices=_mk_mesh()[0], faces=_mk_mesh()[1]),
+    )
+
+    attempt = TierNativeHexGenerator().run(_mk_strategy("tier_native_hex"), stl, tmp_path / "case")
+
+    assert attempt.status == "failed"
+    assert attempt.route == "hex_uniform_grid"
+    assert attempt.contract == "native_hex"
+    assert attempt.contract_details == {"seed_density": 12}
+    assert attempt.mesh_stats is not None
+    assert attempt.mesh_stats.num_cells == 13
+    assert attempt.error_message == "rejected"
 
 
 def test_tier_native_poly_generator_propagates_route_and_contract(monkeypatch, tmp_path: Path):
