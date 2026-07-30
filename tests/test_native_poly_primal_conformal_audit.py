@@ -226,14 +226,24 @@ def test_malformed_present_native_audit_fails_closed(
 
     points, tets, _entities = _valid_classified_bipyramid()
     malformed = types.SimpleNamespace(
-        audit_tet_primal_conformity=lambda *_args: ((), ((((0, 1, 2), (0,))),), (), ())
+        audit_tet_primal_conformity=lambda *_args: (
+            (),
+            ((((0, 1, 2), (0,))),),
+            (),
+            np.empty(0, dtype=np.int64),
+        )
     )
     monkeypatch.setattr(native_extensions, "load_native_polymesh", lambda: malformed)
 
     with pytest.raises(RuntimeError, match="kernel returned an invalid result"):
         dual._audit_tet_primal_conformity(points, tets)
 
-    malformed.audit_tet_primal_conformity = lambda *_args: ((), (), (0.5,), ())
+    malformed.audit_tet_primal_conformity = lambda *_args: (
+        (),
+        (),
+        (0.5,),
+        np.empty(0, dtype=np.int64),
+    )
     with pytest.raises(RuntimeError, match="kernel returned an invalid result"):
         dual._audit_tet_primal_conformity(points, tets)
 
@@ -297,11 +307,23 @@ def test_python_oracle_orphan_rejection_writes_zero_artifacts(
 
 @pytest.mark.parametrize(
     "orphan_rows",
-    ((5, 4), (5, 5), (-1,), (6,), (True,), (5.0,)),
+    (
+        (4,),
+        [4],
+        (5, 4),
+        (5, 5),
+        (-1,),
+        (6,),
+        (True,),
+        (5.0,),
+        np.array([4], dtype=np.int32),
+        np.array([[4]], dtype=np.int64),
+        np.arange(10, dtype=np.int64)[::2],
+    ),
 )
 def test_malformed_native_orphan_rows_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
-    orphan_rows: tuple[object, ...],
+    orphan_rows: object,
 ) -> None:
     from core.utils import native_extensions
 

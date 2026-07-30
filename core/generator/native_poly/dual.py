@@ -159,6 +159,13 @@ def _normalise_tet_primal_conformity_audit(
 
     try:
         raw_duplicates, raw_nonmanifold, raw_negative, raw_orphans = result
+        if (
+            not isinstance(raw_orphans, np.ndarray)
+            or raw_orphans.dtype != np.dtype(np.int64)
+            or raw_orphans.ndim != 1
+            or not raw_orphans.flags.c_contiguous
+        ):
+            raise TypeError("native orphan rows must be a contiguous int64 vector")
         duplicates = tuple(
             (
                 cast(
@@ -180,7 +187,7 @@ def _normalise_tet_primal_conformity_audit(
             for key, owners in raw_nonmanifold
         )
         negative = tuple(_exact_int(row) for row in raw_negative)
-        orphans = tuple(_exact_int(row) for row in raw_orphans)
+        orphans = tuple(_exact_int(row) for row in raw_orphans.tolist())
     except (TypeError, ValueError, OverflowError) as exc:
         raise RuntimeError("tet primal-conformity kernel returned an invalid result") from exc
 
