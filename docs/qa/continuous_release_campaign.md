@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `18`
+- cycle: `19`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `93d1972dc942af80406e3cddf7efce9a8d71e9ae`
+- last_verified_master: `be7fb6798edbf985413abba2162ae826e4a6e6bb`
 - allowed_to_stop: `false`
-- next_action: `Profile and port native-Poly star-validity audit to a first-party C++23 CSR kernel without weakening invalid-cell detection or changing output.`
+- next_action: `Profile the native surface self-intersection broad phase, then replace the quadratic/approximate Python candidate search with a deterministic first-party C++23 exact broad phase while preserving the Python narrow-phase oracle.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -1018,3 +1018,58 @@ scope. Future MIT-core boundary follows
   as a read-only C++23 CSR batch.  Preserve exact invalid cell/subtet counts,
   example ordering, and fail-closed behavior before considering mutable Poly
   topology work.
+
+## Cycle 19 checkpoint -- 2026-07-30
+
+### Native Poly star-validity C++23 evidence
+
+- `be7fb679` ports the read-only Garimella face-edge-region validity audit to
+  the first-party `native_polymesh` C++23 module.  Ragged faces and cell-face
+  incidence use flat offset/index storage; owner/neighbour orientation is
+  encoded in one signed 64-bit reference.  One reusable sorted vertex buffer
+  replaces nested Python lists, copied/reversed faces, sets, NumPy gathers,
+  cross products, and dot-product temporaries.
+- Array and connectivity checks execute before GIL release.  The native loop
+  accesses no Python object; bounded diagnostic dictionaries are created only
+  after reacquiring the GIL.  Sequential double arithmetic, cell/face/edge
+  traversal order, threshold, example order, and fail-closed counts remain.
+- Representative final polyMesh (`17,746` points / `20,284` faces / `4,885`
+  cells): median audit `2.452648831 s -> 0.003886981 s` (`630.99x`).  Native
+  and Python both report `295` invalid cells and `729` invalid subtets.
+- Six complete dual conversions, three per route, produced one identical
+  complete polyMesh SHA-256 snapshot.  Focused binding/dual tests pass `4`;
+  wider extension/no-drop tests pass `24`; non-sphere dual contracts pass
+  `15`; post-merge native rebuild plus focused regression passes `25`.
+- GCC 13.3 C++23 build is warning-free.  No tolerance, topology, geometry,
+  provenance, public result, `third_party/` file, or external code changed.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-poly-star-validity-1-be7fb679.bundle`,
+  SHA-256 `f966ebfc06303d2f41d3de615d37c11ddb63e1a68b597ff50327d712ea71bbee`.
+  Worktree, branch, isolated build, and benchmark output were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-19 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | Changed C++23 target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/wider/post-merge Poly suites pass; immutable-head full suite missing. |
+| 4 Shape preservation | UNVERIFIED | Six Poly outputs are byte-identical; full all-engine corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Native audit exactly preserves Python validity decisions; complete strict corpus missing. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology; Poly target following remains unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer corpus incomplete. |
+| 8 Quality | UNVERIFIED | Validity threshold and results unchanged; complete quality matrix missing. |
+| 9 Reproducibility | FAIL | Poly parity holds; external P4C point/tet topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Malformed native connectivity rejects; all-engine adverse matrix incomplete. |
+| 11 Performance | UNVERIFIED | Star kernel passes card threshold; frozen all-engine release budgets missing. |
+| 12 Packaging | UNVERIFIED | Clean installer/artifact proof missing. |
+| 13 License/provenance | UNVERIFIED | Independent first-party code; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Profile native surface self-intersection candidate generation.  Replace the
+  quadratic broadcast and large-mesh approximate search with a deterministic
+  first-party C++23 exact broad phase only if the existing Python narrow-phase
+  result, candidate ordering, input geometry, and failure semantics remain.
