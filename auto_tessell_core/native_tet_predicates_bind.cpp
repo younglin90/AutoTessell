@@ -747,6 +747,18 @@ struct SourceComponentAuditResult {
     size_t n_split_source_components{};
     size_t n_unanchored_candidate_components{};
     size_t n_unknown_source_vertex_anchors{};
+    size_t n_source_faces{};
+    size_t n_source_faces_on_boundary{};
+    size_t n_missing_source_faces{};
+    size_t n_candidate_boundary_faces{};
+    size_t n_owned_candidate_faces{};
+    size_t n_unowned_candidate_faces{};
+    size_t n_source_planar_patches{};
+    size_t n_uncovered_source_patches{};
+    size_t n_area_mismatch_patches{};
+    size_t n_feature_boundary_mismatches{};
+    size_t n_overlap_pairs{};
+    bool source_faces_preserved{};
     bool bijective{};
 };
 
@@ -765,12 +777,716 @@ struct CdtFaceHash {
     }
 };
 
+struct CdtEdgeHash {
+    size_t operator()(const CdtEdge& edge) const noexcept
+    {
+        return std::hash<int64_t>{}(edge[0])
+            ^ (std::hash<int64_t>{}(edge[1]) << 1U);
+    }
+};
+
 struct PointRecord {
     std::array<double, 3> coordinates;
     size_t index;
 
     auto operator<=>(const PointRecord&) const = default;
 };
+
+using ProvenancePoint2 = std::array<long double, 2>;
+using ProvenancePoint3 = std::array<long double, 3>;
+using ProvenanceTriangle2 = std::array<ProvenancePoint2, 3>;
+
+constexpr long double provenance_epsilon =
+    static_cast<long double>(std::numeric_limits<double>::epsilon());
+constexpr long double provenance_distance_tolerance = 256.0L * provenance_epsilon;
+constexpr long double provenance_normal_tolerance = 1024.0L * provenance_epsilon;
+constexpr long double provenance_area_tolerance_factor = 8192.0L * provenance_epsilon;
+
+struct ProvenancePlane {
+    ProvenancePoint3 normal{};
+    long double offset{};
+    size_t axis{};
+};
+
+struct ProvenancePatch {
+    std::vector<size_t> source_face_indices;
+    ProvenancePlane plane;
+    std::vector<ProvenanceTriangle2> triangles;
+    std::vector<CdtEdge> boundary_edges;
+};
+
+struct PlanarProvenanceResult {
+    size_t n_source_faces{};
+    size_t n_source_faces_on_boundary{};
+    size_t n_missing_source_faces{};
+    size_t n_candidate_boundary_faces{};
+    size_t n_owned_candidate_faces{};
+    size_t n_unowned_candidate_faces{};
+    size_t n_source_planar_patches{};
+    size_t n_uncovered_source_patches{};
+    size_t n_area_mismatch_patches{};
+    size_t n_feature_boundary_mismatches{};
+    size_t n_overlap_pairs{};
+    bool preserved{};
+};
+
+std::pair<std::vector<ProvenancePoint3>, std::vector<ProvenancePoint3>>
+normalized_provenance_points(
+    const std::span<const double> source_flat,
+    const std::span<const double> candidate_flat)
+{
+    long double maximum = 0.0L;
+    for (const double value : source_flat) {
+        maximum = std::max(maximum, std::abs(static_cast<long double>(value)));
+    }
+    if (!(maximum > 0.0L)) {
+        throw std::invalid_argument("source surface has zero coordinate scale");
+    }
+    ProvenancePoint3 origin{
+        std::numeric_limits<long double>::infinity(),
+        std::numeric_limits<long double>::infinity(),
+        std::numeric_limits<long double>::infinity()};
+    ProvenancePoint3 upper{
+        -std::numeric_limits<long double>::infinity(),
+        -std::numeric_limits<long double>::infinity(),
+        -std::numeric_limits<long double>::infinity()};
+    for (size_t index = 0; index < source_flat.size() / 3U; ++index) {
+        for (size_t coordinate = 0; coordinate < 3U; ++coordinate) {
+            const long double value =
+                static_cast<long double>(source_flat[3U * index + coordinate]) / maximum;
+            origin[coordinate] = std::min(origin[coordinate], value);
+            upper[coordinate] = std::max(upper[coordinate], value);
+        }
+    }
+    long double diagonal_squared = 0.0L;
+    for (size_t coordinate = 0; coordinate < 3U; ++coordinate) {
+        const long double extent = upper[coordinate] - origin[coordinate];
+        diagonal_squared += extent * extent;
+    }
+    const long double diagonal = std::sqrt(diagonal_squared);
+    if (!(diagonal > 0.0L) || !std::isfinite(diagonal)) {
+        throw std::invalid_argument("source surface has zero bounding-box diagonal");
+    }
+    const auto normalize = [&](const std::span<const double> flat) {
+        std::vector<ProvenancePoint3> points(flat.size() / 3U);
+        for (size_t index = 0; index < points.size(); ++index) {
+            for (size_t coordinate = 0; coordinate < 3U; ++coordinate) {
+                points[index][coordinate] =
+                    (static_cast<long double>(flat[3U * index + coordinate]) / maximum
+                     - origin[coordinate])
+                    / diagonal;
+            }
+        }
+        return points;
+    };
+    return {normalize(source_flat), normalize(candidate_flat)};
+}
+
+ProvenancePlane provenance_plane(const std::array<ProvenancePoint3, 3>& triangle)
+{
+    ProvenancePoint3 first{};
+    ProvenancePoint3 second{};
+    for (size_t coordinate = 0; coordinate < 3U; ++coordinate) {
+        first[coordinate] = triangle[1][coordinate] - triangle[0][coordinate];
+        second[coordinate] = triangle[2][coordinate] - triangle[0][coordinate];
+    }
+    ProvenancePoint3 normal{
+        first[1] * second[2] - first[2] * second[1],
+        first[2] * second[0] - first[0] * second[2],
+        first[0] * second[1] - first[1] * second[0]};
+    const long double length = std::sqrt(
+        normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
+    if (!(length > provenance_area_tolerance_factor) || !std::isfinite(length)) {
+        throw std::invalid_argument(
+            "source or candidate boundary contains a degenerate face");
+    }
+    size_t axis = 0U;
+    for (size_t coordinate = 1U; coordinate < 3U; ++coordinate) {
+        if (std::abs(normal[coordinate]) > std::abs(normal[axis])) {
+            axis = coordinate;
+        }
+    }
+    for (long double& value : normal) {
+        value /= length;
+    }
+    if (normal[axis] < 0.0L) {
+        for (long double& value : normal) {
+            value = -value;
+        }
+    }
+    long double offset = 0.0L;
+    for (size_t coordinate = 0; coordinate < 3U; ++coordinate) {
+        offset += normal[coordinate] * triangle[0][coordinate];
+    }
+    return ProvenancePlane{normal, offset, axis};
+}
+
+bool same_provenance_plane(const ProvenancePlane& left, const ProvenancePlane& right)
+{
+    long double dot = 0.0L;
+    for (size_t coordinate = 0; coordinate < 3U; ++coordinate) {
+        dot += left.normal[coordinate] * right.normal[coordinate];
+    }
+    return 1.0L - dot <= provenance_normal_tolerance
+        && std::abs(left.offset - right.offset) <= provenance_distance_tolerance;
+}
+
+ProvenancePoint2 project_provenance_point(
+    const ProvenancePoint3& point,
+    const size_t axis)
+{
+    ProvenancePoint2 projected{};
+    size_t output = 0U;
+    for (size_t coordinate = 0; coordinate < 3U; ++coordinate) {
+        if (coordinate != axis) {
+            projected[output++] = point[coordinate];
+        }
+    }
+    return projected;
+}
+
+long double provenance_orient2d(
+    const ProvenancePoint2& first,
+    const ProvenancePoint2& second,
+    const ProvenancePoint2& third)
+{
+    return (second[0] - first[0]) * (third[1] - first[1])
+        - (second[1] - first[1]) * (third[0] - first[0]);
+}
+
+bool provenance_point_in_triangle(
+    const ProvenancePoint2& point,
+    const ProvenanceTriangle2& triangle,
+    const bool strict)
+{
+    const std::array<long double, 3> signs{
+        provenance_orient2d(triangle[0], triangle[1], point),
+        provenance_orient2d(triangle[1], triangle[2], point),
+        provenance_orient2d(triangle[2], triangle[0], point)};
+    if (strict) {
+        return std::ranges::all_of(signs, [](const long double value) {
+                   return value > provenance_area_tolerance_factor;
+               })
+            || std::ranges::all_of(signs, [](const long double value) {
+                   return value < -provenance_area_tolerance_factor;
+               });
+    }
+    return std::ranges::all_of(signs, [](const long double value) {
+               return value >= -provenance_area_tolerance_factor;
+           })
+        || std::ranges::all_of(signs, [](const long double value) {
+               return value <= provenance_area_tolerance_factor;
+           });
+}
+
+using ProvenanceSegment2 = std::array<ProvenancePoint2, 2>;
+
+bool proper_provenance_segment_intersection(
+    const ProvenanceSegment2& left,
+    const ProvenanceSegment2& right)
+{
+    const long double ab_c = provenance_orient2d(left[0], left[1], right[0]);
+    const long double ab_d = provenance_orient2d(left[0], left[1], right[1]);
+    const long double cd_a = provenance_orient2d(right[0], right[1], left[0]);
+    const long double cd_b = provenance_orient2d(right[0], right[1], left[1]);
+    const auto opposite = [](const long double first, const long double second) {
+        return (first > provenance_area_tolerance_factor
+                && second < -provenance_area_tolerance_factor)
+            || (first < -provenance_area_tolerance_factor
+                && second > provenance_area_tolerance_factor);
+    };
+    return opposite(ab_c, ab_d) && opposite(cd_a, cd_b);
+}
+
+long double provenance_triangle_area(const ProvenanceTriangle2& triangle)
+{
+    return 0.5L
+        * std::abs(provenance_orient2d(triangle[0], triangle[1], triangle[2]));
+}
+
+long double provenance_cross2d(
+    const ProvenancePoint2& left,
+    const ProvenancePoint2& right)
+{
+    return left[0] * right[1] - left[1] * right[0];
+}
+
+bool provenance_segment_inside_patch(
+    const ProvenanceSegment2& segment,
+    const std::vector<ProvenanceSegment2>& boundary_segments,
+    const std::vector<ProvenanceTriangle2>& patch_triangles)
+{
+    const ProvenancePoint2 direction{
+        segment[1][0] - segment[0][0], segment[1][1] - segment[0][1]};
+    const long double squared_length =
+        direction[0] * direction[0] + direction[1] * direction[1];
+    if (!(squared_length > provenance_distance_tolerance
+            * provenance_distance_tolerance)) {
+        return false;
+    }
+    const long double length = std::sqrt(squared_length);
+    const long double parameter_tolerance = provenance_distance_tolerance / length;
+    std::vector<long double> parameters{0.0L, 1.0L};
+    parameters.reserve(2U + 2U * boundary_segments.size());
+    for (const ProvenanceSegment2& boundary : boundary_segments) {
+        const ProvenancePoint2 boundary_direction{
+            boundary[1][0] - boundary[0][0],
+            boundary[1][1] - boundary[0][1]};
+        const ProvenancePoint2 relative{
+            boundary[0][0] - segment[0][0],
+            boundary[0][1] - segment[0][1]};
+        const long double denominator =
+            provenance_cross2d(direction, boundary_direction);
+        if (std::abs(denominator) > provenance_area_tolerance_factor) {
+            const long double parameter =
+                provenance_cross2d(relative, boundary_direction) / denominator;
+            const long double boundary_parameter =
+                provenance_cross2d(relative, direction) / denominator;
+            if (parameter >= -parameter_tolerance
+                && parameter <= 1.0L + parameter_tolerance
+                && boundary_parameter >= -parameter_tolerance
+                && boundary_parameter <= 1.0L + parameter_tolerance) {
+                parameters.push_back(std::clamp(parameter, 0.0L, 1.0L));
+            }
+            continue;
+        }
+        const long double first_distance = std::abs(provenance_orient2d(
+            segment[0], segment[1], boundary[0])) / length;
+        const long double second_distance = std::abs(provenance_orient2d(
+            segment[0], segment[1], boundary[1])) / length;
+        if (std::max(first_distance, second_distance)
+            > provenance_distance_tolerance) {
+            continue;
+        }
+        for (const ProvenancePoint2& point : boundary) {
+            const long double parameter =
+                ((point[0] - segment[0][0]) * direction[0]
+                 + (point[1] - segment[0][1]) * direction[1])
+                / squared_length;
+            if (parameter >= -parameter_tolerance
+                && parameter <= 1.0L + parameter_tolerance) {
+                parameters.push_back(std::clamp(parameter, 0.0L, 1.0L));
+            }
+        }
+    }
+    std::sort(parameters.begin(), parameters.end());
+    std::vector<long double> unique_parameters;
+    unique_parameters.reserve(parameters.size());
+    for (const long double parameter : parameters) {
+        if (unique_parameters.empty()
+            || parameter > unique_parameters.back() + parameter_tolerance) {
+            unique_parameters.push_back(parameter);
+        } else {
+            unique_parameters.back() = std::max(unique_parameters.back(), parameter);
+        }
+    }
+    for (size_t index = 1U; index < unique_parameters.size(); ++index) {
+        const long double low = unique_parameters[index - 1U];
+        const long double high = unique_parameters[index];
+        if (high <= low + parameter_tolerance) {
+            continue;
+        }
+        const long double midpoint_parameter = 0.5L * (low + high);
+        const ProvenancePoint2 midpoint{
+            segment[0][0] + midpoint_parameter * direction[0],
+            segment[0][1] + midpoint_parameter * direction[1]};
+        if (std::ranges::none_of(
+                patch_triangles,
+                [&](const ProvenanceTriangle2& source_triangle) {
+                    return provenance_point_in_triangle(
+                        midpoint, source_triangle, false);
+                })) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::vector<ProvenancePatch> build_provenance_patches(
+    const std::vector<ProvenancePoint3>& source,
+    const std::vector<CdtFace>& source_faces)
+{
+    std::vector<ProvenancePlane> planes;
+    planes.reserve(source_faces.size());
+    for (const CdtFace& face : source_faces) {
+        planes.push_back(provenance_plane(std::array{
+            source[static_cast<size_t>(face[0])],
+            source[static_cast<size_t>(face[1])],
+            source[static_cast<size_t>(face[2])] }));
+    }
+    std::unordered_map<CdtEdge, std::vector<size_t>, CdtEdgeHash> edge_faces;
+    edge_faces.reserve(checked_entity_count(source_faces.size(), 3U, "source_faces"));
+    for (size_t face_index = 0; face_index < source_faces.size(); ++face_index) {
+        const CdtFace& face = source_faces[face_index];
+        const std::array<CdtEdge, 3> edges{{
+            CdtEdge{face[0], face[1]},
+            CdtEdge{face[1], face[2]},
+            CdtEdge{face[0], face[2]}}};
+        for (const CdtEdge& edge : edges) {
+            edge_faces[edge].push_back(face_index);
+        }
+    }
+    DisjointSet components(source_faces.size());
+    for (const auto& [edge, owners] : edge_faces) {
+        static_cast<void>(edge);
+        for (size_t index = 1U; index < owners.size(); ++index) {
+            if (same_provenance_plane(planes[owners[0]], planes[owners[index]])) {
+                components.unite(owners[0], owners[index]);
+            }
+        }
+    }
+    std::unordered_map<size_t, size_t> patch_for_root;
+    std::vector<ProvenancePatch> patches;
+    for (size_t face_index = 0; face_index < source_faces.size(); ++face_index) {
+        const size_t root = components.find(face_index);
+        auto [position, inserted] = patch_for_root.try_emplace(root, patches.size());
+        if (inserted) {
+            patches.push_back(ProvenancePatch{});
+            patches.back().plane = planes[face_index];
+        }
+        patches[position->second].source_face_indices.push_back(face_index);
+    }
+    for (ProvenancePatch& patch : patches) {
+        std::unordered_map<CdtEdge, size_t, CdtEdgeHash> edge_counts;
+        edge_counts.reserve(checked_entity_count(
+            patch.source_face_indices.size(), 3U, "patch_faces"));
+        for (const size_t face_index : patch.source_face_indices) {
+            const CdtFace& face = source_faces[face_index];
+            ProvenanceTriangle2 projected{};
+            for (size_t local = 0; local < 3U; ++local) {
+                projected[local] = project_provenance_point(
+                    source[static_cast<size_t>(face[local])], patch.plane.axis);
+            }
+            patch.triangles.push_back(projected);
+            ++edge_counts[CdtEdge{face[0], face[1]}];
+            ++edge_counts[CdtEdge{face[1], face[2]}];
+            ++edge_counts[CdtEdge{face[0], face[2]}];
+        }
+        for (const auto& [edge, count] : edge_counts) {
+            if (count == 1U) {
+                patch.boundary_edges.push_back(edge);
+            }
+        }
+    }
+    return patches;
+}
+
+bool triangle_fully_inside_provenance_patch(
+    const std::array<ProvenancePoint3, 3>& triangle3,
+    const ProvenancePatch& patch,
+    const std::vector<ProvenancePoint3>& source)
+{
+    ProvenanceTriangle2 triangle{};
+    for (size_t local = 0; local < 3U; ++local) {
+        triangle[local] = project_provenance_point(triangle3[local], patch.plane.axis);
+    }
+    if (provenance_triangle_area(triangle) <= provenance_area_tolerance_factor) {
+        return false;
+    }
+    ProvenancePoint2 centroid{};
+    for (const ProvenancePoint2& point : triangle) {
+        centroid[0] += point[0] / 3.0L;
+        centroid[1] += point[1] / 3.0L;
+    }
+    std::array<ProvenancePoint2, 4> probes{
+        triangle[0], triangle[1], triangle[2], centroid};
+    for (const ProvenancePoint2& probe : probes) {
+        if (std::ranges::none_of(patch.triangles, [&](const ProvenanceTriangle2& source_triangle) {
+                return provenance_point_in_triangle(probe, source_triangle, false);
+            })) {
+            return false;
+        }
+    }
+    const std::array<ProvenanceSegment2, 3> candidate_edges{{
+        ProvenanceSegment2{triangle[0], triangle[1]},
+        ProvenanceSegment2{triangle[1], triangle[2]},
+        ProvenanceSegment2{triangle[0], triangle[2]}}};
+    std::vector<ProvenanceSegment2> boundary_segments;
+    boundary_segments.reserve(patch.boundary_edges.size());
+    for (const CdtEdge& boundary_edge : patch.boundary_edges) {
+        boundary_segments.push_back(ProvenanceSegment2{
+            project_provenance_point(
+                source[static_cast<size_t>(boundary_edge[0])], patch.plane.axis),
+            project_provenance_point(
+                source[static_cast<size_t>(boundary_edge[1])], patch.plane.axis)});
+    }
+    if (std::ranges::any_of(candidate_edges, [&](const ProvenanceSegment2& edge) {
+            return !provenance_segment_inside_patch(
+                edge, boundary_segments, patch.triangles);
+        })) {
+        return false;
+    }
+    std::unordered_set<int64_t> boundary_vertices;
+    boundary_vertices.reserve(patch.boundary_edges.size() * 2U);
+    for (const CdtEdge& edge : patch.boundary_edges) {
+        boundary_vertices.insert(edge[0]);
+        boundary_vertices.insert(edge[1]);
+    }
+    return std::ranges::none_of(boundary_vertices, [&](const int64_t vertex) {
+        return provenance_point_in_triangle(
+            project_provenance_point(
+                source[static_cast<size_t>(vertex)], patch.plane.axis),
+            triangle,
+            true);
+    });
+}
+
+bool provenance_triangles_overlap(
+    const ProvenanceTriangle2& left,
+    const ProvenanceTriangle2& right)
+{
+    for (size_t coordinate = 0; coordinate < 2U; ++coordinate) {
+        long double left_min = left[0][coordinate];
+        long double left_max = left[0][coordinate];
+        long double right_min = right[0][coordinate];
+        long double right_max = right[0][coordinate];
+        for (size_t local = 1U; local < 3U; ++local) {
+            left_min = std::min(left_min, left[local][coordinate]);
+            left_max = std::max(left_max, left[local][coordinate]);
+            right_min = std::min(right_min, right[local][coordinate]);
+            right_max = std::max(right_max, right[local][coordinate]);
+        }
+        if (left_max < right_min - provenance_distance_tolerance
+            || right_max < left_min - provenance_distance_tolerance) {
+            return false;
+        }
+    }
+    const std::array<ProvenanceSegment2, 3> left_edges{{
+        ProvenanceSegment2{left[0], left[1]}, ProvenanceSegment2{left[1], left[2]},
+        ProvenanceSegment2{left[0], left[2]}}};
+    const std::array<ProvenanceSegment2, 3> right_edges{{
+        ProvenanceSegment2{right[0], right[1]}, ProvenanceSegment2{right[1], right[2]},
+        ProvenanceSegment2{right[0], right[2]}}};
+    for (const ProvenanceSegment2& left_edge : left_edges) {
+        for (const ProvenanceSegment2& right_edge : right_edges) {
+            if (proper_provenance_segment_intersection(left_edge, right_edge)) {
+                return true;
+            }
+        }
+    }
+    if (std::ranges::any_of(left, [&](const ProvenancePoint2& point) {
+            return provenance_point_in_triangle(point, right, true);
+        })
+        || std::ranges::any_of(right, [&](const ProvenancePoint2& point) {
+               return provenance_point_in_triangle(point, left, true);
+           })) {
+        return true;
+    }
+    ProvenancePoint2 left_centroid{};
+    ProvenancePoint2 right_centroid{};
+    for (size_t local = 0; local < 3U; ++local) {
+        for (size_t coordinate = 0; coordinate < 2U; ++coordinate) {
+            left_centroid[coordinate] += left[local][coordinate] / 3.0L;
+            right_centroid[coordinate] += right[local][coordinate] / 3.0L;
+        }
+    }
+    return provenance_point_in_triangle(left_centroid, right, true)
+        || provenance_point_in_triangle(right_centroid, left, true);
+}
+
+bool provenance_segment_covered(
+    const ProvenanceSegment2& target,
+    const std::vector<ProvenanceSegment2>& covers)
+{
+    const ProvenancePoint2 direction{
+        target[1][0] - target[0][0], target[1][1] - target[0][1]};
+    const long double squared_length =
+        direction[0] * direction[0] + direction[1] * direction[1];
+    if (!(squared_length > provenance_distance_tolerance * provenance_distance_tolerance)) {
+        return false;
+    }
+    const long double length = std::sqrt(squared_length);
+    const long double parameter_tolerance = provenance_distance_tolerance / length;
+    std::vector<std::array<long double, 2>> intervals;
+    for (const ProvenanceSegment2& cover : covers) {
+        const long double first_distance =
+            std::abs(provenance_orient2d(target[0], target[1], cover[0])) / length;
+        const long double second_distance =
+            std::abs(provenance_orient2d(target[0], target[1], cover[1])) / length;
+        if (std::max(first_distance, second_distance) > provenance_distance_tolerance) {
+            continue;
+        }
+        const auto parameter = [&](const ProvenancePoint2& point) {
+            return ((point[0] - target[0][0]) * direction[0]
+                    + (point[1] - target[0][1]) * direction[1])
+                / squared_length;
+        };
+        long double low = parameter(cover[0]);
+        long double high = parameter(cover[1]);
+        if (low > high) {
+            std::swap(low, high);
+        }
+        low = std::max(0.0L, low);
+        high = std::min(1.0L, high);
+        if (high >= low - parameter_tolerance) {
+            intervals.push_back({low, high});
+        }
+    }
+    if (intervals.empty()) {
+        return false;
+    }
+    std::sort(intervals.begin(), intervals.end());
+    long double covered_end = 0.0L;
+    for (const auto& interval : intervals) {
+        if (interval[0] > covered_end + parameter_tolerance) {
+            return false;
+        }
+        covered_end = std::max(covered_end, interval[1]);
+    }
+    return covered_end >= 1.0L - parameter_tolerance;
+}
+
+bool provenance_patch_boundary_preserved(
+    const ProvenancePatch& patch,
+    const std::vector<ProvenancePoint3>& source,
+    const std::vector<ProvenancePoint3>& candidate,
+    const std::vector<CdtFace>& candidate_faces)
+{
+    std::unordered_map<CdtEdge, size_t, CdtEdgeHash> candidate_edge_counts;
+    candidate_edge_counts.reserve(
+        checked_entity_count(candidate_faces.size(), 3U, "candidate_patch_faces"));
+    for (const CdtFace& face : candidate_faces) {
+        ++candidate_edge_counts[CdtEdge{face[0], face[1]}];
+        ++candidate_edge_counts[CdtEdge{face[1], face[2]}];
+        ++candidate_edge_counts[CdtEdge{face[0], face[2]}];
+    }
+    std::vector<ProvenanceSegment2> source_segments;
+    source_segments.reserve(patch.boundary_edges.size());
+    for (const CdtEdge& edge : patch.boundary_edges) {
+        source_segments.push_back(ProvenanceSegment2{
+            project_provenance_point(
+                source[static_cast<size_t>(edge[0])], patch.plane.axis),
+            project_provenance_point(
+                source[static_cast<size_t>(edge[1])], patch.plane.axis)});
+    }
+    std::vector<ProvenanceSegment2> candidate_segments;
+    for (const auto& [edge, count] : candidate_edge_counts) {
+        if (count == 1U) {
+            candidate_segments.push_back(ProvenanceSegment2{
+                project_provenance_point(
+                    candidate[static_cast<size_t>(edge[0])], patch.plane.axis),
+                project_provenance_point(
+                    candidate[static_cast<size_t>(edge[1])], patch.plane.axis)});
+        }
+    }
+    return std::ranges::all_of(source_segments, [&](const ProvenanceSegment2& segment) {
+               return provenance_segment_covered(segment, candidate_segments);
+           })
+        && std::ranges::all_of(candidate_segments, [&](const ProvenanceSegment2& segment) {
+               return provenance_segment_covered(segment, source_segments);
+           });
+}
+
+PlanarProvenanceResult audit_planar_facet_provenance(
+    const std::span<const double> source_points_flat,
+    const std::vector<CdtFace>& source_faces,
+    const std::span<const double> candidate_points_flat,
+    const std::vector<CdtFace>& candidate_boundary_faces,
+    const size_t exact_source_faces)
+{
+    PlanarProvenanceResult result;
+    result.n_source_faces = source_faces.size();
+    result.n_source_faces_on_boundary = exact_source_faces;
+    result.n_missing_source_faces = result.n_source_faces - exact_source_faces;
+    result.n_candidate_boundary_faces = candidate_boundary_faces.size();
+    if (exact_source_faces == source_faces.size()
+        && candidate_boundary_faces.size() == source_faces.size()) {
+        result.n_owned_candidate_faces = candidate_boundary_faces.size();
+        result.preserved = true;
+        return result;
+    }
+
+    auto [source, candidate] = normalized_provenance_points(
+        source_points_flat, candidate_points_flat);
+    const std::vector<ProvenancePatch> patches =
+        build_provenance_patches(source, source_faces);
+    result.n_source_planar_patches = patches.size();
+    std::vector<size_t> owners(
+        candidate_boundary_faces.size(), std::numeric_limits<size_t>::max());
+    for (size_t face_index = 0; face_index < candidate_boundary_faces.size(); ++face_index) {
+        const CdtFace& face = candidate_boundary_faces[face_index];
+        const std::array<ProvenancePoint3, 3> triangle{
+            candidate[static_cast<size_t>(face[0])],
+            candidate[static_cast<size_t>(face[1])],
+            candidate[static_cast<size_t>(face[2])]};
+        ProvenancePlane plane{};
+        try {
+            plane = provenance_plane(triangle);
+        } catch (const std::invalid_argument&) {
+            ++result.n_unowned_candidate_faces;
+            continue;
+        }
+        size_t matches = 0U;
+        size_t owner = std::numeric_limits<size_t>::max();
+        for (size_t patch_index = 0; patch_index < patches.size(); ++patch_index) {
+            if (same_provenance_plane(plane, patches[patch_index].plane)
+                && triangle_fully_inside_provenance_patch(
+                    triangle, patches[patch_index], source)) {
+                owner = patch_index;
+                ++matches;
+            }
+        }
+        if (matches == 1U) {
+            owners[face_index] = owner;
+            ++result.n_owned_candidate_faces;
+        } else {
+            ++result.n_unowned_candidate_faces;
+        }
+    }
+
+    const long double area_tolerance = provenance_area_tolerance_factor
+        * static_cast<long double>(std::max<size_t>(
+            1U, source_faces.size() + candidate_boundary_faces.size()));
+    for (size_t patch_index = 0; patch_index < patches.size(); ++patch_index) {
+        const ProvenancePatch& patch = patches[patch_index];
+        std::vector<CdtFace> owned_faces;
+        std::vector<ProvenanceTriangle2> owned_triangles;
+        for (size_t face_index = 0; face_index < owners.size(); ++face_index) {
+            if (owners[face_index] != patch_index) {
+                continue;
+            }
+            const CdtFace& face = candidate_boundary_faces[face_index];
+            owned_faces.push_back(face);
+            ProvenanceTriangle2 projected{};
+            for (size_t local = 0; local < 3U; ++local) {
+                projected[local] = project_provenance_point(
+                    candidate[static_cast<size_t>(face[local])], patch.plane.axis);
+            }
+            owned_triangles.push_back(projected);
+        }
+        if (owned_faces.empty()) {
+            ++result.n_uncovered_source_patches;
+            continue;
+        }
+        long double source_area = 0.0L;
+        for (const ProvenanceTriangle2& triangle : patch.triangles) {
+            source_area += provenance_triangle_area(triangle);
+        }
+        long double candidate_area = 0.0L;
+        for (const ProvenanceTriangle2& triangle : owned_triangles) {
+            candidate_area += provenance_triangle_area(triangle);
+        }
+        result.n_area_mismatch_patches +=
+            std::abs(source_area - candidate_area) > area_tolerance;
+        for (size_t left = 0; left < owned_triangles.size(); ++left) {
+            for (size_t right = left + 1U; right < owned_triangles.size(); ++right) {
+                result.n_overlap_pairs += provenance_triangles_overlap(
+                    owned_triangles[left], owned_triangles[right]);
+            }
+        }
+        result.n_feature_boundary_mismatches +=
+            !provenance_patch_boundary_preserved(
+                patch, source, candidate, owned_faces);
+    }
+    result.preserved = result.n_source_faces > 0U
+        && result.n_candidate_boundary_faces > 0U
+        && result.n_unowned_candidate_faces == 0U
+        && result.n_uncovered_source_patches == 0U
+        && result.n_area_mismatch_patches == 0U
+        && result.n_feature_boundary_mismatches == 0U
+        && result.n_overlap_pairs == 0U;
+    return result;
+}
 
 std::vector<size_t> face_component_roots(const std::vector<CdtFace>& faces)
 {
@@ -965,8 +1681,66 @@ SourceComponentAuditResult audit_source_component_bijection_impl(
             boundary_faces.push_back(face_key);
         }
     }
+    SourceComponentAuditResult result;
+    result.n_source_faces = source_face_count;
+    for (const CdtFace& source_face : source_faces) {
+        const auto position = tet_face_counts.find(source_face);
+        result.n_source_faces_on_boundary += position != tet_face_counts.end()
+            && position->second == 1U;
+    }
+    result.n_missing_source_faces =
+        result.n_source_faces - result.n_source_faces_on_boundary;
+    result.n_candidate_boundary_faces = boundary_faces.size();
+    if (result.n_source_faces_on_boundary == source_face_count
+        && boundary_faces.size() == source_face_count) {
+        result.n_owned_candidate_faces = boundary_faces.size();
+        result.source_faces_preserved = true;
+    } else if (!boundary_faces.empty()) {
+        std::vector<CdtFace> raw_boundary_faces;
+        raw_boundary_faces.reserve(boundary_faces.size());
+        const auto append_raw_boundary_face = [&](
+                                                  const int64_t first,
+                                                  const int64_t second,
+                                                  const int64_t third) {
+            const CdtFace provenance_face = face(
+                candidate_provenance[static_cast<size_t>(first)],
+                candidate_provenance[static_cast<size_t>(second)],
+                candidate_provenance[static_cast<size_t>(third)]);
+            const auto position = tet_face_counts.find(provenance_face);
+            if (position == tet_face_counts.end() || position->second != 1U) {
+                return;
+            }
+            raw_boundary_faces.push_back(face(first, second, third));
+        };
+        for (size_t row = 0; row < tet_count; ++row) {
+            const int64_t a = tets_flat[4U * row];
+            const int64_t b = tets_flat[4U * row + 1U];
+            const int64_t c = tets_flat[4U * row + 2U];
+            const int64_t d = tets_flat[4U * row + 3U];
+            append_raw_boundary_face(a, b, c);
+            append_raw_boundary_face(a, b, d);
+            append_raw_boundary_face(a, c, d);
+            append_raw_boundary_face(b, c, d);
+        }
+        const PlanarProvenanceResult provenance = audit_planar_facet_provenance(
+            source_points_flat,
+            source_faces,
+            candidate_points_flat,
+            raw_boundary_faces,
+            result.n_source_faces_on_boundary);
+        result.n_candidate_boundary_faces = provenance.n_candidate_boundary_faces;
+        result.n_owned_candidate_faces = provenance.n_owned_candidate_faces;
+        result.n_unowned_candidate_faces = provenance.n_unowned_candidate_faces;
+        result.n_source_planar_patches = provenance.n_source_planar_patches;
+        result.n_uncovered_source_patches = provenance.n_uncovered_source_patches;
+        result.n_area_mismatch_patches = provenance.n_area_mismatch_patches;
+        result.n_feature_boundary_mismatches =
+            provenance.n_feature_boundary_mismatches;
+        result.n_overlap_pairs = provenance.n_overlap_pairs;
+        result.source_faces_preserved = provenance.preserved;
+    }
     if (boundary_faces.empty()) {
-        return SourceComponentAuditResult{};
+        return result;
     }
 
     const std::vector<size_t> source_roots = face_component_roots(source_faces);
@@ -1076,7 +1850,6 @@ SourceComponentAuditResult audit_source_component_bijection_impl(
         index = end;
     }
 
-    SourceComponentAuditResult result;
     result.n_source_components = unique_source_roots.size();
     result.n_candidate_boundary_components = unique_candidate_roots.size();
     result.n_source_surface_vertices = source_surface_vertices;
@@ -1153,6 +1926,19 @@ py::dict audit_source_component_bijection(
         audit.n_unanchored_candidate_components;
     result["n_unknown_source_vertex_anchors"] =
         audit.n_unknown_source_vertex_anchors;
+    result["n_source_faces"] = audit.n_source_faces;
+    result["n_source_faces_on_boundary"] = audit.n_source_faces_on_boundary;
+    result["n_missing_source_faces"] = audit.n_missing_source_faces;
+    result["n_candidate_boundary_faces"] = audit.n_candidate_boundary_faces;
+    result["n_owned_candidate_faces"] = audit.n_owned_candidate_faces;
+    result["n_unowned_candidate_faces"] = audit.n_unowned_candidate_faces;
+    result["n_source_planar_patches"] = audit.n_source_planar_patches;
+    result["n_uncovered_source_patches"] = audit.n_uncovered_source_patches;
+    result["n_area_mismatch_patches"] = audit.n_area_mismatch_patches;
+    result["n_feature_boundary_mismatches"] =
+        audit.n_feature_boundary_mismatches;
+    result["n_overlap_pairs"] = audit.n_overlap_pairs;
+    result["source_faces_preserved"] = audit.source_faces_preserved;
     result["bijective"] = audit.bijective;
     return result;
 }

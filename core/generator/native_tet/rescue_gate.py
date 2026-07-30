@@ -49,7 +49,7 @@ class TetBoundaryAudit:
 
 @dataclass(frozen=True)
 class SourceComponentBijectionAudit:
-    """Exact source-vertex provenance across output boundary components."""
+    """Exact components plus complete planar-patch boundary provenance."""
 
     n_source_components: int
     n_candidate_boundary_components: int
@@ -61,6 +61,18 @@ class SourceComponentBijectionAudit:
     n_split_source_components: int
     n_unanchored_candidate_components: int
     n_unknown_source_vertex_anchors: int
+    n_source_faces: int
+    n_source_faces_on_boundary: int
+    n_missing_source_faces: int
+    n_candidate_boundary_faces: int
+    n_owned_candidate_faces: int
+    n_unowned_candidate_faces: int
+    n_source_planar_patches: int
+    n_uncovered_source_patches: int
+    n_area_mismatch_patches: int
+    n_feature_boundary_mismatches: int
+    n_overlap_pairs: int
+    source_faces_preserved: bool
     bijective: bool
 
 
@@ -73,7 +85,11 @@ class SourceTopologyAudit:
 
     @property
     def valid(self) -> bool:
-        return bool(self.boundary.valid and self.components.bijective)
+        return bool(
+            self.boundary.valid
+            and self.components.bijective
+            and self.components.source_faces_preserved
+        )
 
 
 @dataclass(frozen=True)
@@ -99,6 +115,17 @@ _COMPONENT_COUNT_FIELDS = (
     "n_split_source_components",
     "n_unanchored_candidate_components",
     "n_unknown_source_vertex_anchors",
+    "n_source_faces",
+    "n_source_faces_on_boundary",
+    "n_missing_source_faces",
+    "n_candidate_boundary_faces",
+    "n_owned_candidate_faces",
+    "n_unowned_candidate_faces",
+    "n_source_planar_patches",
+    "n_uncovered_source_patches",
+    "n_area_mismatch_patches",
+    "n_feature_boundary_mismatches",
+    "n_overlap_pairs",
 )
 
 
@@ -233,9 +260,18 @@ def _audit_source_component_bijection_python(
         matched_source_coordinates.add(key)
         candidate_provenance[vertex] = source_vertex
 
-    provenance_tets = candidate_provenance[tets]
+    raw_boundary_faces = _candidate_boundary_faces(tets)
+    boundary_faces = np.sort(candidate_provenance[raw_boundary_faces], axis=1)
+    from core.generator.native_tet.source_facet_provenance import (
+        audit_source_facet_provenance_python,
+    )
 
-    boundary_faces = _candidate_boundary_faces(provenance_tets)
+    facet_report = audit_source_facet_provenance_python(
+        source_points,
+        source_faces,
+        candidate_points,
+        raw_boundary_faces,
+    )
     if boundary_faces.shape[0] == 0:
         return SourceComponentBijectionAudit(
             n_source_components=0,
@@ -248,6 +284,7 @@ def _audit_source_component_bijection_python(
             n_split_source_components=0,
             n_unanchored_candidate_components=0,
             n_unknown_source_vertex_anchors=0,
+            **facet_report,
             bijective=False,
         )
 
@@ -333,6 +370,7 @@ def _audit_source_component_bijection_python(
         n_split_source_components=n_split_source_components,
         n_unanchored_candidate_components=n_unanchored_candidate_components,
         n_unknown_source_vertex_anchors=n_unknown_source_vertex_anchors,
+        **facet_report,
         bijective=bijective,
     )
 
@@ -352,6 +390,9 @@ def _validated_native_component_result(
     raw_bijective = values.get("bijective")
     if type(raw_bijective) is not bool:
         raise RuntimeError("native source-component audit returned invalid bijective")
+    raw_source_faces_preserved = values.get("source_faces_preserved")
+    if type(raw_source_faces_preserved) is not bool:
+        raise RuntimeError("native source-component audit returned invalid source_faces_preserved")
     if counts["n_source_vertices_on_boundary"] > counts["n_source_surface_vertices"]:
         raise RuntimeError("native source-component audit returned inconsistent vertices")
     if (
@@ -363,12 +404,55 @@ def _validated_native_component_result(
         or counts["n_split_source_components"] > counts["n_source_components"]
         or counts["n_unanchored_candidate_components"] > counts["n_candidate_boundary_components"]
         or counts["n_unknown_source_vertex_anchors"] > source_vertex_count
+        or counts["n_source_faces"] != source_face_count
+        or counts["n_source_faces_on_boundary"] > counts["n_source_faces"]
+        or counts["n_candidate_boundary_faces"] > 4 * tet_count
+        or counts["n_owned_candidate_faces"] > counts["n_candidate_boundary_faces"]
+        or counts["n_unowned_candidate_faces"] > counts["n_candidate_boundary_faces"]
+        or counts["n_source_planar_patches"] > source_face_count
+        or counts["n_uncovered_source_patches"] > counts["n_source_planar_patches"]
+        or counts["n_area_mismatch_patches"] > counts["n_source_planar_patches"]
+        or counts["n_feature_boundary_mismatches"] > counts["n_source_planar_patches"]
     ):
         raise RuntimeError("native source-component audit returned out-of-range counts")
     if counts["n_missing_source_vertices"] != (
         counts["n_source_surface_vertices"] - counts["n_source_vertices_on_boundary"]
     ):
         raise RuntimeError("native source-component audit returned inconsistent missing count")
+    if counts["n_missing_source_faces"] != (
+        counts["n_source_faces"] - counts["n_source_faces_on_boundary"]
+    ):
+        raise RuntimeError("native source-component audit returned inconsistent missing face count")
+    if (
+        counts["n_owned_candidate_faces"] + counts["n_unowned_candidate_faces"]
+        != counts["n_candidate_boundary_faces"]
+    ):
+        raise RuntimeError("native source-component audit returned inconsistent owned face count")
+    candidate_face_count = counts["n_candidate_boundary_faces"]
+    max_overlap_pairs = candidate_face_count * max(0, candidate_face_count - 1) // 2
+    if counts["n_overlap_pairs"] > max_overlap_pairs:
+        raise RuntimeError("native source-component audit returned inconsistent overlap count")
+    exact_fast_path = bool(
+        counts["n_source_faces_on_boundary"] == counts["n_source_faces"]
+        and candidate_face_count == counts["n_source_faces"]
+    )
+    if exact_fast_path:
+        if (
+            counts["n_owned_candidate_faces"] != candidate_face_count
+            or counts["n_unowned_candidate_faces"] != 0
+            or counts["n_source_planar_patches"] != 0
+            or counts["n_uncovered_source_patches"] != 0
+            or counts["n_area_mismatch_patches"] != 0
+            or counts["n_feature_boundary_mismatches"] != 0
+            or counts["n_overlap_pairs"] != 0
+        ):
+            raise RuntimeError(
+                "native source-component audit returned inconsistent exact facet report"
+            )
+    elif candidate_face_count > 0 and counts["n_source_planar_patches"] == 0:
+        raise RuntimeError(
+            "native source-component audit returned missing planar patch census"
+        )
     expected_bijective = bool(
         counts["n_source_components"] > 0
         and counts["n_source_components"]
@@ -382,7 +466,24 @@ def _validated_native_component_result(
     )
     if raw_bijective != expected_bijective:
         raise RuntimeError("native source-component audit returned inconsistent verdict")
-    return SourceComponentBijectionAudit(**counts, bijective=raw_bijective)
+    expected_source_faces_preserved = bool(
+        counts["n_source_faces"] > 0
+        and counts["n_candidate_boundary_faces"] > 0
+        and counts["n_unowned_candidate_faces"] == 0
+        and counts["n_uncovered_source_patches"] == 0
+        and counts["n_area_mismatch_patches"] == 0
+        and counts["n_feature_boundary_mismatches"] == 0
+        and counts["n_overlap_pairs"] == 0
+    )
+    if raw_source_faces_preserved != expected_source_faces_preserved:
+        raise RuntimeError(
+            "native source-component audit returned inconsistent source face verdict"
+        )
+    return SourceComponentBijectionAudit(
+        **counts,
+        source_faces_preserved=raw_source_faces_preserved,
+        bijective=raw_bijective,
+    )
 
 
 def audit_source_component_bijection(
@@ -391,7 +492,7 @@ def audit_source_component_bijection(
     candidate_points: np.ndarray,
     tets: np.ndarray,
 ) -> SourceComponentBijectionAudit:
-    """Require order-independent exact source provenance on output components."""
+    """Require exact components and complete planar-patch facet provenance."""
     source = _component_point_matrix(source_points, name="source_points")
     faces = _component_index_matrix(source_faces, columns=3, name="source_faces")
     candidate = _component_point_matrix(candidate_points, name="candidate_points")
@@ -429,12 +530,15 @@ def audit_source_topology(
     *,
     relative_volume_tolerance: float = 1e-12,
 ) -> SourceTopologyAudit:
-    """Combine local manifold validity with exact source-component identity.
+    """Combine local validity with source component and facet provenance.
 
     ``TetBoundaryAudit.valid`` intentionally accepts any positive number of
     closed components.  This source-aware certificate supplies the missing
     global contract: every source component must map bijectively to exactly
-    one output boundary component through immutable source coordinates.
+    one output boundary component through immutable source coordinates.  Each
+    output boundary facet must either retain an exact source face or have one
+    complete, non-overlapping planar-patch owner.  Non-coplanar replacement is
+    rejected.
     """
     boundary = audit_tet_boundary(
         candidate_points,

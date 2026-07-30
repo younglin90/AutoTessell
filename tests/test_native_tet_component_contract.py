@@ -390,7 +390,14 @@ def test_native_and_python_component_audits_match(
         lambda values: {**values, "bijective": 1},
         lambda values: {**values, "n_missing_source_vertices": 1},
         lambda values: {**values, "n_source_components": 10_000},
+        lambda values: {**values, "n_candidate_boundary_faces": 10_000},
+        lambda values: {**values, "n_unowned_candidate_faces": 1},
+        lambda values: {**values, "n_source_planar_patches": 1, "n_overlap_pairs": 1},
+        lambda values: {**values, "source_faces_preserved": False},
         lambda values: {key: value for key, value in values.items() if key != "bijective"},
+        lambda values: {
+            key: value for key, value in values.items() if key != "n_owned_candidate_faces"
+        },
     ],
 )
 def test_malformed_present_native_backend_fails_closed_without_fallback(

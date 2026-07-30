@@ -6258,11 +6258,12 @@ def generate_native_tet(
         )
 
     # Source-aware strict topology contract.  Local closed-manifold validity
-    # permits one or more disconnected bodies; exact component provenance then
-    # proves that the output neither loses, merges, splits, nor invents a source
-    # component.  Candidate point order is irrelevant, including for external
-    # P4C output.  This audit does not move vertices, rewrite connectivity, or
-    # alter target-cell policy.
+    # permits one or more disconnected bodies; exact component and planar-patch
+    # provenance then prove that the output neither loses, merges, splits, nor
+    # invents a source component or replaces a non-coplanar source facet.
+    # Candidate point order is irrelevant, including for external P4C output.
+    # This audit does not move vertices, rewrite connectivity, or alter
+    # target-cell policy.
     try:
         from core.generator.native_tet.rescue_gate import (  # noqa: PLC0415
             audit_source_topology,
@@ -6308,6 +6309,38 @@ def generate_native_tet(
             "n_unknown_source_vertex_anchors": int(
                 _source_component_audit.n_unknown_source_vertex_anchors
             ),
+            "n_source_faces": int(_source_component_audit.n_source_faces),
+            "n_source_faces_on_boundary": int(
+                _source_component_audit.n_source_faces_on_boundary
+            ),
+            "n_missing_source_faces": int(
+                _source_component_audit.n_missing_source_faces
+            ),
+            "n_candidate_boundary_faces": int(
+                _source_component_audit.n_candidate_boundary_faces
+            ),
+            "n_owned_candidate_faces": int(
+                _source_component_audit.n_owned_candidate_faces
+            ),
+            "n_unowned_candidate_faces": int(
+                _source_component_audit.n_unowned_candidate_faces
+            ),
+            "n_source_planar_patches": int(
+                _source_component_audit.n_source_planar_patches
+            ),
+            "n_uncovered_source_patches": int(
+                _source_component_audit.n_uncovered_source_patches
+            ),
+            "n_area_mismatch_patches": int(
+                _source_component_audit.n_area_mismatch_patches
+            ),
+            "n_feature_boundary_mismatches": int(
+                _source_component_audit.n_feature_boundary_mismatches
+            ),
+            "n_overlap_pairs": int(_source_component_audit.n_overlap_pairs),
+            "source_faces_preserved": bool(
+                _source_component_audit.source_faces_preserved
+            ),
         }
         debug_info["strict_source_topology"] = {
             "valid": bool(_source_topology_audit.valid),
@@ -6328,6 +6361,9 @@ def generate_native_tet(
             ),
             "n_inverted_tets": int(_boundary_topology_audit.n_inverted_tets),
             "component_bijective": bool(_source_component_audit.bijective),
+            "source_faces_preserved": bool(
+                _source_component_audit.source_faces_preserved
+            ),
         }
         if not _source_topology_audit.valid:
             log.warning(

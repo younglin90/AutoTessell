@@ -238,8 +238,10 @@ def apply_metric_topology_transaction(
     failures: list[str] = []
     if not audit.boundary.valid:
         failures.append("local_boundary_invalid")
-    if not audit.components.bijective:
+    elif not audit.components.bijective:
         failures.append("source_component_bijection_invalid")
+    elif not audit.components.source_faces_preserved:
+        failures.append("source_facet_provenance_invalid")
     if failures:
         report = MetricTopologyTransactionReport(
             accepted=False,
