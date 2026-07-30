@@ -1426,3 +1426,58 @@ scope. Future MIT-core boundary follows
   and returned.  Preserve wall coordinates and fail closed if a post-write
   transform diverges.  Then resume C++23 porting at the remaining BL front-
   topology/allocation hot path.
+
+## Cycle 26 checkpoint -- 2026-07-30
+
+### Native boundary-layer final-state persistence evidence
+
+- `2110b1eb` moves the sole polyMesh commit after every accepted point
+  transform.  Final validity measurement, wall-envelope evidence, quality JSON,
+  disk points, and lineage output hash now describe one `final_points` array.
+- Aspect enforcement no longer changes memory after disk was written.  The
+  persistence test observes exactly one point write, exact accepted/disk point
+  parity, and result/JSON aspect metrics equal to a disk recomputation.
+- Anti-invert scaling is applied with joint mode both disabled and enabled, and
+  to original moved vertices plus all layer offsets.  Global/selective and
+  joint-on/off tests all keep displacement at or below the injected `1e-3`
+  geometric cap.
+- A legacy minimum-thickness floor could increase both per-vertex and joint
+  safety upper bounds.  That unsafe promotion is removed.  Selective mode uses
+  exact safe ratios; homogeneous mode uses their minimum; joint scaling can
+  only reduce them.
+- Focused post-merge persistence/provenance/checker/transition validation passes
+  `43`.  The wider native BL regression passes `172` in `153.71 s`.
+- No surface point, topology contract, quality threshold, dependency, external
+  source, or `third_party/` file changed.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-persistence-1-2110b1eb.bundle`,
+  SHA-256 `11ee2994d2f0ff492c28e6018e5578ed930ea1f39525c4d4e55f128ef10a7975`.
+  Worktree and branch were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-26 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | No native ABI changed in this card; supported build matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused and wider BL suites pass; five baseline tet-subdivision contract failures and full suite remain. |
+| 4 Shape preservation | UNVERIFIED | Final wall-envelope evidence now matches persisted geometry; full corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Safety caps cannot be weakened by floors and final geometry is measured; all-engine corpus remains. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology/validity; Poly target unresolved. |
+| 7 Boundary layer | UNVERIFIED | Persistence, BL0, duplicate guard, and focused positive layers pass; full corpus remains. |
+| 8 Quality | UNVERIFIED | Aspect metrics now match disk; complete fixture matrix remains. |
+| 9 Reproducibility | FAIL | Disk/result/state divergence closed; external P4C topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Joint/selective safety matrix passes; adverse corpus incomplete. |
+| 11 Performance | UNVERIFIED | No measured regression; frozen all-engine budgets remain. |
+| 12 Packaging | UNVERIFIED | Native extension wheel evidence incomplete. |
+| 13 License/provenance | UNVERIFIED | First-party fix; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration and campaign ledger updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Port the `build_layer_front` compact summary path to first-party C++23 using
+  flat sorted edge records and contiguous vertex/face data.  Preserve exact
+  counts, first non-manifold edge, feature classification, deterministic order,
+  wall topology, and full generate-native-BL polyMesh hashes.  Keep Python as
+  parity oracle/fallback.
