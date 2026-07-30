@@ -1064,7 +1064,11 @@ def _lloyd_3d_iteration(
         if pinned_mask is not None and len(pinned_mask) == seeds.shape[0]
         else None
     )
-    pinned_orig = seeds[pinned].copy() if pinned is not None and pinned.any() else None
+    # Keep original positions row-aligned with the current seed array.  Lloyd's
+    # inside filter may compact ``seeds_inside`` between iterations; retaining
+    # the initial-length mask would make the next pinned assignment invalid and
+    # could associate a surviving pin with the wrong original row.
+    pinned_orig = seeds.copy() if pinned is not None else None
     try:
         from scipy.spatial import Voronoi  # noqa: PLC0415
     except Exception:
@@ -1136,7 +1140,7 @@ def _lloyd_3d_iteration(
         # Pin: feature seeds 위치를 매 반복마다 원본으로 복원 — Lloyd 평탄화로
         # 인한 sharp edge drift 방지 (poly mesh 경계 보존).
         if pinned is not None and pinned_orig is not None:
-            new_seeds_arr[pinned] = pinned_orig
+            new_seeds_arr[pinned] = pinned_orig[pinned]
         # C-PERF-1 / beta2380 — Lloyd plateau early-exit (Du 1999 §3 monotonicity).
         try:
             import os as _os_lp
@@ -1153,6 +1157,9 @@ def _lloyd_3d_iteration(
                     seeds_inside = new_seeds_arr
                     inside_mask_p = _inside_ray_cast(seeds_inside, V, F)
                     seeds_inside = seeds_inside[inside_mask_p]
+                    if pinned is not None and pinned_orig is not None:
+                        pinned = pinned[inside_mask_p]
+                        pinned_orig = pinned_orig[inside_mask_p]
                     break
         except Exception:
             pass
@@ -1160,6 +1167,9 @@ def _lloyd_3d_iteration(
         # inside 재필터
         inside_mask = _inside_ray_cast(seeds_inside, V, F)
         seeds_inside = seeds_inside[inside_mask]
+        if pinned is not None and pinned_orig is not None:
+            pinned = pinned[inside_mask]
+            pinned_orig = pinned_orig[inside_mask]
         if seeds_inside.shape[0] < 5:
             # 너무 많이 잘려나가면 직전 seeds 반환
             break
