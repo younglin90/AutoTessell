@@ -290,6 +290,19 @@ property would be an unrealistically strict gate.  Eight independent pipeline
 runs passed after integration; one exercised a fallback retry.  This adds no
 geometry repair, threshold relaxation, or external-source modification.
 
+The final P4C arrays now own their shape evidence as well as their topology
+evidence.  Before this card, the cube direct result reported grade `A` while
+all three fidelity fields were `-1` because the pre-fallback gate had been
+skipped; a non-skip replacement could instead retain measurements from a
+different mesh.  After final orientation, duplicate cleanup, writer sync, and
+quality snapshot, the code remeasures plane coverage, plane-area coverage, and
+sampled BVH Hausdorff distance from the exact arrays returned to the caller.
+The cube result and an independent direct remeasurement match exactly:
+`1.0 / 1.0 / 0.0004542392`.  If measurement fails, fields remain `-1`, a
+warning is emitted, and P4C grade fails closed to `D`; stale evidence is never
+reused.  Existing realistic grade thresholds are retained, with the existing
+5% relative Hausdorff limit applied to P4C grades A/B.
+
 ## Poly dual face-geometry batch card
 
 Representative profiling attributed about `3.81 s` of an `8.93 s` dual

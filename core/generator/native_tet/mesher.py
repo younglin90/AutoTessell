@@ -96,6 +96,36 @@ def _p4c_candidate_meets_acceptance_l0(
     return accepted, missing_source_vertices, topology
 
 
+def _measure_final_shape_evidence_l0(
+    source_vertices: object,
+    source_faces: object,
+    candidate_vertices: object,
+    candidate_tets: object,
+) -> tuple[float, float, float]:
+    """Measure shape evidence from the arrays that will actually be returned."""
+    from core.generator.native_tet.hausdorff import hausdorff_vs_input
+    from core.generator.native_tet.plane_coverage import plane_coverage
+
+    source = np.asarray(source_vertices, dtype=np.float64)
+    faces = np.asarray(source_faces, dtype=np.int64)
+    points = np.asarray(candidate_vertices, dtype=np.float64)
+    tets = np.asarray(candidate_tets, dtype=np.int64)
+    coverage = plane_coverage(source, faces, points, tets)
+    distance = hausdorff_vs_input(
+        source,
+        faces,
+        points,
+        tets,
+        n_samples_per_tri=2,
+    )
+    diagonal = float(np.linalg.norm(np.ptp(source, axis=0))) + 1e-30
+    return (
+        float(coverage.plane_coverage),
+        float(coverage.area_coverage),
+        float(distance.h_symmetric / diagonal),
+    )
+
+
 def _native_tet_large_pass_enabled(n_cells: int) -> bool:
     """Return whether optional large-mesh passes may run.
 
@@ -6132,11 +6162,67 @@ def generate_native_tet(
         from core.generator.native_tet.quality import snapshot as _qsnap_final
         final_quality = _qsnap_final(final_pts, final_tets)
         _final_mq_sync = float(getattr(final_quality, "mean_q", 0.0))
-        grade = (
-            "A" if _final_mq_sync >= 0.20 else
-            "B" if _final_mq_sync >= 0.15 else
-            "C" if _final_mq_sync >= 0.10 else "D"
-        )
+        if _p4c_rewrote:
+            # The pre-P4C pass gate either measured a different mesh or was
+            # skipped.  Never return those values as evidence for the arrays
+            # that are now on disk and in NativeTetResult.
+            plane_cov_val = -1.0
+            plane_area_cov_val = -1.0
+            haus_rel = -1.0
+            try:
+                (
+                    plane_cov_val,
+                    plane_area_cov_val,
+                    haus_rel,
+                ) = _measure_final_shape_evidence_l0(V, F, final_pts, final_tets)
+                debug_info["final_shape_evidence_recomputed"] = True
+                log.info(
+                    "native_tet_final_shape_evidence",
+                    plane_coverage=round(plane_cov_val, 6),
+                    plane_area_coverage=round(plane_area_cov_val, 6),
+                    hausdorff_relative=round(haus_rel, 8),
+                )
+            except Exception as _shape_evidence_exc:
+                debug_info["final_shape_evidence_recomputed"] = False
+                debug_info["final_shape_evidence_error"] = (
+                    f"{type(_shape_evidence_exc).__name__}: {_shape_evidence_exc}"
+                )
+                warnings_list.append(
+                    "native_tet_final_shape_evidence_unverified: "
+                    f"{type(_shape_evidence_exc).__name__}"
+                )
+                log.warning(
+                    "native_tet_final_shape_evidence_unverified",
+                    reason=str(_shape_evidence_exc)[:160],
+                )
+            if (
+                plane_cov_val >= 0.95
+                and plane_area_cov_val >= 0.95
+                and 0.0 <= haus_rel <= 0.05
+                and _final_mq_sync >= 0.25
+            ):
+                grade = "A"
+            elif (
+                plane_cov_val >= 0.8
+                and plane_area_cov_val >= 0.8
+                and 0.0 <= haus_rel <= 0.05
+                and _final_mq_sync >= 0.18
+            ):
+                grade = "B"
+            elif (
+                plane_cov_val >= 0.5
+                and 0.0 <= haus_rel <= 0.10
+                and _final_mq_sync >= 0.10
+            ):
+                grade = "C"
+            else:
+                grade = "D"
+        else:
+            grade = (
+                "A" if _final_mq_sync >= 0.20 else
+                "B" if _final_mq_sync >= 0.15 else
+                "C" if _final_mq_sync >= 0.10 else "D"
+            )
         debug_info["n_final_tets"] = n_cells
         debug_info["n_final_points"] = n_points
         debug_info["final_sync_writer_cells"] = int(
