@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `11`
+- cycle: `12`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `f9c163b717866658c834425bfb5c29b0956e75d5`
+- last_verified_master: `875f676cfc054db0173c63d3f285ea6ac2a74290`
 - allowed_to_stop: `false`
-- next_action: `Profile the next native Poly or tri/quad topology kernel, then port one measured Python hotspot without changing shape or provenance contracts.`
+- next_action: `Profile the native tri/quad operator loop and port one measured adjacency or candidate-evaluation kernel while preserving exact source identity.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -676,3 +676,57 @@ scope. Future MIT-core boundary follows
   Python allocation/search hotspot with measurable production cost.  Preserve
   exact input coordinates, topology, physical groups, and provenance while
   porting one kernel to an existing first-party C++23 module.
+
+## Cycle 12 checkpoint -- 2026-07-30
+
+### Native Poly incidence evidence
+
+- `875f676c` ports `native_poly.dual._build_tet_topology` to the first-party
+  `native_polymesh` C++23 module.  One connectivity scan builds reserved
+  vertex, canonical-edge, and canonical-face incidence buckets.  First-seen
+  key order is retained separately from hash lookup order, so downstream dict
+  traversal and provenance remain byte-for-byte compatible.
+- Structured `24,389`-vertex / `131,712`-tet benchmark: `11.105566 s` Python
+  versus `7.890530 s` native (`1.41x`).  Traced Python heap is `335.47 MiB`
+  versus `159.19 MiB` (`52.55%` reduction).  All `24,389` vertex keys,
+  `160,804` edge keys, `268,128` face keys, insertion order, and owner lists
+  match exactly.
+- `native_polymesh` now requires C++23 without compiler extensions and builds
+  with `-Wall -Wextra -Wpedantic` or `/W4`.  Clean native-only build compiles
+  all eight targets.  Post-merge extension and focused dual suite reports
+  `22 passed`; representative sphere dual reports `1 passed in 51.68 s`.
+- Wider combined Poly validation timed out at `124 s`; it is not counted as a
+  pass.  Full-validation lane remains required.  The card bundle verifies at
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-poly-tet-incidence-1-875f676c.bundle`,
+  SHA-256 `18309759d9787bda4a3c064446c91ea1dfe037474f01735b08a64bc962a7b527`.
+  Worktree and branch were removed after integration.  No `third_party/`
+  source changed.
+- CGAL 6.2 and OpenVolumeMesh topology documentation were reviewed for data
+  structure principles.  No external implementation was copied; code and
+  tests are independent first-party work.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-12 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One clean primary worktree and `master` branch only after integration. |
+| 2 Build | UNVERIFIED | Eight native targets warning-clean on Ubuntu/GCC 13; platform matrix remains incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused Poly suite passes; wide batch timed out and immutable-head full suite is missing. |
+| 4 Shape preservation | FAIL | Poly incidence is exact-parity; stochastic Tet P4C 7/8-corner case remains. |
+| 5 Mesh validity | UNVERIFIED | Representative sphere dual passes; complete all-engine corpus remains missing. |
+| 6 Cell count | FAIL | Poly target following and deferred Tet target remain unresolved. |
+| 7 Boundary layer | UNVERIFIED | Positive-layer corpus remains incomplete. |
+| 8 Quality | UNVERIFIED | Complete engine/fixture quality matrix missing. |
+| 9 Reproducibility | FAIL | Tet P4C non-determinism remains. |
+| 10 Robustness | UNVERIFIED | Poly input/ordering contracts strengthened; adverse corpus incomplete. |
+| 11 Performance | UNVERIFIED | Poly topology heap and time improve; end-to-end budgets missing. |
+| 12 Packaging | UNVERIFIED | Clean installer/artifact proof missing. |
+| 13 License/provenance | UNVERIFIED | Independent first-party code; GPL/no-third-party policy held; release inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Profile tri/quad operator adjacency and candidate-evaluation loops.  Port one
+  measured kernel without changing source coordinates, protected edges,
+  triangle identity, physical groups, or deterministic operator ordering.
