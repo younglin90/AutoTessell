@@ -133,43 +133,136 @@ def test_invalid_protected_edge_fails_closed() -> None:
 def test_pipeline_uses_native_face_only_when_explicit() -> None:
     from core.preprocessor.pipeline import Preprocessor
 
-    mesh = trimesh.creation.icosphere(subdivisions=1)
-    remeshed, accepted, record = Preprocessor()._l2_remesh(
-        mesh, None, remesh_engine="native_face_remesh", prefer_native=False
-    )
+    for target_faces in (None, 0):
+        mesh = trimesh.creation.icosphere(subdivisions=1)
+        remeshed, accepted, record = Preprocessor()._l2_remesh(
+            mesh, target_faces, remesh_engine="native_face_remesh", prefer_native=False
+        )
 
-    assert accepted is True
-    assert record["method"] == "native_face_remesh"
-    assert record["params"]["route"] == "native_face_remesh"
-    assert record["params"]["contract"] == "native_face"
-    assert record["params"]["rejection_reason"] is None
-    assert remeshed.is_watertight is True
+        assert accepted is True
+        assert record["method"] == "native_face_remesh"
+        assert record["params"]["route"] == "native_face_remesh"
+        assert record["params"]["contract"] == "native_face"
+        assert record["params"]["rejection_reason"] is None
+        assert record["params"]["target_faces_requested"] == target_faces
+        assert record["params"]["target_faces_actual"] == len(remeshed.faces)
+        assert record["params"]["target_faces_absolute_error"] is None
+        assert record["params"]["target_faces_relative_error"] is None
+        assert record["params"]["target_faces_actual_semantics"] == "output_triangle_faces"
+        assert remeshed.is_watertight is True
 
 
 def test_pipeline_uses_native_quad_dominant_when_explicit() -> None:
     from core.preprocessor.pipeline import Preprocessor
 
-    mesh = trimesh.creation.icosphere(subdivisions=1)
-    remeshed, accepted, record = Preprocessor()._l2_remesh(
-        mesh, None, remesh_engine="native_quad_dominant", prefer_native=False
-    )
-    direct = native_quad_dominant_remesh(mesh.vertices, mesh.faces)
-    expected_faces = np.concatenate(
-        (
-            direct.triangles,
-            direct.quads[:, (0, 1, 2)],
-            direct.quads[:, (0, 2, 3)],
-        ),
-        axis=0,
-    )
+    for target_faces in (None, 0):
+        mesh = trimesh.creation.icosphere(subdivisions=1)
+        remeshed, accepted, record = Preprocessor()._l2_remesh(
+            mesh, target_faces, remesh_engine="native_quad_dominant", prefer_native=False
+        )
+        direct = native_quad_dominant_remesh(mesh.vertices, mesh.faces)
+        expected_faces = np.concatenate(
+            (
+                direct.triangles,
+                direct.quads[:, (0, 1, 2)],
+                direct.quads[:, (0, 2, 3)],
+            ),
+            axis=0,
+        )
 
-    assert accepted is True
-    assert record["method"] == "native_quad_dominant"
-    assert record["params"]["route"] == "native_quad_dominant"
-    assert record["params"]["contract"] == "native_quad"
-    assert "accepted_pairs" in record["params"]
-    np.testing.assert_array_equal(remeshed.vertices, direct.vertices)
-    np.testing.assert_array_equal(remeshed.faces, expected_faces)
+        assert accepted is True
+        assert record["method"] == "native_quad_dominant"
+        assert record["params"]["route"] == "native_quad_dominant"
+        assert record["params"]["contract"] == "native_quad"
+        assert "accepted_pairs" in record["params"]
+        assert record["params"]["target_faces_requested"] == target_faces
+        assert record["params"]["target_faces_actual"] == len(remeshed.faces)
+        assert record["params"]["target_faces_absolute_error"] is None
+        assert record["params"]["target_faces_relative_error"] is None
+        assert record["params"]["target_faces_actual_semantics"] == "triangular_handoff_faces"
+        assert record["params"]["triangular_handoff_faces"] == len(remeshed.faces)
+        assert (
+            record["params"]["triangular_handoff_semantics"]
+            == "output quads are split into two triangles"
+        )
+        assert record["params"]["mixed_surface_elements"] == (
+            direct.diagnostics.output_triangles + direct.diagnostics.output_quads
+        )
+        assert (
+            record["params"]["mixed_surface_element_semantics"]
+            == "native triangles plus native quads"
+        )
+        np.testing.assert_array_equal(remeshed.vertices, direct.vertices)
+        np.testing.assert_array_equal(remeshed.faces, expected_faces)
+
+
+def test_positive_target_is_explicitly_rejected_before_native_engine_or_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.preprocessor.native_remesh as native_remesh
+    from core.preprocessor.pipeline import Preprocessor
+
+    for route, engine_attribute, reason in (
+        (
+            "native_face_remesh",
+            "native_face_remesh",
+            "target_faces_unsupported_by_native_face_remesh",
+        ),
+        (
+            "native_quad_dominant",
+            "native_quad_dominant_remesh",
+            "target_faces_unsupported_by_native_quad_dominant",
+        ),
+    ):
+        mesh = trimesh.creation.icosphere(subdivisions=1)
+        preprocessor = Preprocessor()
+        engine_calls: list[str] = []
+        default_calls: list[str] = []
+        legacy_calls: list[str] = []
+
+        def unexpected_engine(*args: Any, **kwargs: Any) -> Any:
+            engine_calls.append(route)
+            raise AssertionError("positive target must not invoke the native surface engine")
+
+        def unexpected_default(*args: Any, **kwargs: Any) -> Any:
+            default_calls.append(route)
+            raise AssertionError("explicit route must not invoke the default native remesher")
+
+        def unexpected_legacy(*args: Any, **kwargs: Any) -> Any:
+            legacy_calls.append(route)
+            raise AssertionError("explicit route must not fall back to legacy remeshing")
+
+        monkeypatch.setattr(native_remesh, engine_attribute, unexpected_engine)
+        monkeypatch.setattr(preprocessor, "_l2_remesh_native", unexpected_default)
+        monkeypatch.setattr(preprocessor._remesher, "remesh_l2", unexpected_legacy)
+
+        target_faces = 40
+        remeshed, accepted, record = preprocessor._l2_remesh(
+            mesh,
+            target_faces,
+            remesh_engine=route,
+            prefer_native=True,
+        )
+
+        assert accepted is False
+        assert record["method"] == route
+        assert record["params"]["target_faces_requested"] == target_faces
+        assert record["params"]["target_faces_actual"] == len(mesh.faces)
+        assert record["params"]["target_faces_absolute_error"] == abs(
+            len(mesh.faces) - target_faces
+        )
+        assert record["params"]["target_faces_relative_error"] == pytest.approx(
+            abs(len(mesh.faces) - target_faces) / target_faces
+        )
+        assert record["params"]["rejection_reason"] == reason
+        assert record["params"]["source_geometry_preserved"] is True
+        assert record["params"]["source_topology_preserved"] is True
+        assert record["gate_passed"] is False
+        np.testing.assert_array_equal(remeshed.vertices, mesh.vertices)
+        np.testing.assert_array_equal(remeshed.faces, mesh.faces)
+        assert engine_calls == []
+        assert default_calls == []
+        assert legacy_calls == []
 
 
 def test_pipeline_native_face_rejection_does_not_fall_back_to_legacy(
