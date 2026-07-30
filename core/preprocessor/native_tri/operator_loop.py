@@ -168,7 +168,7 @@ FaceCorrespondence = tuple[tuple[int, int], ...]
 SurfaceProjection = Callable[[np.ndarray], np.ndarray]
 
 
-def estimate_curvature_sizing(
+def _estimate_curvature_sizing_python(
     vertices: np.ndarray,
     faces: np.ndarray,
     epsilon: float,
@@ -272,6 +272,94 @@ def estimate_curvature_sizing(
     valid_formula = positive_curvature & (radicand > 0.0) & np.isfinite(radicand)
     lengths[valid_formula] = np.sqrt(radicand[valid_formula])
     return np.clip(lengths, lower, upper)
+
+
+def estimate_curvature_sizing(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    epsilon: float,
+    *,
+    min_length: float | None = None,
+    max_length: float | None = None,
+) -> np.ndarray:
+    """Estimate Dunyach target lengths through the native flat-array kernel.
+
+    Python remains the independent oracle and extension-absent fallback.  The
+    native ABI is strict C-contiguous ``float64``/``int64``; orchestration keeps
+    the public coercion contract and validates every returned field before use.
+    """
+    points = np.asarray(vertices, dtype=np.float64)
+    triangles = np.asarray(faces, dtype=np.int64)
+    eps = float(epsilon)
+
+    from core.utils.native_extensions import load_native_metrics
+
+    native = load_native_metrics()
+    if native is None or not hasattr(native, "estimate_triangle_curvature_sizing"):
+        return _estimate_curvature_sizing_python(
+            points,
+            triangles,
+            eps,
+            min_length=min_length,
+            max_length=max_length,
+        )
+    result = native.estimate_triangle_curvature_sizing(
+        np.ascontiguousarray(points),
+        np.ascontiguousarray(triangles),
+        eps,
+        min_length,
+        max_length,
+    )
+    if not isinstance(result, dict):
+        raise RuntimeError(
+            "native estimate_triangle_curvature_sizing returned a non-dict result"
+        )
+    lengths = result.get("lengths")
+    if (
+        not isinstance(lengths, np.ndarray)
+        or lengths.dtype != np.dtype(np.float64)
+        or lengths.ndim != 1
+        or len(lengths) != len(points)
+        or not lengths.flags.c_contiguous
+        or not np.isfinite(lengths).all()
+    ):
+        raise RuntimeError(
+            "native estimate_triangle_curvature_sizing returned invalid lengths"
+        )
+
+    metadata: dict[str, float] = {}
+    for name in ("reference_length", "minimum_length", "maximum_length"):
+        value = result.get(name)
+        if value is None or isinstance(value, (bool, np.bool_)):
+            raise RuntimeError(
+                f"native estimate_triangle_curvature_sizing returned invalid {name}"
+            )
+        try:
+            scalar = float(value)
+        except (TypeError, ValueError):
+            raise RuntimeError(
+                f"native estimate_triangle_curvature_sizing returned invalid {name}"
+            ) from None
+        if not np.isfinite(scalar) or scalar <= 0.0:
+            raise RuntimeError(
+                f"native estimate_triangle_curvature_sizing returned invalid {name}"
+            )
+        metadata[name] = scalar
+    reference = metadata["reference_length"]
+    lower = metadata["minimum_length"]
+    upper = metadata["maximum_length"]
+    expected_lower = reference * 0.25 if min_length is None else float(min_length)
+    expected_upper = reference * 2.0 if max_length is None else float(max_length)
+    if (
+        lower != expected_lower
+        or upper != expected_upper
+        or lower > upper
+        or (lengths.size and ((lengths < lower).any() or (lengths > upper).any()))
+    ):
+        raise RuntimeError(
+            "native estimate_triangle_curvature_sizing returned inconsistent bounds"
+        )
+    return lengths
 
 
 class OperatorTransaction:
