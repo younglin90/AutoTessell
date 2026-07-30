@@ -488,12 +488,12 @@ class TestTierGracefulFail:
         assert attempt.error_message is not None
 
     def test_tier_wildmesh_quality_params_draft(self) -> None:
-        """draft quality_level → stop_quality=20, max_its=40, epsilon=0.002 (형상 보존)."""
+        """draft quality_level → stop_quality=10, max_its=60, epsilon=0.002 (형상 보존)."""
         from core.generator.tier_wildmesh import _get_quality_params
 
         p = _get_quality_params("draft", {})
-        assert p["stop_quality"] == 20.0
-        assert p["max_its"] == 40
+        assert p["stop_quality"] == 10.0
+        assert p["max_its"] == 60
         assert p["epsilon"] == 0.002   # 0.02→0.002: cube 꼭짓점 이탈 방지
         assert p["edge_length_r"] == 0.06
 
