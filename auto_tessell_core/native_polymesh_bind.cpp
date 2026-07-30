@@ -6,12 +6,15 @@
 
 #include <algorithm>
 #include <array>
+#include <cfenv>
 #include <cmath>
 #include <cstdint>
 #include <limits>
 #include <numeric>
 #include <span>
 #include <stdexcept>
+#include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -30,6 +33,29 @@ static_assert(
 using Face = std::vector<Label>;
 using Cell = std::vector<Face>;
 using Cells = std::vector<Cell>;
+
+struct DualHullAssemblyInput {
+    std::span<const double> seed_points;
+    std::span<const double> cell_points;
+    std::span<const Label> cell_point_offsets;
+    std::span<const Label> hull_simplices;
+    std::span<const Label> cell_hull_offsets;
+    std::span<const double> hull_equations;
+    std::span<const Label> n_tet_points;
+    std::span<const Label> local_source_label_ids;
+};
+
+struct DualHullAssemblyResult {
+    bool accepted = true;
+    std::string reason = "ok";
+    std::vector<double> points;
+    std::vector<Label> face_offsets {0};
+    std::vector<Label> face_indices;
+    std::vector<Label> cell_face_offsets {0};
+    std::vector<std::uint8_t> face_is_cap;
+    std::vector<Label> face_label_ids;
+    std::vector<std::uint8_t> face_order_ambiguous;
+};
 
 struct RaggedFaces {
     std::vector<size_t> offsets;
@@ -101,6 +127,369 @@ struct ArrayHash {
         return seed;
     }
 };
+
+[[nodiscard]] size_t checked_size_product(
+    const size_t count,
+    const size_t width,
+    const char* const name)
+{
+    if (width != 0U && count > std::numeric_limits<size_t>::max() / width) {
+        throw std::overflow_error(std::string(name) + " size multiplication overflow");
+    }
+    return count * width;
+}
+
+[[nodiscard]] Label checked_label_size(const size_t value, const char* const name)
+{
+    constexpr auto label_max = static_cast<size_t>(std::numeric_limits<Label>::max());
+    if (value > label_max) {
+        throw std::overflow_error(std::string(name) + " exceeds int64 range");
+    }
+    return static_cast<Label>(value);
+}
+
+[[nodiscard]] bool quantize_nearest_even(
+    const double value,
+    const double scale,
+    Label& result) noexcept
+{
+    const double scaled = value * scale;
+    if (!std::isfinite(scaled)) {
+        return false;
+    }
+    const double rounded = std::nearbyint(scaled);
+    constexpr double lower = static_cast<double>(std::numeric_limits<Label>::min());
+    constexpr double upper_exclusive = -lower;
+    if (!std::isfinite(rounded) || rounded < lower || rounded >= upper_exclusive) {
+        return false;
+    }
+    result = static_cast<Label>(rounded);
+    return true;
+}
+
+template <size_t Size>
+[[nodiscard]] bool quantized_key(
+    const double* const values,
+    const double scale,
+    std::array<Label, Size>& key) noexcept
+{
+    for (size_t index = 0U; index < Size; ++index) {
+        if (!quantize_nearest_even(values[index], scale, key[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+struct PlaneGroup {
+    std::array<Label, 4> key;
+    std::vector<size_t> simplex_rows;
+};
+
+[[nodiscard]] DualHullAssemblyResult refused_dual_hull_assembly(std::string reason)
+{
+    DualHullAssemblyResult result;
+    result.accepted = false;
+    result.reason = std::move(reason);
+    return result;
+}
+
+[[nodiscard]] DualHullAssemblyResult assemble_dual_hull_faces_core(
+    const DualHullAssemblyInput& input)
+{
+    constexpr double point_scale = 1.0e9;
+    constexpr double equation_scale = 1.0e6;
+    constexpr double vector_epsilon = 1.0e-30;
+    constexpr double angle_epsilon_multiplier = 64.0;
+
+    if (std::fegetround() != FE_TONEAREST) {
+        return refused_dual_hull_assembly("non_nearest_even_rounding_mode");
+    }
+    if (input.seed_points.size() % 3U != 0U) {
+        throw std::invalid_argument("seed_points flattened length must be divisible by 3");
+    }
+    if (input.cell_points.size() % 3U != 0U) {
+        throw std::invalid_argument("cell_points flattened length must be divisible by 3");
+    }
+    if (input.hull_simplices.size() % 3U != 0U) {
+        throw std::invalid_argument("hull_simplices flattened length must be divisible by 3");
+    }
+    if (input.hull_equations.size() % 4U != 0U) {
+        throw std::invalid_argument("hull_equations flattened length must be divisible by 4");
+    }
+    if (input.cell_point_offsets.empty() || input.cell_hull_offsets.empty()) {
+        throw std::invalid_argument("cell offsets must contain the zero sentinel");
+    }
+    const size_t num_cells = input.cell_point_offsets.size() - 1U;
+    if (input.cell_hull_offsets.size() != num_cells + 1U
+        || input.n_tet_points.size() != num_cells) {
+        throw std::invalid_argument("cell metadata lengths disagree");
+    }
+    const size_t num_cell_points = input.cell_points.size() / 3U;
+    const size_t num_hull_rows = input.hull_simplices.size() / 3U;
+    if (input.hull_equations.size() / 4U != num_hull_rows) {
+        throw std::invalid_argument("hull simplices and equations lengths disagree");
+    }
+    if (input.local_source_label_ids.size() != num_cell_points) {
+        throw std::invalid_argument("local_source_label_ids length must match cell_points");
+    }
+    if (input.cell_point_offsets.front() != 0
+        || input.cell_hull_offsets.front() != 0) {
+        throw std::invalid_argument("cell offsets must begin at zero");
+    }
+    if (input.cell_point_offsets.back() != checked_label_size(num_cell_points, "cell points")
+        || input.cell_hull_offsets.back() != checked_label_size(num_hull_rows, "hull rows")) {
+        throw std::invalid_argument("cell offsets must end at flattened row counts");
+    }
+
+    for (size_t cell = 0U; cell < num_cells; ++cell) {
+        const Label point_begin = input.cell_point_offsets[cell];
+        const Label point_end = input.cell_point_offsets[cell + 1U];
+        const Label hull_begin = input.cell_hull_offsets[cell];
+        const Label hull_end = input.cell_hull_offsets[cell + 1U];
+        if (point_begin < 0 || point_end < point_begin
+            || hull_begin < 0 || hull_end < hull_begin) {
+            throw std::invalid_argument("cell offsets must be nonnegative and monotonic");
+        }
+        const Label local_point_count = point_end - point_begin;
+        if (input.n_tet_points[cell] < 0
+            || input.n_tet_points[cell] > local_point_count) {
+            throw std::invalid_argument("n_tet_points is outside its cell point range");
+        }
+        for (Label row = hull_begin; row < hull_end; ++row) {
+            const size_t row_index = static_cast<size_t>(row);
+            for (size_t corner = 0U; corner < 3U; ++corner) {
+                const Label local_index = input.hull_simplices[row_index * 3U + corner];
+                if (local_index < 0 || local_index >= local_point_count) {
+                    throw std::out_of_range("hull simplex local point index is out of bounds");
+                }
+            }
+        }
+        for (Label row = point_begin; row < point_end; ++row) {
+            if (input.local_source_label_ids[static_cast<size_t>(row)] < -1) {
+                throw std::invalid_argument("local source label ids must be -1 or nonnegative");
+            }
+        }
+    }
+
+    DualHullAssemblyResult result;
+    result.points.assign(input.seed_points.begin(), input.seed_points.end());
+    result.cell_face_offsets.reserve(num_cells + 1U);
+    result.cell_face_offsets.clear();
+    result.cell_face_offsets.push_back(0);
+
+    using PointKey = std::array<Label, 3>;
+    std::unordered_map<PointKey, Label, ArrayHash<3>> point_ids;
+    const size_t num_seed_points = input.seed_points.size() / 3U;
+    if (num_seed_points > std::numeric_limits<size_t>::max() - num_cell_points) {
+        throw std::overflow_error("dual point reserve size overflow");
+    }
+    const size_t reserve_points = num_seed_points + num_cell_points;
+    point_ids.reserve(reserve_points);
+    for (size_t point = 0U; point < num_seed_points; ++point) {
+        PointKey key {};
+        if (!quantized_key<3>(input.seed_points.data() + point * 3U, point_scale, key)) {
+            return refused_dual_hull_assembly("seed_point_quantization_overflow");
+        }
+        const auto [position, inserted] = point_ids.emplace(
+            key, checked_label_size(point, "seed point index"));
+        static_cast<void>(position);
+        if (!inserted) {
+            throw std::invalid_argument("seed_points must be unique under point quantization");
+        }
+    }
+
+    for (size_t cell = 0U; cell < num_cells; ++cell) {
+        const size_t point_begin = static_cast<size_t>(input.cell_point_offsets[cell]);
+        const size_t point_end = static_cast<size_t>(input.cell_point_offsets[cell + 1U]);
+        const size_t hull_begin = static_cast<size_t>(input.cell_hull_offsets[cell]);
+        const size_t hull_end = static_cast<size_t>(input.cell_hull_offsets[cell + 1U]);
+        const size_t local_point_count = point_end - point_begin;
+        const Label n_tet = input.n_tet_points[cell];
+
+        std::vector<PlaneGroup> groups;
+        groups.reserve(hull_end - hull_begin);
+        std::unordered_map<std::array<Label, 4>, size_t, ArrayHash<4>> group_index;
+        group_index.reserve(hull_end - hull_begin);
+        for (size_t row = hull_begin; row < hull_end; ++row) {
+            std::array<Label, 4> key {};
+            if (!quantized_key<4>(
+                    input.hull_equations.data() + row * 4U,
+                    equation_scale,
+                    key)) {
+                return refused_dual_hull_assembly("hull_equation_quantization_overflow");
+            }
+            const auto position = group_index.find(key);
+            if (position == group_index.end()) {
+                const size_t index = groups.size();
+                group_index.emplace(key, index);
+                groups.push_back(PlaneGroup {key, {row}});
+            } else {
+                groups[position->second].simplex_rows.push_back(row);
+            }
+        }
+
+        for (const PlaneGroup& group : groups) {
+            std::vector<Label> vertices;
+            vertices.reserve(checked_size_product(group.simplex_rows.size(), 3U, "face vertices"));
+            for (const size_t row : group.simplex_rows) {
+                for (size_t corner = 0U; corner < 3U; ++corner) {
+                    vertices.push_back(input.hull_simplices[row * 3U + corner]);
+                }
+            }
+            std::sort(vertices.begin(), vertices.end());
+            vertices.erase(std::unique(vertices.begin(), vertices.end()), vertices.end());
+            if (vertices.size() < 3U) {
+                continue;
+            }
+
+            std::array<double, 3> centroid {0.0, 0.0, 0.0};
+            for (const Label local_index : vertices) {
+                const size_t global_point = point_begin + static_cast<size_t>(local_index);
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    centroid[axis] += input.cell_points[global_point * 3U + axis];
+                }
+            }
+            for (double& value : centroid) {
+                value /= static_cast<double>(vertices.size());
+            }
+
+            const size_t normal_row = group.simplex_rows.front();
+            const std::array<double, 3> normal {
+                input.hull_equations[normal_row * 4U],
+                input.hull_equations[normal_row * 4U + 1U],
+                input.hull_equations[normal_row * 4U + 2U],
+            };
+            std::array<double, 3> basis_one {};
+            double basis_length = 0.0;
+            for (const Label local_index : vertices) {
+                const size_t global_point = point_begin + static_cast<size_t>(local_index);
+                double projection = 0.0;
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    basis_one[axis] = input.cell_points[global_point * 3U + axis] - centroid[axis];
+                    projection += basis_one[axis] * normal[axis];
+                }
+                basis_length = 0.0;
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    basis_one[axis] -= normal[axis] * projection;
+                    basis_length += basis_one[axis] * basis_one[axis];
+                }
+                basis_length = std::sqrt(basis_length);
+                if (basis_length >= vector_epsilon) {
+                    break;
+                }
+            }
+            if (!std::isfinite(basis_length)) {
+                return refused_dual_hull_assembly("nonfinite_face_basis");
+            }
+            if (basis_length < vector_epsilon) {
+                continue;
+            }
+            for (double& value : basis_one) {
+                value /= basis_length;
+            }
+            const std::array<double, 3> basis_two {
+                normal[1] * basis_one[2] - normal[2] * basis_one[1],
+                normal[2] * basis_one[0] - normal[0] * basis_one[2],
+                normal[0] * basis_one[1] - normal[1] * basis_one[0],
+            };
+
+            struct AngularVertex {
+                double angle;
+                Label local_index;
+            };
+            std::vector<AngularVertex> angular_vertices;
+            angular_vertices.reserve(vertices.size());
+            bool branch_cut_ambiguous = false;
+            for (const Label local_index : vertices) {
+                const size_t global_point = point_begin + static_cast<size_t>(local_index);
+                volatile double x_accumulator = 0.0;
+                volatile double y_accumulator = 0.0;
+                for (size_t axis = 0U; axis < 3U; ++axis) {
+                    const double relative =
+                        input.cell_points[global_point * 3U + axis] - centroid[axis];
+                    x_accumulator = x_accumulator + relative * basis_one[axis];
+                    y_accumulator = y_accumulator + relative * basis_two[axis];
+                }
+                const double x = x_accumulator;
+                const double y = y_accumulator;
+                const double angle = std::atan2(y, x);
+                if (!std::isfinite(angle)) {
+                    return refused_dual_hull_assembly("nonfinite_face_angle");
+                }
+                const double branch_scale = std::max(1.0, std::abs(x));
+                if (x < 0.0
+                    && std::abs(y)
+                        <= angle_epsilon_multiplier
+                            * std::numeric_limits<double>::epsilon() * branch_scale) {
+                    branch_cut_ambiguous = true;
+                }
+                angular_vertices.push_back({angle, local_index});
+            }
+            std::sort(
+                angular_vertices.begin(),
+                angular_vertices.end(),
+                [](const AngularVertex& left, const AngularVertex& right) {
+                    return left.angle < right.angle;
+                });
+            for (size_t index = 1U; index < angular_vertices.size(); ++index) {
+                const double left = angular_vertices[index - 1U].angle;
+                const double right = angular_vertices[index].angle;
+                const double scale = std::max({1.0, std::abs(left), std::abs(right)});
+                if (right - left
+                    <= angle_epsilon_multiplier * std::numeric_limits<double>::epsilon() * scale) {
+                    return refused_dual_hull_assembly("ambiguous_face_angle_order");
+                }
+            }
+
+            bool is_cap = false;
+            Label selected_label = -1;
+            bool multiple_labels = false;
+            for (const AngularVertex& angular_vertex : angular_vertices) {
+                const Label local_index = angular_vertex.local_index;
+                const size_t global_point = point_begin + static_cast<size_t>(local_index);
+                PointKey key {};
+                if (!quantized_key<3>(
+                        input.cell_points.data() + global_point * 3U,
+                        point_scale,
+                        key)) {
+                    return refused_dual_hull_assembly("cell_point_quantization_overflow");
+                }
+                const auto position = point_ids.find(key);
+                Label point_id = -1;
+                if (position != point_ids.end()) {
+                    point_id = position->second;
+                } else {
+                    const size_t next_point = result.points.size() / 3U;
+                    point_id = checked_label_size(next_point, "dual point index");
+                    point_ids.emplace(key, point_id);
+                    for (size_t axis = 0U; axis < 3U; ++axis) {
+                        result.points.push_back(input.cell_points[global_point * 3U + axis]);
+                    }
+                }
+                result.face_indices.push_back(point_id);
+                is_cap = is_cap || local_index >= n_tet;
+                const Label label = input.local_source_label_ids[global_point];
+                if (label >= 0) {
+                    if (selected_label < 0) {
+                        selected_label = label;
+                    } else if (selected_label != label) {
+                        multiple_labels = true;
+                    }
+                }
+            }
+            result.face_offsets.push_back(
+                checked_label_size(result.face_indices.size(), "face index offset"));
+            result.face_is_cap.push_back(is_cap ? 1U : 0U);
+            result.face_label_ids.push_back(multiple_labels ? -1 : selected_label);
+            result.face_order_ambiguous.push_back(branch_cut_ambiguous ? 1U : 0U);
+        }
+        result.cell_face_offsets.push_back(
+            checked_label_size(result.face_is_cap.size(), "cell face offset"));
+        static_cast<void>(local_point_count);
+    }
+    return result;
+}
 
 template <size_t Size>
 struct IncidenceBucket {
@@ -1382,6 +1771,154 @@ py::tuple build_tet_incidence_maps(
         std::move(vertex_map), std::move(edge_map), std::move(face_map));
 }
 
+[[nodiscard]] size_t checked_array_dimension(
+    const py::ssize_t value,
+    const char* const name)
+{
+    if (value < 0) {
+        throw std::invalid_argument(std::string(name) + " has a negative dimension");
+    }
+    using UnsignedPySize = std::make_unsigned_t<py::ssize_t>;
+    const auto unsigned_value = static_cast<UnsignedPySize>(value);
+    if (unsigned_value > std::numeric_limits<size_t>::max()) {
+        throw std::overflow_error(std::string(name) + " dimension exceeds size_t");
+    }
+    return static_cast<size_t>(unsigned_value);
+}
+
+[[nodiscard]] py::ssize_t checked_py_size(const size_t value, const char* const name)
+{
+    constexpr auto py_max = static_cast<size_t>(std::numeric_limits<py::ssize_t>::max());
+    if (value > py_max) {
+        throw std::overflow_error(std::string(name) + " exceeds Python ssize_t range");
+    }
+    return static_cast<py::ssize_t>(value);
+}
+
+template <typename Value>
+[[nodiscard]] py::array_t<Value> owned_contiguous_array(
+    std::vector<Value>&& values,
+    std::vector<py::ssize_t> shape)
+{
+    size_t expected = 1U;
+    for (const py::ssize_t dimension : shape) {
+        expected = checked_size_product(
+            expected,
+            checked_array_dimension(dimension, "output"),
+            "output");
+    }
+    if (expected != values.size()) {
+        throw std::logic_error("owned array shape does not match storage size");
+    }
+    auto* storage = new std::vector<Value>(std::move(values));
+    py::capsule owner(storage, [](void* pointer) {
+        delete static_cast<std::vector<Value>*>(pointer);
+    });
+    return py::array_t<Value>(std::move(shape), storage->data(), std::move(owner));
+}
+
+py::tuple assemble_dual_hull_faces(
+    const py::array_t<double, py::array::c_style>& seed_points,
+    const py::array_t<double, py::array::c_style>& cell_points,
+    const py::array_t<Label, py::array::c_style>& cell_point_offsets,
+    const py::array_t<Label, py::array::c_style>& hull_simplices,
+    const py::array_t<Label, py::array::c_style>& cell_hull_offsets,
+    const py::array_t<double, py::array::c_style>& hull_equations,
+    const py::array_t<Label, py::array::c_style>& n_tet_points,
+    const py::array_t<Label, py::array::c_style>& local_source_label_ids)
+{
+    if (seed_points.ndim() != 2 || seed_points.shape(1) != 3) {
+        throw std::invalid_argument("seed_points must have shape (N, 3)");
+    }
+    if (cell_points.ndim() != 2 || cell_points.shape(1) != 3) {
+        throw std::invalid_argument("cell_points must have shape (N, 3)");
+    }
+    if (hull_simplices.ndim() != 2 || hull_simplices.shape(1) != 3) {
+        throw std::invalid_argument("hull_simplices must have shape (N, 3)");
+    }
+    if (hull_equations.ndim() != 2 || hull_equations.shape(1) != 4) {
+        throw std::invalid_argument("hull_equations must have shape (N, 4)");
+    }
+    if (cell_point_offsets.ndim() != 1 || cell_hull_offsets.ndim() != 1
+        || n_tet_points.ndim() != 1 || local_source_label_ids.ndim() != 1) {
+        throw std::invalid_argument("dual hull metadata arrays must be one-dimensional");
+    }
+
+    const size_t seed_rows = checked_array_dimension(seed_points.shape(0), "seed_points");
+    const size_t point_rows = checked_array_dimension(cell_points.shape(0), "cell_points");
+    const size_t point_offset_count = checked_array_dimension(
+        cell_point_offsets.shape(0), "cell_point_offsets");
+    const size_t hull_rows = checked_array_dimension(
+        hull_simplices.shape(0), "hull_simplices");
+    const size_t hull_offset_count = checked_array_dimension(
+        cell_hull_offsets.shape(0), "cell_hull_offsets");
+    const size_t equation_rows = checked_array_dimension(
+        hull_equations.shape(0), "hull_equations");
+    const size_t tet_count = checked_array_dimension(n_tet_points.shape(0), "n_tet_points");
+    const size_t label_count = checked_array_dimension(
+        local_source_label_ids.shape(0), "local_source_label_ids");
+
+    const size_t seed_values = checked_size_product(seed_rows, 3U, "seed_points");
+    const size_t point_values = checked_size_product(point_rows, 3U, "cell_points");
+    const size_t simplex_values = checked_size_product(hull_rows, 3U, "hull_simplices");
+    const size_t equation_values = checked_size_product(hull_rows, 4U, "hull_equations");
+    if (equation_rows != hull_rows) {
+        throw std::invalid_argument("hull_simplices and hull_equations row counts disagree");
+    }
+    if (point_offset_count == 0U || hull_offset_count == 0U) {
+        throw std::invalid_argument("cell offsets must contain the zero sentinel");
+    }
+    const size_t num_cells = point_offset_count - 1U;
+    if (hull_offset_count != point_offset_count || tet_count != num_cells
+        || label_count != point_rows) {
+        throw std::invalid_argument("dual hull metadata row counts disagree");
+    }
+
+    const DualHullAssemblyInput input {
+        {seed_points.data(), seed_values},
+        {cell_points.data(), point_values},
+        {cell_point_offsets.data(), point_offset_count},
+        {hull_simplices.data(), simplex_values},
+        {cell_hull_offsets.data(), hull_offset_count},
+        {hull_equations.data(), equation_values},
+        {n_tet_points.data(), tet_count},
+        {local_source_label_ids.data(), label_count},
+    };
+
+    DualHullAssemblyResult result;
+    {
+        py::gil_scoped_release release;
+        result = assemble_dual_hull_faces_core(input);
+    }
+    const size_t output_point_rows = result.points.size() / 3U;
+    const py::ssize_t output_point_count = checked_py_size(output_point_rows, "dual points");
+    const py::ssize_t face_offset_count = checked_py_size(
+        result.face_offsets.size(), "face offsets");
+    const py::ssize_t face_index_count = checked_py_size(
+        result.face_indices.size(), "face indices");
+    const py::ssize_t cell_face_offset_count = checked_py_size(
+        result.cell_face_offsets.size(), "cell face offsets");
+    const py::ssize_t cap_count = checked_py_size(result.face_is_cap.size(), "cap flags");
+    const py::ssize_t label_output_count = checked_py_size(
+        result.face_label_ids.size(), "face label ids");
+    const py::ssize_t ambiguous_count = checked_py_size(
+        result.face_order_ambiguous.size(), "face ambiguity flags");
+    return py::make_tuple(
+        result.accepted,
+        std::move(result.reason),
+        owned_contiguous_array(
+            std::move(result.points),
+            {output_point_count, 3}),
+        owned_contiguous_array(std::move(result.face_offsets), {face_offset_count}),
+        owned_contiguous_array(std::move(result.face_indices), {face_index_count}),
+        owned_contiguous_array(
+            std::move(result.cell_face_offsets), {cell_face_offset_count}),
+        owned_contiguous_array(std::move(result.face_is_cap), {cap_count}),
+        owned_contiguous_array(std::move(result.face_label_ids), {label_output_count}),
+        owned_contiguous_array(
+            std::move(result.face_order_ambiguous), {ambiguous_count}));
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_polymesh, module)
@@ -1409,6 +1946,17 @@ PYBIND11_MODULE(native_polymesh, module)
         &build_tet_incidence_maps,
         py::arg("tets"),
         py::arg("num_vertices"));
+    module.def(
+        "assemble_dual_hull_faces",
+        &assemble_dual_hull_faces,
+        py::arg("seed_points").noconvert(),
+        py::arg("cell_points").noconvert(),
+        py::arg("cell_point_offsets").noconvert(),
+        py::arg("hull_simplices").noconvert(),
+        py::arg("cell_hull_offsets").noconvert(),
+        py::arg("hull_equations").noconvert(),
+        py::arg("n_tet_points").noconvert(),
+        py::arg("local_source_label_ids").noconvert());
     module.def(
         "face_flip_mask",
         &face_flip_mask,

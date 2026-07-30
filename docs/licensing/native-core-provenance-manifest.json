@@ -77,7 +77,7 @@
       "direct_dependencies": ["pybind11 (BSD-3-Clause)", "C++ standard library"],
       "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
       "mit_core_eligible": true,
-      "tests": ["tests/test_native_polymesh_extension.py", "tests/test_native_polymesh_parser_extension.py"]
+      "tests": ["tests/test_native_polymesh_extension.py", "tests/test_native_polymesh_parser_extension.py", "tests/test_native_poly_hull_face_assembly.py"]
     },
     {
       "path": "auto_tessell_core/native_snap_bind.cpp",

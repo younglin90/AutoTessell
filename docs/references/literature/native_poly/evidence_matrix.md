@@ -726,3 +726,21 @@ star-validity, raw-input, and writer set passes `46` with `3` optional native
 tests skipped.  This is `L1_PASS / CORRECTNESS_KEEP`; broader L2/L3 Poly corpus
 validation remains open.  See
 `poly_boundary_label_coverage1_evidence_2026-07-31.md`.
+
+### `POLY-C39-CPP23-BATCH-HULL-FACE-ASSEMBLY-1` — 2026-07-31
+
+The post-ConvexHull plane grouping, polygon ordering, quantized dual-point
+indexing, and cap-label census now execute as one first-party C++23 batch over
+contiguous CSR arrays. Missing optional symbols and explicit native refusal use
+an exact independent Python oracle; stale or malformed ABI results fail closed.
+Signed-zero `atan2` branch-cut ambiguity is flagged natively and repaired only
+for the affected rings with exact NumPy ordering.
+
+On the fixed `669`-point, `1631`-tet sphere primal, five alternating pairs show
+`4.271x` direct-block and `2.280x` end-to-end speedup. Peak RSS changes by
+`+2.23%`. Every run retains the frozen `669` cells, `5473` points, zero invalid
+stars, five-file topology/provenance bytes, and mesh digest. Focused tests pass
+`6/6`; a fresh GCC 13.3 Release C++23 `-Werror` build passes. No external code,
+dependency, or `third_party/` change is present. This is
+`L1_PASS / RUNTIME_READY`; full campaign regression and corpus promotion remain
+open. See `poly_batch_hull_face_cpp23_evidence_2026-07-31.md`.

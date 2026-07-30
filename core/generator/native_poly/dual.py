@@ -23,6 +23,7 @@ OpenFOAM ``polyDualMesh`` 와 동일한 개념:
 
 from __future__ import annotations
 
+import hashlib
 import time
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
@@ -1082,6 +1083,407 @@ def _dual_cell_verts(
     return np.asarray(pts, dtype=np.float64) if pts else np.zeros((0, 3))
 
 
+def _checked_array_product(count: int, width: int, name: str) -> int:
+    """Validate flattened array counts before crossing the native ABI."""
+    if count < 0 or width < 0:
+        raise ValueError(f"{name} dimensions must be nonnegative")
+    limit = min(np.iinfo(np.intp).max, np.iinfo(np.int64).max)
+    if width and count > limit // width:
+        raise OverflowError(f"{name} size multiplication overflow")
+    return count * width
+
+
+def _validate_dual_hull_assembly_inputs(
+    seed_points: np.ndarray,
+    cell_points: np.ndarray,
+    cell_point_offsets: np.ndarray,
+    hull_simplices: np.ndarray,
+    cell_hull_offsets: np.ndarray,
+    hull_equations: np.ndarray,
+    n_tet_points: np.ndarray,
+    local_source_label_ids: np.ndarray,
+) -> None:
+    arrays = (
+        ("seed_points", seed_points, np.dtype(np.float64), 2, 3),
+        ("cell_points", cell_points, np.dtype(np.float64), 2, 3),
+        ("hull_simplices", hull_simplices, np.dtype(np.int64), 2, 3),
+        ("hull_equations", hull_equations, np.dtype(np.float64), 2, 4),
+    )
+    for name, values, dtype, dimensions, width in arrays:
+        if values.dtype != dtype or values.ndim != dimensions or values.shape[1] != width:
+            raise ValueError(f"{name} must be C-contiguous {dtype} with shape (N, {width})")
+        if not values.flags.c_contiguous:
+            raise ValueError(f"{name} must be C-contiguous")
+        _checked_array_product(int(values.shape[0]), width, name)
+
+    vectors = (
+        ("cell_point_offsets", cell_point_offsets),
+        ("cell_hull_offsets", cell_hull_offsets),
+        ("n_tet_points", n_tet_points),
+        ("local_source_label_ids", local_source_label_ids),
+    )
+    for name, values in vectors:
+        if values.dtype != np.dtype(np.int64) or values.ndim != 1:
+            raise ValueError(f"{name} must be a C-contiguous int64 vector")
+        if not values.flags.c_contiguous:
+            raise ValueError(f"{name} must be C-contiguous")
+        _checked_array_product(int(values.shape[0]), 1, name)
+
+    if cell_point_offsets.size == 0 or cell_hull_offsets.size == 0:
+        raise ValueError("cell offsets must contain the zero sentinel")
+    n_cells = int(cell_point_offsets.size - 1)
+    if cell_hull_offsets.size != cell_point_offsets.size:
+        raise ValueError("cell offset vectors must have equal lengths")
+    if n_tet_points.size != n_cells:
+        raise ValueError("n_tet_points length must equal the cell count")
+    if local_source_label_ids.size != cell_points.shape[0]:
+        raise ValueError("local_source_label_ids length must match cell_points")
+    if hull_equations.shape[0] != hull_simplices.shape[0]:
+        raise ValueError("hull simplices and equations row counts disagree")
+    if int(cell_point_offsets[0]) != 0 or int(cell_hull_offsets[0]) != 0:
+        raise ValueError("cell offsets must begin at zero")
+    if int(cell_point_offsets[-1]) != int(cell_points.shape[0]):
+        raise ValueError("cell_point_offsets must end at the cell point count")
+    if int(cell_hull_offsets[-1]) != int(hull_simplices.shape[0]):
+        raise ValueError("cell_hull_offsets must end at the hull row count")
+    if np.any(cell_point_offsets[1:] < cell_point_offsets[:-1]):
+        raise ValueError("cell_point_offsets must be monotonic")
+    if np.any(cell_hull_offsets[1:] < cell_hull_offsets[:-1]):
+        raise ValueError("cell_hull_offsets must be monotonic")
+    if np.any(local_source_label_ids < -1):
+        raise ValueError("local source label ids must be -1 or nonnegative")
+
+    for cell in range(n_cells):
+        point_begin = int(cell_point_offsets[cell])
+        point_end = int(cell_point_offsets[cell + 1])
+        hull_begin = int(cell_hull_offsets[cell])
+        hull_end = int(cell_hull_offsets[cell + 1])
+        local_count = point_end - point_begin
+        n_tet = int(n_tet_points[cell])
+        if n_tet < 0 or n_tet > local_count:
+            raise ValueError("n_tet_points is outside its cell point range")
+        local_simplices = hull_simplices[hull_begin:hull_end]
+        if local_simplices.size and (
+            int(local_simplices.min()) < 0 or int(local_simplices.max()) >= local_count
+        ):
+            raise ValueError("hull simplex local point index is out of bounds")
+
+
+def _assemble_dual_hull_faces_python(
+    seed_points: np.ndarray,
+    cell_points: np.ndarray,
+    cell_point_offsets: np.ndarray,
+    hull_simplices: np.ndarray,
+    cell_hull_offsets: np.ndarray,
+    hull_equations: np.ndarray,
+    n_tet_points: np.ndarray,
+    local_source_label_ids: np.ndarray,
+) -> tuple[
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    """Independent legacy oracle for batched post-ConvexHull face assembly."""
+    _validate_dual_hull_assembly_inputs(
+        seed_points,
+        cell_points,
+        cell_point_offsets,
+        hull_simplices,
+        cell_hull_offsets,
+        hull_equations,
+        n_tet_points,
+        local_source_label_ids,
+    )
+    all_points = [point for point in seed_points]
+    point_id_of: dict[tuple[int, int, int], int] = {}
+    for index, point in enumerate(seed_points):
+        key = tuple(np.round(point * 1e9).astype(np.int64).tolist())
+        if key in point_id_of:
+            raise ValueError("seed_points must be unique under point quantization")
+        point_id_of[key] = index
+
+    face_offsets = [0]
+    face_indices: list[int] = []
+    cell_face_offsets = [0]
+    face_is_cap: list[bool] = []
+    face_label_ids: list[int] = []
+    n_cells = int(n_tet_points.size)
+    for cell in range(n_cells):
+        point_begin = int(cell_point_offsets[cell])
+        point_end = int(cell_point_offsets[cell + 1])
+        hull_begin = int(cell_hull_offsets[cell])
+        hull_end = int(cell_hull_offsets[cell + 1])
+        points = cell_points[point_begin:point_end]
+        simplices = hull_simplices[hull_begin:hull_end]
+        equations = hull_equations[hull_begin:hull_end]
+        n_tet = int(n_tet_points[cell])
+        eq_key = np.round(equations * 1e6).astype(np.int64)
+        group_of: dict[tuple[int, ...], list[int]] = defaultdict(list)
+        for simplex_index, key in enumerate(map(tuple, eq_key.tolist())):
+            group_of[key].append(simplex_index)
+
+        for simplex_ids in group_of.values():
+            vertices_local: set[int] = set()
+            for simplex_index in simplex_ids:
+                vertices_local.update(int(value) for value in simplices[simplex_index])
+            vertices = sorted(vertices_local)
+            if len(vertices) < 3:
+                continue
+            polygon_points = points[vertices]
+            centroid = polygon_points.mean(axis=0)
+            normal = np.array(
+                [
+                    equations[simplex_ids[0], 0],
+                    equations[simplex_ids[0], 1],
+                    equations[simplex_ids[0], 2],
+                ]
+            )
+            basis_one = polygon_points[0] - centroid
+            basis_one -= normal * float(np.dot(basis_one, normal))
+            if float(np.linalg.norm(basis_one)) < 1e-30:
+                for index in range(1, len(polygon_points)):
+                    basis_one = polygon_points[index] - centroid
+                    basis_one -= normal * float(np.dot(basis_one, normal))
+                    if float(np.linalg.norm(basis_one)) >= 1e-30:
+                        break
+            basis_length = float(np.linalg.norm(basis_one))
+            if basis_length < 1e-30:
+                continue
+            basis_one = basis_one / basis_length
+            basis_two = np.cross(normal, basis_one)
+            relative = polygon_points - centroid
+            projection = np.stack([relative @ basis_one, relative @ basis_two], axis=1)
+            angles = np.arctan2(projection[:, 1], projection[:, 0])
+            order = np.argsort(angles)
+            ordered_vertices = [vertices[int(index)] for index in order]
+
+            for local_index in ordered_vertices:
+                global_point = point_begin + local_index
+                point = cell_points[global_point]
+                key = tuple(np.round(point * 1e9).astype(np.int64).tolist())
+                point_id = point_id_of.get(key)
+                if point_id is None:
+                    point_id = len(point_id_of)
+                    point_id_of[key] = point_id
+                    all_points.append(point)
+                face_indices.append(point_id)
+            face_offsets.append(len(face_indices))
+            face_is_cap.append(any(local_index >= n_tet for local_index in ordered_vertices))
+            cap_labels = {
+                int(local_source_label_ids[point_begin + local_index])
+                for local_index in ordered_vertices
+                if int(local_source_label_ids[point_begin + local_index]) >= 0
+            }
+            face_label_ids.append(next(iter(cap_labels)) if len(cap_labels) == 1 else -1)
+        cell_face_offsets.append(len(face_is_cap))
+
+    return (
+        np.ascontiguousarray(np.asarray(all_points, dtype=np.float64).reshape(-1, 3)),
+        np.ascontiguousarray(face_offsets, dtype=np.int64),
+        np.ascontiguousarray(face_indices, dtype=np.int64),
+        np.ascontiguousarray(cell_face_offsets, dtype=np.int64),
+        np.ascontiguousarray(face_is_cap, dtype=np.uint8),
+        np.ascontiguousarray(face_label_ids, dtype=np.int64),
+    )
+
+
+def _validate_dual_hull_assembly_output(
+    result: object,
+    *,
+    n_cells: int,
+    n_source_labels: int,
+) -> tuple[
+    bool,
+    str,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+    np.ndarray,
+]:
+    if not isinstance(result, tuple) or len(result) != 9:
+        raise ValueError("native dual hull assembly returned a stale ABI payload")
+    accepted, reason, *raw_arrays = result
+    if not isinstance(accepted, (bool, np.bool_)) or not isinstance(reason, str):
+        raise ValueError("native dual hull assembly status has invalid types")
+    expected = (
+        (np.dtype(np.float64), 2, 3),
+        (np.dtype(np.int64), 1, None),
+        (np.dtype(np.int64), 1, None),
+        (np.dtype(np.int64), 1, None),
+        (np.dtype(np.uint8), 1, None),
+        (np.dtype(np.int64), 1, None),
+        (np.dtype(np.uint8), 1, None),
+    )
+    arrays: list[np.ndarray] = []
+    for raw, (dtype, dimensions, width) in zip(raw_arrays, expected, strict=True):
+        if not isinstance(raw, np.ndarray):
+            raise ValueError("native dual hull assembly outputs must be numpy arrays")
+        if raw.dtype != dtype or raw.ndim != dimensions or not raw.flags.c_contiguous:
+            raise ValueError("native dual hull assembly output dtype/layout mismatch")
+        if width is not None and raw.shape[1] != width:
+            raise ValueError("native dual hull assembly point output must have shape (N, 3)")
+        _checked_array_product(int(raw.shape[0]), width or 1, "native output")
+        arrays.append(raw)
+    (
+        points,
+        face_offsets,
+        face_indices,
+        cell_face_offsets,
+        face_is_cap,
+        face_labels,
+        face_order_ambiguous,
+    ) = arrays
+    if bool(accepted):
+        if face_offsets.size == 0 or int(face_offsets[0]) != 0:
+            raise ValueError("native face offsets must begin at zero")
+        if cell_face_offsets.size != n_cells + 1 or int(cell_face_offsets[0]) != 0:
+            raise ValueError("native cell face offsets have invalid length or sentinel")
+        if np.any(face_offsets[1:] < face_offsets[:-1]) or np.any(
+            cell_face_offsets[1:] < cell_face_offsets[:-1]
+        ):
+            raise ValueError("native output offsets must be monotonic")
+        if int(face_offsets[-1]) != face_indices.size:
+            raise ValueError("native face offsets do not cover face indices")
+        n_faces = int(face_offsets.size - 1)
+        if int(cell_face_offsets[-1]) != n_faces:
+            raise ValueError("native cell face offsets do not cover faces")
+        if (
+            face_is_cap.size != n_faces
+            or face_labels.size != n_faces
+            or face_order_ambiguous.size != n_faces
+        ):
+            raise ValueError("native face metadata lengths disagree")
+        if face_indices.size and (
+            int(face_indices.min()) < 0 or int(face_indices.max()) >= points.shape[0]
+        ):
+            raise ValueError("native face point index is out of bounds")
+        if np.any(face_is_cap > 1):
+            raise ValueError("native cap flags must be zero or one")
+        if np.any(face_order_ambiguous > 1):
+            raise ValueError("native face ambiguity flags must be zero or one")
+        if (
+            np.any(face_labels < -1)
+            or (n_source_labels == 0 and np.any(face_labels >= 0))
+            or (n_source_labels > 0 and np.any(face_labels >= n_source_labels))
+        ):
+            raise ValueError("native face label id is out of bounds")
+    return (
+        bool(accepted),
+        reason,
+        points,
+        face_offsets,
+        face_indices,
+        cell_face_offsets,
+        face_is_cap,
+        face_labels,
+        face_order_ambiguous,
+    )
+
+
+def _dual_hull_assembly_digest(arrays: Sequence[np.ndarray]) -> str:
+    digest = hashlib.sha256()
+    for values in arrays:
+        contiguous = np.ascontiguousarray(values)
+        digest.update(str(contiguous.dtype).encode())
+        digest.update(repr(contiguous.shape).encode())
+        digest.update(contiguous.tobytes())
+    return digest.hexdigest()
+
+
+def _repair_native_ambiguous_face_order(
+    cell_points: np.ndarray,
+    cell_point_offsets: np.ndarray,
+    hull_simplices: np.ndarray,
+    cell_hull_offsets: np.ndarray,
+    hull_equations: np.ndarray,
+    dual_points: np.ndarray,
+    face_offsets: np.ndarray,
+    face_indices: np.ndarray,
+    face_order_ambiguous: np.ndarray,
+) -> np.ndarray:
+    """Use NumPy oracle semantics only for atan2 branch-cut face starts."""
+    ambiguous_faces = np.flatnonzero(face_order_ambiguous)
+    if ambiguous_faces.size == 0:
+        return face_indices
+    corrected = np.ascontiguousarray(face_indices.copy())
+    point_id_of: dict[tuple[int, int, int], int] = {}
+    for point_id, point in enumerate(dual_points):
+        key = tuple(np.round(point * 1e9).astype(np.int64).tolist())
+        if key in point_id_of:
+            raise ValueError("native dual points are not unique under point quantization")
+        point_id_of[key] = point_id
+
+    ambiguous = set(map(int, ambiguous_faces.tolist()))
+    face_index = 0
+    for cell in range(cell_point_offsets.size - 1):
+        point_begin = int(cell_point_offsets[cell])
+        point_end = int(cell_point_offsets[cell + 1])
+        hull_begin = int(cell_hull_offsets[cell])
+        hull_end = int(cell_hull_offsets[cell + 1])
+        points = cell_points[point_begin:point_end]
+        simplices = hull_simplices[hull_begin:hull_end]
+        equations = hull_equations[hull_begin:hull_end]
+        eq_key = np.round(equations * 1e6).astype(np.int64)
+        group_of: dict[tuple[int, ...], list[int]] = defaultdict(list)
+        for simplex_index, key in enumerate(map(tuple, eq_key.tolist())):
+            group_of[key].append(simplex_index)
+
+        for simplex_ids in group_of.values():
+            vertices_local: set[int] = set()
+            for simplex_index in simplex_ids:
+                vertices_local.update(int(value) for value in simplices[simplex_index])
+            vertices = sorted(vertices_local)
+            if len(vertices) < 3:
+                continue
+            if face_index in ambiguous:
+                polygon_points = points[vertices]
+                centroid = polygon_points.mean(axis=0)
+                normal = np.asarray(equations[simplex_ids[0], :3], dtype=np.float64)
+                basis_one = polygon_points[0] - centroid
+                basis_one -= normal * float(np.dot(basis_one, normal))
+                if float(np.linalg.norm(basis_one)) < 1e-30:
+                    for index in range(1, len(polygon_points)):
+                        basis_one = polygon_points[index] - centroid
+                        basis_one -= normal * float(np.dot(basis_one, normal))
+                        if float(np.linalg.norm(basis_one)) >= 1e-30:
+                            break
+                basis_length = float(np.linalg.norm(basis_one))
+                if basis_length < 1e-30:
+                    raise ValueError("native ambiguity descriptor references a degenerate face")
+                basis_one = basis_one / basis_length
+                basis_two = np.cross(normal, basis_one)
+                relative = polygon_points - centroid
+                projection = np.stack([relative @ basis_one, relative @ basis_two], axis=1)
+                order = np.argsort(np.arctan2(projection[:, 1], projection[:, 0]))
+                ordered_point_ids: list[int] = []
+                for position in order:
+                    point = points[vertices[int(position)]]
+                    key = tuple(np.round(point * 1e9).astype(np.int64).tolist())
+                    point_id = point_id_of.get(key)
+                    if point_id is None:
+                        raise ValueError(
+                            "native ambiguity repair point is absent from dual point output"
+                        )
+                    ordered_point_ids.append(point_id)
+                begin = int(face_offsets[face_index])
+                end = int(face_offsets[face_index + 1])
+                if end - begin != len(ordered_point_ids):
+                    raise ValueError("native ambiguity repair face length mismatch")
+                corrected[begin:end] = ordered_point_ids
+                ambiguous.remove(face_index)
+            face_index += 1
+
+    if face_index != face_offsets.size - 1 or ambiguous:
+        raise ValueError("native ambiguity descriptors do not cover assembled faces")
+    return corrected
+
+
 def _smooth_interior_tet_verts(
     V: np.ndarray,
     T: np.ndarray,
@@ -1274,11 +1676,7 @@ def tet_to_poly_dual(
     )
 
     # 2) 각 input vertex 마다 dual cell 점 집합 + boundary cap 후보(ConvexHull) 생성
-    all_points: list[np.ndarray] = []  # unique dual points (나중에 stack)
-    cell_face_lists: list[list[list[int]]] = []  # cell_i → [face_vertices, ...]
-    cell_face_is_cap: list[list[bool]] = []  # cell_i → face 가 surface cap 인지
-    cell_face_labels: list[list[tuple[str, str] | None]] = []
-    cell_centroid_list: list[np.ndarray] = []  # cell_i → 3D centroid
+    all_points: list[np.ndarray] = []  # preseeded unique dual points
     # (input vertex, incident tet id) → cell index.  A non-manifold vertex
     # (>=2 disconnected fan components, see ``_vertex_fan_components``) maps
     # to *multiple* cell indices -- one per component -- so any tet incident
@@ -1320,9 +1718,23 @@ def tet_to_poly_dual(
             v: _add_point(V[v]) for v in np.flatnonzero(is_boundary_vert).tolist()
         }
 
+    source_labels: list[tuple[str, str]] = []
+    source_label_ids: dict[tuple[str, str], int] = {}
+    for tri in boundary_faces:
+        label = source_entity_labels.get(tri)
+        if label is not None and label not in source_label_ids:
+            source_label_ids[label] = len(source_labels)
+            source_labels.append(label)
+
+    staged_points: list[np.ndarray] = []
+    staged_simplices: list[np.ndarray] = []
+    staged_equations: list[np.ndarray] = []
+    staged_label_ids: list[np.ndarray] = []
+    staged_n_tet_points: list[int] = []
+    staged_components: list[tuple[int, tuple[int, ...], bool]] = []
+    staged_centroids: list[np.ndarray] = []
     n_skipped = 0
     n_nonmanifold_vertices = 0
-    n_fan_split_cells = 0
     for v_in in range(n_verts):
         tets_here = vert_tets.get(v_in, [])
         components = _vertex_fan_components(v_in, tets_here, T)
@@ -1380,94 +1792,180 @@ def tet_to_poly_dual(
             except Exception:
                 n_skipped += 1
                 continue
-            # hull.simplices 는 triangle 분할. 평면 coplanar triangle 을 병합해 polygon 생성.
-            # hull.equations = (n_simplex, 4) [a, b, c, d] (a·x+b·y+c·z+d=0)
-            simplices = hull.simplices
-            eqs = hull.equations
-            # 같은 face-plane 의 simplex 는 같은 group. 평면 방정식을 정규화해 dedup.
-            # rounding 으로 grouping
-            eq_key = np.round(eqs * 1e6).astype(np.int64)
-            # group by eq_key
-            group_of: dict[tuple[int, ...], list[int]] = defaultdict(list)
-            for si, k in enumerate(map(tuple, eq_key.tolist())):
-                group_of[k].append(si)
-            # 각 group 에서 polygon vertex (ordered) 추출
-            local_cell_centroid = pts.mean(axis=0)
-            cell_face_verts: list[list[int]] = []
-            cell_face_caps: list[bool] = []
-            cell_face_entity_labels: list[tuple[str, str] | None] = []
-            local_face_triangles = {
-                n_tet_pts + local_idx: tri for local_idx, tri in enumerate(comp_boundary_tris)
-            }
-            for _, simp_ids in group_of.items():
-                # union 의 vertex 집합
-                verts_local: set[int] = set()
-                for si in simp_ids:
-                    verts_local.update(int(x) for x in simplices[si])
-                verts_list = sorted(verts_local)
-                if len(verts_list) < 3:
-                    continue
-                # 평면 위 CCW sort (cell centroid 밖 방향 normal)
-                poly_pts = pts[verts_list]
-                c = poly_pts.mean(axis=0)
-                n_plane = np.array([eqs[simp_ids[0], 0], eqs[simp_ids[0], 1], eqs[simp_ids[0], 2]])
-                # ConvexHull 은 normal 을 바깥 방향으로 내보냄 (d < 0 for inside). centroid
-                # 에서 c 로 가는 방향이 n_plane 과 같은 부호여야 cell 바깥.
-                # e1 = c 에서 첫 vertex 로
-                e1 = poly_pts[0] - c
-                e1 -= n_plane * float(np.dot(e1, n_plane))
-                if float(np.linalg.norm(e1)) < 1e-30:
-                    # degenerate — 다른 vertex 로 재시도
-                    for k in range(1, len(poly_pts)):
-                        e1 = poly_pts[k] - c
-                        e1 -= n_plane * float(np.dot(e1, n_plane))
-                        if float(np.linalg.norm(e1)) >= 1e-30:
-                            break
-                n_len = float(np.linalg.norm(e1))
-                if n_len < 1e-30:
-                    continue
-                e1 = e1 / n_len
-                e2 = np.cross(n_plane, e1)
-                rel = poly_pts - c
-                proj = np.stack([rel @ e1, rel @ e2], axis=1)
-                angles = np.arctan2(proj[:, 1], proj[:, 0])
-                order = np.argsort(angles)
-                ordered_verts_local = [verts_list[int(k)] for k in order]
-                # global id 매핑
-                global_ids = [_add_point(pts[lv]) for lv in ordered_verts_local]
-                cell_face_verts.append(global_ids)
-                is_cap = any(lv >= n_tet_pts for lv in ordered_verts_local)
-                cell_face_caps.append(is_cap)
-                cap_triangles = {
-                    local_face_triangles[lv]
-                    for lv in ordered_verts_local
-                    if lv in local_face_triangles
-                }
-                cap_labels = {
-                    source_entity_labels[tri]
-                    for tri in cap_triangles
-                    if tri in source_entity_labels
-                }
-                # A hull cap may span multiple coplanar source faces.  The
-                # classified path below splits those caps per source triangle; the
-                # single fallback label here keeps the old ConvexHull path usable
-                # if its monotonic guard rejects the classified topology.
-                cell_face_entity_labels.append(
-                    next(iter(cap_labels)) if len(cap_labels) == 1 else None
-                )
+            local_labels = np.full(pts.shape[0], -1, dtype=np.int64)
+            for local_index, tri in enumerate(comp_boundary_tris):
+                label = source_entity_labels.get(tri)
+                if label is not None:
+                    local_labels[n_tet_pts + local_index] = source_label_ids[label]
+            staged_points.append(np.ascontiguousarray(pts, dtype=np.float64))
+            staged_simplices.append(np.ascontiguousarray(hull.simplices, dtype=np.int64))
+            staged_equations.append(np.ascontiguousarray(hull.equations, dtype=np.float64))
+            staged_label_ids.append(local_labels)
+            staged_n_tet_points.append(n_tet_pts)
+            staged_components.append((v_in, tuple(map(int, comp)), len(components) > 1))
+            staged_centroids.append(pts.mean(axis=0))
 
-            if not cell_face_verts:
-                n_skipped += 1
-                continue
-            new_ci = len(cell_face_lists)
-            for ti in comp:
-                cell_of_tet_vert[(v_in, ti)] = new_ci
-            if len(components) > 1:
-                n_fan_split_cells += 1
-            cell_face_lists.append(cell_face_verts)
-            cell_face_is_cap.append(cell_face_caps)
-            cell_face_labels.append(cell_face_entity_labels)
-            cell_centroid_list.append(local_cell_centroid)
+    if not staged_points:
+        return PolyDualResult(
+            False,
+            time.perf_counter() - t0,
+            message="dual cell 0 — 입력 mesh 가 너무 작거나 degenerate",
+        )
+
+    point_total = sum(len(points) for points in staged_points)
+    hull_total = sum(len(rows) for rows in staged_simplices)
+    if point_total > np.iinfo(np.int64).max or hull_total > np.iinfo(np.int64).max:
+        return PolyDualResult(
+            False,
+            time.perf_counter() - t0,
+            message="dual hull assembly count overflow",
+        )
+    point_counts = np.fromiter((len(points) for points in staged_points), dtype=np.int64)
+    hull_counts = np.fromiter((len(rows) for rows in staged_simplices), dtype=np.int64)
+    cell_point_offsets = np.empty(len(staged_points) + 1, dtype=np.int64)
+    cell_point_offsets[0] = 0
+    np.cumsum(point_counts, out=cell_point_offsets[1:])
+    cell_hull_offsets = np.empty(len(staged_simplices) + 1, dtype=np.int64)
+    cell_hull_offsets[0] = 0
+    np.cumsum(hull_counts, out=cell_hull_offsets[1:])
+    seed_points = np.ascontiguousarray(np.asarray(all_points, dtype=np.float64).reshape(-1, 3))
+    flat_cell_points = np.ascontiguousarray(np.concatenate(staged_points, axis=0))
+    flat_hull_simplices = np.ascontiguousarray(np.concatenate(staged_simplices, axis=0))
+    flat_hull_equations = np.ascontiguousarray(np.concatenate(staged_equations, axis=0))
+    flat_n_tet_points = np.ascontiguousarray(staged_n_tet_points, dtype=np.int64)
+    flat_label_ids = np.ascontiguousarray(np.concatenate(staged_label_ids), dtype=np.int64)
+    assembly_inputs = (
+        seed_points,
+        flat_cell_points,
+        cell_point_offsets,
+        flat_hull_simplices,
+        cell_hull_offsets,
+        flat_hull_equations,
+        flat_n_tet_points,
+        flat_label_ids,
+    )
+    try:
+        _validate_dual_hull_assembly_inputs(*assembly_inputs)
+    except (OverflowError, ValueError) as exc:
+        return PolyDualResult(
+            False,
+            time.perf_counter() - t0,
+            message=f"dual hull assembly input validation failed: {exc}",
+        )
+
+    from core.utils.native_extensions import load_native_polymesh
+
+    native_module = load_native_polymesh()
+    assembly_route = "python_missing_symbol"
+    refusal_reason = ""
+    assembly_arrays: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+    if native_module is not None and hasattr(native_module, "assemble_dual_hull_faces"):
+        try:
+            raw_native_result = native_module.assemble_dual_hull_faces(*assembly_inputs)
+            (
+                accepted,
+                refusal_reason,
+                native_points,
+                native_face_offsets,
+                native_face_indices,
+                native_cell_face_offsets,
+                native_face_is_cap,
+                native_face_label_ids,
+                native_face_order_ambiguous,
+            ) = _validate_dual_hull_assembly_output(
+                raw_native_result,
+                n_cells=len(staged_points),
+                n_source_labels=len(source_labels),
+            )
+        except (IndexError, OverflowError, RuntimeError, TypeError, ValueError) as exc:
+            return PolyDualResult(
+                False,
+                time.perf_counter() - t0,
+                message=f"native dual hull assembly ABI failure: {exc}",
+            )
+        if accepted:
+            assembly_route = "cpp23_batch"
+            try:
+                native_face_indices = _repair_native_ambiguous_face_order(
+                    flat_cell_points,
+                    cell_point_offsets,
+                    flat_hull_simplices,
+                    cell_hull_offsets,
+                    flat_hull_equations,
+                    native_points,
+                    native_face_offsets,
+                    native_face_indices,
+                    native_face_order_ambiguous,
+                )
+            except ValueError as exc:
+                return PolyDualResult(
+                    False,
+                    time.perf_counter() - t0,
+                    message=f"native dual hull ambiguity repair failed: {exc}",
+                )
+            assembly_arrays = (
+                native_points,
+                native_face_offsets,
+                native_face_indices,
+                native_cell_face_offsets,
+                native_face_is_cap,
+                native_face_label_ids,
+            )
+        else:
+            assembly_route = "python_native_refusal"
+            assembly_arrays = _assemble_dual_hull_faces_python(*assembly_inputs)
+    else:
+        assembly_arrays = _assemble_dual_hull_faces_python(*assembly_inputs)
+
+    (
+        dual_points,
+        assembly_face_offsets,
+        assembly_face_indices,
+        assembly_cell_face_offsets,
+        assembly_face_is_cap,
+        assembly_face_label_ids,
+    ) = assembly_arrays
+    assembly_digest = _dual_hull_assembly_digest(assembly_arrays)
+    log.info(
+        "native_poly_dual_hull_assembly",
+        route=assembly_route,
+        refusal_reason=refusal_reason,
+        assembly_digest=assembly_digest,
+        n_staged_cells=len(staged_points),
+        n_faces=int(assembly_face_is_cap.size),
+    )
+
+    cell_face_lists: list[list[list[int]]] = []
+    cell_face_is_cap: list[list[bool]] = []
+    cell_face_labels: list[list[tuple[str, str] | None]] = []
+    cell_centroid_list: list[np.ndarray] = []
+    n_fan_split_cells = 0
+    for staged_cell, (v_in, comp, fan_split) in enumerate(staged_components):
+        face_begin = int(assembly_cell_face_offsets[staged_cell])
+        face_end = int(assembly_cell_face_offsets[staged_cell + 1])
+        if face_begin == face_end:
+            n_skipped += 1
+            continue
+        faces = [
+            assembly_face_indices[
+                int(assembly_face_offsets[face]) : int(assembly_face_offsets[face + 1])
+            ].tolist()
+            for face in range(face_begin, face_end)
+        ]
+        caps = assembly_face_is_cap[face_begin:face_end].astype(bool).tolist()
+        labels = [
+            source_labels[label_id] if label_id >= 0 else None
+            for label_id in assembly_face_label_ids[face_begin:face_end].tolist()
+        ]
+        new_ci = len(cell_face_lists)
+        for tet_index in comp:
+            cell_of_tet_vert[(v_in, tet_index)] = new_ci
+        if fan_split:
+            n_fan_split_cells += 1
+        cell_face_lists.append(faces)
+        cell_face_is_cap.append(caps)
+        cell_face_labels.append(labels)
+        cell_centroid_list.append(staged_centroids[staged_cell])
 
     if not cell_face_lists:
         return PolyDualResult(
@@ -1476,11 +1974,7 @@ def tet_to_poly_dual(
             message="dual cell 0 — 입력 mesh 가 너무 작거나 degenerate",
         )
 
-    dual_points = np.asarray(all_points, dtype=np.float64)
-
-    from core.utils.native_extensions import load_native_polymesh
-
-    native_face_geometry = load_native_polymesh()
+    native_face_geometry = native_module
     if native_face_geometry is not None and not hasattr(native_face_geometry, "face_flip_mask"):
         native_face_geometry = None
 
