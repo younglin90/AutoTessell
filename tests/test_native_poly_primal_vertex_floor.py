@@ -37,3 +37,14 @@ def test_targeted_poly_refuses_primal_vertex_floor_failure(
     assert seen["floor"] == 25
     assert result.success is False
     assert result.message == "target_primal_vertex_floor_unmet: actual=15, required=25"
+
+
+def test_zero_iteration_remains_graceful_generic_failure(tmp_path: Path) -> None:
+    result = run_native_poly_harness(
+        np.zeros((0, 3)),
+        np.zeros((0, 3), dtype=int),
+        tmp_path / "case",
+        max_iter=0,
+    )
+    assert result.success is False
+    assert result.message.startswith("native_poly_harness FAIL after 0 iter")

@@ -336,7 +336,7 @@ def run_native_poly_harness(
     )
     final_message = (
         floor_failures[-1]
-        if len(floor_failures) == int(max_iter)
+        if floor_failures and len(floor_failures) == int(max_iter)
         else (
             f"native_poly_harness FAIL after {max_iter} iter "
             f"(best negative_volumes={last_metrics.get('negative_volumes', -1)})"
