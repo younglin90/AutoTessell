@@ -1543,3 +1543,58 @@ scope. Future MIT-core boundary follows
   Preserve sorted edge keys, owner-face order, layer-side connectivity, and full
   polyMesh byte hashes; reject the card if an extra Python materialization erases
   the end-to-end gain.
+
+## Cycle 28 checkpoint -- 2026-07-30
+
+### C++23 fused boundary-layer edge adjacency evidence
+
+- `5c619751` extends the existing native front scan with a contiguous `(F,3)`
+  adjacent-face array.  Each edge reference retains candidate-face order and
+  local edge index.  Boundary slots are `-1`; shared slots select the first
+  different face id in the same order as the Python oracle.
+- The production prism writer now indexes adjacency directly.  It no longer
+  performs the second NumPy lexsort, creates six edge arrays, materializes tuple
+  keys, stores Python face lists, or probes a Python dictionary in the layer
+  loop.  The extension-absent fallback retains the prior map path.
+- Adjacency grouping is linear after the summary's existing edge sort.  Overall
+  complexity remains `O(F log F + sum(d_v^2))` time and `O(F + V + E)` space.
+- Planar 80,000-triangle benchmark: Python edge dictionary `1.958444371 s`,
+  `69.42 MiB` traced Python heap.  Complete fused native summary+adjacency median
+  `0.047959233 s`, `40.84x`; returned adjacency is `1.83 MiB` contiguous storage.
+  Every face/local-edge neighbor matches exactly.
+- Focused post-merge topology/provenance validation passes `26`.  Wider BL
+  writer validation passes `125`; generated five-file polyMesh byte parity is
+  retained.  GCC 13.3 strict C++23 build is warning-free.
+- No wall geometry, topology threshold, patch semantics, dependency, external
+  source, or `third_party/` file changed.
+- Full-history bundle:
+  `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-edge-adjacency-1-5c619751.bundle`,
+  SHA-256 `41dcdae73b010dfad4693440833992c6775f4ddfa0c523ca17264c9588632d89`.
+  Worktree, branch, and isolated builds were removed.
+
+### Gate re-evaluation
+
+| Gate | Status | Cycle-28 evidence / next evidence |
+|---|---|---|
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 2 Build | UNVERIFIED | GCC 13.3 strict C++23 target warning-free; platform/compiler matrix incomplete. |
+| 3 Automated tests | UNVERIFIED | Focused/wider BL suites pass; immutable-head full suite remains. |
+| 4 Shape preservation | UNVERIFIED | Full generated polyMesh byte parity passes; full corpus remains. |
+| 5 Mesh validity | UNVERIFIED | Non-manifold hard rejection and connectivity ordering preserved; all-engine corpus remains. |
+| 6 Cell count | FAIL | Tet target remains deferred behind topology/validity; Poly target unresolved. |
+| 7 Boundary layer | UNVERIFIED | Duplicate edge scan removed with exact layer-side connectivity; full wall corpus remains. |
+| 8 Quality | UNVERIFIED | No quality rule changed; complete fixture matrix remains. |
+| 9 Reproducibility | FAIL | Local-edge adjacency deterministic; external P4C topology hashes still vary. |
+| 10 Robustness | UNVERIFIED | Boundary/non-manifold/duplicate ownership parity passes; adverse corpus incomplete. |
+| 11 Performance | UNVERIFIED | Edge-map bottleneck closed with 40.84x measured gain; frozen all-engine budgets remain. |
+| 12 Packaging | UNVERIFIED | Native wheel/artifact evidence incomplete. |
+| 13 License/provenance | UNVERIFIED | Independent first-party C++23; GPL/no-third-party policy held; inventory incomplete. |
+| 14 Documentation/operations | UNVERIFIED | C++23 migration and campaign evidence updated; release operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
+
+### Next automatic action
+
+- Rotate away from BL to the highest-impact remaining Tet or Poly Python hot
+  kernel that consumes already-flat arrays.  Keep strict topology/shape and
+  provenance ahead of target-cell count; require end-to-end gain, exact hashes,
+  and a warning-free first-party C++23 ABI before integration.
