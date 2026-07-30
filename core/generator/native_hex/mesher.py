@@ -194,6 +194,53 @@ class NativeHexResult:
     untangle_beta_pass: bool | None = None
 
 
+def _prepare_native_hex_surface_input(
+    vertices: object,
+    faces: object,
+) -> tuple[np.ndarray | None, np.ndarray | None, str | None]:
+    """Convert only well-formed finite indexed triangles for native hex.
+
+    This is deliberately a narrow ingress check.  It does not repair input or
+    impose closed-manifold, orientation, feature, or component requirements.
+    Valid source geometry remains byte-for-byte caller-owned.
+    """
+    try:
+        raw_points = np.asarray(vertices)
+        raw_faces = np.asarray(faces)
+    except (TypeError, ValueError):
+        return None, None, "array_conversion"
+
+    if raw_points.size == 0 or raw_faces.size == 0:
+        return None, None, "empty_mesh"
+    if raw_points.ndim != 2 or raw_points.shape[1:] != (3,):
+        return None, None, "vertices_must_have_shape_n_by_3"
+    if raw_faces.ndim != 2 or raw_faces.shape[1:] != (3,):
+        return None, None, "faces_must_have_shape_n_by_3"
+
+    try:
+        points = np.asarray(raw_points, dtype=np.float64)
+        face_values = np.asarray(raw_faces, dtype=np.float64)
+    except (TypeError, ValueError, OverflowError):
+        return None, None, "non_numeric_input"
+    if not np.all(np.isfinite(points)):
+        return None, None, "non_finite_vertex"
+    if not np.all(np.isfinite(face_values)):
+        return None, None, "non_finite_face_index"
+    if np.any(face_values != np.floor(face_values)):
+        return None, None, "non_integral_face_index"
+    if np.any(face_values < 0) or np.any(face_values >= len(points)):
+        return None, None, "face_index_out_of_range"
+
+    triangles = face_values.astype(np.int64, copy=False)
+    if np.any(
+        (triangles[:, 0] == triangles[:, 1])
+        | (triangles[:, 1] == triangles[:, 2])
+        | (triangles[:, 2] == triangles[:, 0])
+    ):
+        return None, None, "repeated_face_vertex"
+    return points, triangles, None
+
+
 # OpenFOAM hex cell 의 6 face 정의 — 각 face 는 4 vertex (CCW from outside).
 # hex vertex 순서: 0..7 (그림 ↓ OpenFOAM convention):
 #   3 - 2
@@ -1287,10 +1334,13 @@ def generate_native_hex(
         NativeHexResult.
     """
     t0 = time.perf_counter()
-    V = np.asarray(vertices, dtype=np.float64)
-    F = np.asarray(faces, dtype=np.int64)
-    if V.size == 0 or F.size == 0:
+    V, F, input_error = _prepare_native_hex_surface_input(vertices, faces)
+    if input_error == "empty_mesh":
         return NativeHexResult(False, 0.0, message="빈 입력 mesh")
+    if input_error is not None:
+        return NativeHexResult(False, 0.0, message=f"native_hex_invalid_input:{input_error}")
+
+    assert V is not None and F is not None
 
     # beta2338 — pre-mesh self-intersect capture (P2.6 chain).
     # ≤5000 face 만 측정 (KDTree 비용 회피). result.n_self_intersect_pre 에
