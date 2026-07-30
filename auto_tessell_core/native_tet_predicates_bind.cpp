@@ -17,11 +17,13 @@
 #include <cstdint>
 #include <cstddef>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <numbers>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -257,6 +259,62 @@ struct EdgeKeyHash {
 
 using Tet = std::array<long long, 4>;
 
+struct TetHash {
+    size_t operator()(const Tet& tet) const
+    {
+        size_t hash = 0;
+        for (const long long vertex : tet) {
+            hash ^= std::hash<long long>{}(vertex) + 0x9e3779b9U + (hash << 6U)
+                + (hash >> 2U);
+        }
+        return hash;
+    }
+};
+
+class DisjointSet {
+public:
+    explicit DisjointSet(const size_t count) : parent_(count), rank_(count, 0)
+    {
+        for (size_t index = 0; index < count; ++index) {
+            parent_[index] = index;
+        }
+    }
+
+    size_t find(size_t item)
+    {
+        while (parent_[item] != item) {
+            parent_[item] = parent_[parent_[item]];
+            item = parent_[item];
+        }
+        return item;
+    }
+
+    void unite(const size_t left, const size_t right)
+    {
+        size_t left_root = find(left);
+        size_t right_root = find(right);
+        if (left_root == right_root) {
+            return;
+        }
+        if (rank_[left_root] < rank_[right_root]) {
+            std::swap(left_root, right_root);
+        }
+        parent_[right_root] = left_root;
+        if (rank_[left_root] == rank_[right_root]) {
+            ++rank_[left_root];
+        }
+    }
+
+private:
+    std::vector<size_t> parent_;
+    std::vector<unsigned char> rank_;
+};
+
+struct BoundaryEdgeInfo {
+    size_t first_face = 0;
+    size_t count = 0;
+};
+
 FaceKey make_face_key(const Tet& tet, const size_t excluded)
 {
     FaceKey key{};
@@ -310,6 +368,158 @@ long double absolute_volume6(
     const long double determinant = abx * (acy * adz - acz * ady)
         - aby * (acx * adz - acz * adx) + abz * (acx * ady - acy * adx);
     return std::abs(determinant);
+}
+
+py::tuple audit_tet_boundary_native(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points_array,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& tets_array,
+    const double relative_volume_tolerance)
+{
+    if (points_array.ndim() != 2 || points_array.shape(1) != 3) {
+        throw std::invalid_argument("audit_tet_boundary expects points shaped (N, 3)");
+    }
+    if (tets_array.ndim() != 2 || tets_array.shape(1) != 4) {
+        throw std::invalid_argument("audit_tet_boundary expects tets shaped (M, 4)");
+    }
+    if (!std::isfinite(relative_volume_tolerance)) {
+        throw std::invalid_argument("relative_volume_tolerance must be finite");
+    }
+
+    const auto points = points_array.unchecked<2>();
+    const auto tets = tets_array.unchecked<2>();
+    const size_t point_count = static_cast<size_t>(points.shape(0));
+    const size_t tet_count = static_cast<size_t>(tets.shape(0));
+    if (tet_count == 0) {
+        return py::make_tuple(0, 0, 0, 0, 0, 0, 0, 0);
+    }
+
+    std::array<long long, 8> stats{};
+    {
+        py::gil_scoped_release release;
+
+        std::array<double, 3> bbox_min{
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity(),
+            std::numeric_limits<double>::infinity()};
+        std::array<double, 3> bbox_max{
+            -std::numeric_limits<double>::infinity(),
+            -std::numeric_limits<double>::infinity(),
+            -std::numeric_limits<double>::infinity()};
+        for (size_t point_index = 0; point_index < point_count; ++point_index) {
+            for (size_t coordinate = 0; coordinate < 3; ++coordinate) {
+                const double value = points(
+                    static_cast<py::ssize_t>(point_index),
+                    static_cast<py::ssize_t>(coordinate));
+                if (!std::isfinite(value)) {
+                    throw std::invalid_argument(
+                        "audit_tet_boundary requires finite point coordinates");
+                }
+                bbox_min[coordinate] = std::min(bbox_min[coordinate], value);
+                bbox_max[coordinate] = std::max(bbox_max[coordinate], value);
+            }
+        }
+        const double dx = bbox_max[0] - bbox_min[0];
+        const double dy = bbox_max[1] - bbox_min[1];
+        const double dz = bbox_max[2] - bbox_min[2];
+        const double diagonal = std::max(
+            std::sqrt(dx * dx + dy * dy + dz * dz),
+            std::numeric_limits<double>::min());
+        const long double volume_floor = static_cast<long double>(
+            std::max(0.0, relative_volume_tolerance))
+            * static_cast<long double>(diagonal)
+            * static_cast<long double>(diagonal)
+            * static_cast<long double>(diagonal);
+
+        std::unordered_set<Tet, TetHash> unique_tets;
+        unique_tets.reserve(tet_count);
+        std::unordered_map<FaceKey, size_t, FaceKeyHash> face_counts;
+        face_counts.reserve(tet_count * 4U);
+        size_t duplicate_tets = 0;
+        size_t degenerate_tets = 0;
+
+        for (size_t row = 0; row < tet_count; ++row) {
+            Tet tet{};
+            for (size_t local = 0; local < 4; ++local) {
+                tet[local] = tets(
+                    static_cast<py::ssize_t>(row),
+                    static_cast<py::ssize_t>(local));
+                if (tet[local] < 0
+                    || tet[local] >= static_cast<long long>(point_count)) {
+                    throw std::invalid_argument("tet vertex index out of range");
+                }
+            }
+            Tet canonical_tet = tet;
+            std::sort(canonical_tet.begin(), canonical_tet.end());
+            if (!unique_tets.insert(canonical_tet).second) {
+                ++duplicate_tets;
+            }
+            if (absolute_volume6(points, tet) <= volume_floor) {
+                ++degenerate_tets;
+            }
+            for (size_t excluded = 0; excluded < 4; ++excluded) {
+                ++face_counts[make_face_key(tet, excluded)];
+            }
+        }
+
+        std::vector<FaceKey> boundary_faces;
+        boundary_faces.reserve(face_counts.size());
+        size_t nonmanifold_faces = 0;
+        for (const auto& [face, count] : face_counts) {
+            if (count == 1) {
+                boundary_faces.push_back(face);
+            } else if (count > 2) {
+                ++nonmanifold_faces;
+            }
+        }
+
+        stats[0] = static_cast<long long>(tet_count);
+        stats[1] = static_cast<long long>(boundary_faces.size());
+        stats[4] = static_cast<long long>(nonmanifold_faces);
+        stats[6] = static_cast<long long>(duplicate_tets);
+        stats[7] = static_cast<long long>(degenerate_tets);
+        if (!boundary_faces.empty()) {
+            DisjointSet components(boundary_faces.size());
+            std::unordered_map<EdgeKey, BoundaryEdgeInfo, EdgeKeyHash> edge_info;
+            edge_info.reserve(boundary_faces.size() * 3U);
+            for (size_t face_index = 0; face_index < boundary_faces.size(); ++face_index) {
+                const auto& vertices = boundary_faces[face_index].vertices;
+                const std::array<EdgeKey, 3> edges{{
+                    EdgeKey{{vertices[0], vertices[1]}},
+                    EdgeKey{{vertices[1], vertices[2]}},
+                    EdgeKey{{vertices[0], vertices[2]}},
+                }};
+                for (const EdgeKey& edge : edges) {
+                    auto [position, inserted] = edge_info.try_emplace(
+                        edge, BoundaryEdgeInfo{face_index, 0});
+                    BoundaryEdgeInfo& info = position->second;
+                    if (!inserted) {
+                        components.unite(info.first_face, face_index);
+                    }
+                    ++info.count;
+                }
+            }
+
+            size_t open_edges = 0;
+            size_t nonmanifold_edges = 0;
+            for (const auto& [edge, info] : edge_info) {
+                static_cast<void>(edge);
+                open_edges += info.count == 1;
+                nonmanifold_edges += info.count > 2;
+            }
+            std::unordered_set<size_t> roots;
+            roots.reserve(boundary_faces.size());
+            for (size_t face_index = 0; face_index < boundary_faces.size(); ++face_index) {
+                roots.insert(components.find(face_index));
+            }
+            stats[2] = static_cast<long long>(open_edges);
+            stats[3] = static_cast<long long>(nonmanifold_edges);
+            stats[5] = static_cast<long long>(roots.size());
+        }
+    }
+
+    return py::make_tuple(
+        stats[0], stats[1], stats[2], stats[3],
+        stats[4], stats[5], stats[6], stats[7]);
 }
 
 double tet_mean_ratio_quality(
@@ -1159,6 +1369,9 @@ PYBIND11_MODULE(native_tet_predicates, m)
           py::arg("min_quality_improvement") = 1e-4);
     m.def("tet_quality_metrics", &tet_quality_metrics,
           py::arg("points"), py::arg("tets"));
+    m.def("audit_tet_boundary", &audit_tet_boundary_native,
+          py::arg("points"), py::arg("tets"),
+          py::arg("relative_volume_tolerance") = 1e-12);
     m.def("recover_targeted_edges_23", &recover_targeted_edges_23,
           py::arg("points"), py::arg("tets"), py::arg("edges"),
           py::arg("max_attempts") = 200);

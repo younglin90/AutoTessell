@@ -151,7 +151,7 @@ def audit_tet_boundary(
     *,
     relative_volume_tolerance: float = 1e-12,
 ) -> TetBoundaryAudit:
-    """Audit closed-manifold topology without materializing Python face lists."""
+    """Audit closed-manifold topology through C++23, with NumPy fallback."""
     pts = np.asarray(points, dtype=np.float64)
     tet = np.asarray(tets, dtype=np.int64)
     if tet.ndim != 2 or tet.shape[1:] != (4,):
@@ -162,6 +162,17 @@ def audit_tet_boundary(
         raise ValueError("tet vertex index out of range")
     if tet.shape[0] == 0:
         return TetBoundaryAudit(0, 0, 0, 0, 0, 0, 0, 0)
+
+    from core.utils.native_extensions import load_native_tet_predicates
+
+    native = load_native_tet_predicates()
+    if native is not None and hasattr(native, "audit_tet_boundary"):
+        values = native.audit_tet_boundary(
+            pts,
+            tet,
+            float(relative_volume_tolerance),
+        )
+        return TetBoundaryAudit(*(int(value) for value in values))
 
     canonical_tets = np.sort(tet, axis=1)
     duplicate_tets = int(

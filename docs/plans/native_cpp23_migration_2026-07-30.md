@@ -173,6 +173,35 @@ with identical collision masks.  The prior dense route required 25 million
 pair entries and about 1 GB of simultaneous dot/delta/distance/mask storage;
 the native route allocates no dense pair array.
 
+## Tet strict-topology audit card
+
+The strict writer gate repeatedly audited tetrahedral face incidence through
+NumPy `concatenate`, `sort`, and `unique`, then built boundary components in a
+Python union-find loop.  The C++23 route now consumes read-only contiguous NumPy
+views, releases the GIL, and performs one pass into reserved canonical tet/face
+hash tables.  Boundary edges use one reserved incidence table and a flat
+disjoint-set forest.  No `4T x 3` face array, `3B x 2` edge array, or Python
+component set is materialized.  Expected time is `O(T + B)` and auxiliary space
+is `O(T + B)` under ordinary hash occupancy, where `T` is tetrahedra and `B` is
+boundary faces.  The NumPy fallback remains for packaging/platform coverage.
+
+On a structured cube corpus with `35,937` points and `196,608` tetrahedra, the
+C++ audit took `0.264357 s` versus `1.789529 s` for the NumPy/Python fallback
+(`6.77x`).  All eight audit counters matched exactly:
+`(196608, 12288, 0, 0, 0, 1, 0, 0)`.  The fallback allocated `114.43 MiB` of
+traced Python heap; the native route removes those Python temporaries.  Focused
+predicate, rescue-gate, Klingner, final strict-topology, and result-consistency
+tests passed `61/61`.  The clean C++23 native-only build compiled all eight
+first-party targets warning-free with GCC 13.3.
+
+An existing diagnostic test still required the cube-10k case to fail before
+the writer.  Current `master` already removes one exact duplicate tet group
+only after proving boundary-key identity and strict candidate validity, so that
+test failed on the unmodified baseline.  Its contract now checks the stronger
+current behavior: the pre-repair non-manifold incidence is observed, two group
+members are removed, the exterior boundary is unchanged, and the final audit
+is strict-valid.  No topology threshold was relaxed.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

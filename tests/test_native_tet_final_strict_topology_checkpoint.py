@@ -42,13 +42,13 @@ def _disable_late_topology_mutators(monkeypatch) -> None:
             monkeypatch.setenv(name, "1" if name.endswith("_OFF") else "0")
 
 
-def test_cube_10000_l0_trace_records_pre_writer_strict_failure(
+def test_cube_10000_l0_trace_records_pre_writer_strict_repair(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """L0: reproduce known strict failure before writer with late passes off.
+    """L0: localize the defect and prove exact duplicate repair restores strictness.
 
     Target tracking is observed only.  This card's acceptance is deterministic
-    in-memory localization, not target-band success.
+    in-memory topology recovery, not target-band success.
     """
     import core.generator.native_tet.boundary_invariant as boundary_invariant
 
@@ -83,10 +83,16 @@ def test_cube_10000_l0_trace_records_pre_writer_strict_failure(
     )
 
     final_audit = audit_tet_boundary(result.tet_points, result.tets)
-    assert not result.success
-    assert "writer rejected output topology" in result.message
-    assert final_audit.n_nonmanifold_faces > 0
-    assert final_audit.n_duplicate_tets > 0
+    assert result.success, result.message
+    assert result.n_cells > 0
+    assert final_audit.valid
+    repair = result.debug_info["strict_topology_duplicate_group_repair"]
+    assert repair["applied"] is True
+    assert repair["n_duplicate_groups"] == 1
+    assert repair["n_removed_tets"] == 2
+    assert repair["boundary_preserved"] is True
+    assert repair["before_nonmanifold_faces"] > 0
+    assert repair["after_nonmanifold_faces"] == 0
     assert observed
 
     first_unsafe = next(

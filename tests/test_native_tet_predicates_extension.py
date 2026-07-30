@@ -92,6 +92,52 @@ def test_predicates_reject_nonfinite_coordinates() -> None:
         module.orient3d_signs(points)
 
 
+def test_native_boundary_audit_matches_numpy_fallback(monkeypatch) -> None:
+    module = _module_or_skip()
+    from core.generator.native_tet import rescue_gate
+    from core.utils import native_extensions
+
+    points = np.array([
+        [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+        [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0], [1.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
+    ])
+    base_tets = np.array([
+        [0, 1, 2, 6], [0, 2, 3, 6], [0, 3, 7, 6],
+        [0, 7, 4, 6], [0, 4, 5, 6], [0, 5, 1, 6],
+    ], dtype=np.int64)
+    fixtures = (
+        base_tets,
+        np.vstack([base_tets, base_tets[:1]]),
+        base_tets[[0, 3]],
+        np.array([[0, 1, 2, 3]], dtype=np.int64),
+    )
+
+    for tets in fixtures:
+        native_values = tuple(int(value) for value in module.audit_tet_boundary(points, tets))
+        monkeypatch.setattr(native_extensions, "load_native_tet_predicates", lambda: None)
+        fallback = rescue_gate.audit_tet_boundary(points, tets)
+        fallback_values = tuple(fallback.__dict__.values())
+        assert native_values == fallback_values
+
+
+def test_native_boundary_audit_rejects_invalid_input() -> None:
+    module = _module_or_skip()
+    points = np.zeros((4, 3), dtype=np.float64)
+    with pytest.raises(ValueError, match="index out of range"):
+        module.audit_tet_boundary(
+            points,
+            np.array([[0, 1, 2, 9]], dtype=np.int64),
+        )
+    points[0, 0] = np.nan
+    with pytest.raises(ValueError, match="finite"):
+        module.audit_tet_boundary(
+            points,
+            np.array([[0, 1, 2, 3]], dtype=np.int64),
+        )
+
+
 def test_native_exact_batch_preserves_native_tet_volume_convention() -> None:
     _module_or_skip()
     from core.generator.native_tet.validate import orientation_signs
