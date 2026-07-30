@@ -13,15 +13,19 @@ or described as successful.
 
 ## Evidence
 
-On the unit-cube draft request (`target_cells=2000`, `max_iter=1`), the current
-harness records `3635` cells (`+81.75%`).  This is a Gate-6 failure, not a
-strict-topology failure.  The same run admits the final source-shape contract,
-reports zero negative volumes and non-orthogonality below 90 degrees, and writes
-only tetrahedron-encoded cells with a writer cell count equal to the result.
+The deterministic admission regression injects a source-valid single tetrahedron
+against `target_cells=2000`.  It records the exact ratio `1/2000` while still
+requiring source admission, zero negative volume, under-90 non-orthogonality,
+and promotion of the valid case.  The ratio is deliberately not an admission
+criterion; it is retained as Gate-6 telemetry.
 
-The regression therefore no longer accepts or rejects topology based on a
-numeric target ratio.  It keeps the requested count, actual count, and ratio in
-the test calculation for later target-following work.
+A real unit-cube probe is not used as an acceptance proof because the generator
+is currently nondeterministic and one observed `2018`-cell candidate was
+correctly rejected by the source hard gate (`hausdorff_relative=0.0647 > 0.05`,
+with planar coverage below the B-grade floor).  No output was promoted.  This
+is shape preservation working as intended, not a reason to weaken the shape
+or topology contract.  Real strict writer/topology evidence remains in the
+cylinder duplicate-repair regression.
 
 ## Research basis
 
