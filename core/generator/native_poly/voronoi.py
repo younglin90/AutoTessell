@@ -1367,6 +1367,7 @@ def generate_native_poly_voronoi(
                 target_edge_length=target_edge_length,
                 seed_density=cur_seed,
                 n_lloyd=n_lloyd,
+                bl_layers=int(bl_layers),
             )
             if r_attempt.success and r_attempt.n_cells > 2:
                 candidates.append(
@@ -1388,6 +1389,7 @@ def generate_native_poly_voronoi(
                 vertices, faces, case_dir,
                 target_edge_length=target_edge_length,
                 seed_density=cur_seed, n_lloyd=n_lloyd, lp_p=4.0,
+                bl_layers=int(bl_layers),
             )
             if r_p4.success and r_p4.n_cells > 2:
                 candidates.append((
@@ -1408,6 +1410,7 @@ def generate_native_poly_voronoi(
                 target_edge_length=target_edge_length,
                 seed_density=cur_seed, n_lloyd=n_lloyd, lp_p=2.0,
                 clip_boundary=True,
+                bl_layers=int(bl_layers),
             )
             if r_clipped.success and r_clipped.n_cells > 2:
                 candidates.append((
@@ -1557,6 +1560,7 @@ def generate_native_poly_voronoi(
                             seed_density=int(seed_density),
                             n_lloyd=int(n_lloyd),
                             lp_p=_lp_p,
+                            bl_layers=int(bl_layers),
                         )
                         if _retry_r.success and _retry_r.n_cells > 2:
                             log.info(
@@ -1644,6 +1648,7 @@ def generate_native_poly_voronoi(
                         target_edge_length=target_edge_length,
                         seed_density=int(seed_density),
                         n_lloyd=int(n_lloyd), lp_p=2.0,
+                        bl_layers=int(bl_layers),
                     )
                     # 채택 정책: 새 grade 가 더 좋으면 (A > B > C > D > ?) 채택.
                     _grade_rank = {"A": 4, "B": 3, "C": 2, "D": 1, "?": 0}
@@ -1675,6 +1680,7 @@ def generate_native_poly_voronoi(
                                 target_edge_length=target_edge_length,
                                 seed_density=int(seed_density) * 2,
                                 n_lloyd=int(n_lloyd), lp_p=2.0,
+                                bl_layers=int(bl_layers),
                             )
                             if (
                                 _retry_r3.success
@@ -1722,6 +1728,7 @@ def generate_native_poly_voronoi(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
         seed_density=seed_density, n_lloyd=n_lloyd,
+        bl_layers=int(bl_layers),
     )
     return _inject_si(_inner_r)
 
@@ -1902,6 +1909,7 @@ def _generate_native_poly_voronoi_inner(
     n_lloyd: int = 2,
     lp_p: float = 2.0,
     clip_boundary: bool = False,
+    bl_layers: int = 0,
 ) -> NativePolyResult:
     """단일 시도 (auto_escalate 없는 원본 흐름)."""
     t0 = time.perf_counter()
@@ -2249,7 +2257,17 @@ def _generate_native_poly_voronoi_inner(
         delta=0,
     )
 
-    if _TTT3_POLY_BL_EXTRUDE_ENABLE and _wall_adj:
+    _requested_bl_layers = max(0, int(bl_layers or 0))
+    _safe_bl_layers = min(2, _requested_bl_layers)
+    if _requested_bl_layers > _safe_bl_layers:
+        log.warning(
+            "poly_bl_layers_reduced",
+            requested=_requested_bl_layers,
+            actual_cap=_safe_bl_layers,
+            reason="native_poly_safe_max",
+        )
+
+    if _TTT3_POLY_BL_EXTRUDE_ENABLE and _wall_adj and _safe_bl_layers > 0:
         bbox_diag = float(np.linalg.norm(V.max(0) - V.min(0)))
         _n_cells_pre = len(final_cells)
         final_vertices, final_cells = _extrude_prism_layer(
@@ -2302,7 +2320,7 @@ def _generate_native_poly_voronoi_inner(
         # Uses _geometric_layer_thickness from core.layers.native_bl (BL2, 1.2× ratio).
         # Layer chain: wall → layer1 (t1) → layer2 (t1*1.2) → outer.
         # Guards applied per-layer; truncate chain at last valid layer (don't reject all).
-        _POL_LAYERS_N: int = 2  # algorithmic cap (not a sweep param).
+        _POL_LAYERS_N: int = _safe_bl_layers
         try:
             from core.layers.native_bl import _geometric_layer_thickness as _glt
             _first_step = bbox_diag * 0.005 * 0.95
