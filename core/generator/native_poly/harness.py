@@ -57,6 +57,25 @@ class PolyHarnessResult:
     max_non_ortho: float = 0.0
     max_skewness: float = 0.0
     message: str = ""
+    target_cells_requested: int | None = None
+    tet_cells_by_iteration: tuple[int, ...] = ()
+    final_poly_cells: int = 0
+    target_cells_absolute_error: int | None = None
+    target_cells_relative_error: float | None = None
+    target_cells_status: str = "not_requested"
+
+
+def _target_observation(
+    target_cells: int | None,
+    final_poly_cells: int,
+) -> tuple[int | None, int | None, float | None, str]:
+    """Return report-only target evidence without admitting or rejecting a mesh."""
+    if target_cells is None or int(target_cells) <= 0:
+        return None, None, None, "not_requested"
+    requested = int(target_cells)
+    absolute_error = abs(int(final_poly_cells) - requested)
+    relative_error = absolute_error / requested
+    return requested, absolute_error, relative_error, "reported_not_gated"
 
 
 def _evaluate_poly_mesh(case_dir: Path) -> tuple[bool, dict]:
@@ -133,6 +152,7 @@ def run_native_poly_harness(
     best_case_bytes: Path | None = None
     best_metrics: dict = {}
     current_seed = int(seed_density)
+    tet_cells_by_iteration: list[int] = []
 
     for it in range(1, int(max_iter) + 1):
         log.info(
@@ -162,6 +182,7 @@ def run_native_poly_harness(
 
             # tet cell 수 cap — dual 변환 비용이 O(V) 이므로 거대 mesh 피함.
             n_tet_cells = int(tet_res.tets.shape[0])
+            tet_cells_by_iteration.append(n_tet_cells)
             if n_tet_cells > max_tet_cells:
                 log.warning(
                     "native_poly_harness_tet_too_large",
@@ -245,6 +266,19 @@ def run_native_poly_harness(
                 # 최종 case_dir 로 이동
                 _install_polymesh_only(tmp_dual, case_dir)
                 shutil.rmtree(tmp_dual, ignore_errors=True)
+                requested, absolute_error, relative_error, target_status = _target_observation(
+                    target_cells,
+                    int(metrics["cells"]),
+                )
+                log.info(
+                    "native_poly_harness_target_observation",
+                    requested_target_cells=requested,
+                    tet_cells_by_iteration=tuple(tet_cells_by_iteration),
+                    final_poly_cells=int(metrics["cells"]),
+                    target_cells_absolute_error=absolute_error,
+                    target_cells_relative_error=relative_error,
+                    target_cells_status=target_status,
+                )
                 return PolyHarnessResult(
                     success=True,
                     elapsed=time.perf_counter() - t0,
@@ -260,6 +294,12 @@ def run_native_poly_harness(
                         f"non_ortho={metrics['max_non_orthogonality']:.1f}°, "
                         f"skew={metrics['max_skewness']:.2f}"
                     ),
+                    target_cells_requested=requested,
+                    tet_cells_by_iteration=tuple(tet_cells_by_iteration),
+                    final_poly_cells=int(metrics["cells"]),
+                    target_cells_absolute_error=absolute_error,
+                    target_cells_relative_error=relative_error,
+                    target_cells_status=target_status,
                 )
             # 실패 → seed density 올려 재시도 (완만하게 — 1.5→1.2)
             current_seed = max(int(current_seed * 1.2), current_seed + 1)
@@ -270,11 +310,25 @@ def run_native_poly_harness(
     if best_case_bytes is not None and best_case_bytes.exists():
         _install_polymesh_only(best_case_bytes, case_dir)
         shutil.rmtree(best_case_bytes, ignore_errors=True)
+    final_poly_cells = int(last_metrics.get("cells", 0))
+    requested, absolute_error, relative_error, target_status = _target_observation(
+        target_cells,
+        final_poly_cells,
+    )
+    log.info(
+        "native_poly_harness_target_observation",
+        requested_target_cells=requested,
+        tet_cells_by_iteration=tuple(tet_cells_by_iteration),
+        final_poly_cells=final_poly_cells,
+        target_cells_absolute_error=absolute_error,
+        target_cells_relative_error=relative_error,
+        target_cells_status=target_status,
+    )
     return PolyHarnessResult(
         success=False,
         elapsed=time.perf_counter() - t0,
         iterations=int(max_iter),
-        n_cells=last_metrics.get("cells", 0),
+        n_cells=final_poly_cells,
         n_points=last_metrics.get("points", 0),
         negative_volumes=last_metrics.get("negative_volumes", 0),
         max_non_ortho=float(last_metrics.get("max_non_orthogonality", 0.0)),
@@ -283,4 +337,10 @@ def run_native_poly_harness(
             f"native_poly_harness FAIL after {max_iter} iter "
             f"(best negative_volumes={last_metrics.get('negative_volumes', -1)})"
         ),
+        target_cells_requested=requested,
+        tet_cells_by_iteration=tuple(tet_cells_by_iteration),
+        final_poly_cells=final_poly_cells,
+        target_cells_absolute_error=absolute_error,
+        target_cells_relative_error=relative_error,
+        target_cells_status=target_status,
     )
