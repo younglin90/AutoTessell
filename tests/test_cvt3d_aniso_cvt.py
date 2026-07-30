@@ -541,15 +541,77 @@ def test_generalized_winding_number_empty() -> None:
 
 
 def test_p4c_fallback_monotone_guard_wired() -> None:
-    """C-QUAL-4 / beta2391 — pytetwild fallback 의 monotone guard 검증."""
+    """C-QUAL-4 — hardened P4C acceptance and logging remain wired."""
+    import ast
     import inspect
+
     from core.generator.native_tet import mesher
-    src = inspect.getsource(mesher)
-    # accept 조건 명시.
-    assert "_accept_fb" in src, "monotone guard accept 변수 누락"
-    assert "_mq_new > _mq_old" in src, "mq 비교 누락"
-    assert "_n_cells_old // 4" in src, "n_cells/4 floor 누락"
-    assert "accepted=_accept_fb" in src, "log accepted 키 누락"
+
+    signature = inspect.signature(mesher._p4c_candidate_meets_acceptance_l0)
+    assert tuple(signature.parameters) == (
+        "source_vertices",
+        "source_faces",
+        "candidate_vertices",
+        "candidate_tets",
+        "old_mean_quality",
+        "candidate_mean_quality",
+        "old_cell_count",
+        "candidate_cell_count",
+    )
+
+    tree = ast.parse(inspect.getsource(mesher))
+    guard_assignments = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_p4c_candidate_meets_acceptance_l0"
+    ]
+    assert len(guard_assignments) == 1
+    assignment = guard_assignments[0]
+    target = assignment.targets[0]
+    assert isinstance(target, ast.Tuple)
+    assert isinstance(target.elts[0], ast.Name)
+    assert target.elts[0].id == "_accept"
+    argument_names = [
+        argument.id if isinstance(argument, ast.Name) else None
+        for argument in assignment.value.args
+    ]
+    assert argument_names == [
+        "V",
+        "F",
+        "_tw_v",
+        "_tw_f",
+    ]
+
+    keywords = {keyword.arg: keyword.value for keyword in assignment.value.keywords}
+    expected_names = {
+        "old_mean_quality": "_mq_old",
+        "candidate_mean_quality": "_mq_new",
+        "old_cell_count": "_n_cells_old",
+        "candidate_cell_count": "_n_cells_new",
+    }
+    for keyword, expected_name in expected_names.items():
+        value = keywords.get(keyword)
+        assert isinstance(value, ast.Name)
+        assert value.id == expected_name
+
+    tier_logs = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "info"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and node.args[0].value == "native_tet_p4d_chain_tier"
+    ]
+    assert len(tier_logs) == 1
+    log_keywords = {keyword.arg: keyword.value for keyword in tier_logs[0].keywords}
+    accepted = log_keywords.get("accepted")
+    assert isinstance(accepted, ast.Name)
+    assert accepted.id == "_accept"
 
 
 def test_native_tet_seed_gwn_env_gated() -> None:
