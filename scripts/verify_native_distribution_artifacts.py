@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Verify first-party native wheel and corresponding-source archive contents."""
+
 from __future__ import annotations
 
 import argparse
@@ -40,9 +41,12 @@ REQUIRED_SOURCE = {
     "auto_tessell_core/CMakeLists.txt",
     "core/utils/_shewchuk/predicates.c",
     "docs/licensing/distribution-dependency-inventory.json",
+    "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json",
     "docs/licensing/first-party-native-wheel-profile.md",
     "docs/licensing/mit-core-transition-policy.md",
     "docs/licensing/native-core-provenance-manifest.json",
+    "scripts/collect_python_wheel_license_evidence.py",
+    "scripts/verify_distribution_dependency_inventory.py",
     *(f"auto_tessell_core/{name}_bind.cpp" for name in EXPECTED_MODULES),
 }
 
@@ -83,9 +87,7 @@ def verify_sdist(path: Path) -> None:
     }
     missing = REQUIRED_SOURCE.difference(names)
     assert not missing, f"sdist missing corresponding source: {sorted(missing)}"
-    forbidden = sorted(
-        item for item in names if item.startswith(FORBIDDEN_SOURCE_PREFIXES)
-    )
+    forbidden = sorted(item for item in names if item.startswith(FORBIDDEN_SOURCE_PREFIXES))
     assert not forbidden, f"sdist contains excluded adapter source: {forbidden[:8]}"
     assert not names.intersection(FORBIDDEN_BINDINGS)
     assert not any(item.endswith((".so", ".pyd", ".pyc")) for item in names)

@@ -3,8 +3,38 @@
   "profiles": [
     {
       "id": "python-wheel-core",
-      "source": "pyproject.toml:[project].dependencies",
+      "source": "pyproject.toml:[build-system].requires and [project].dependencies",
       "dependencies": [
+        {
+          "id": "pypi:scikit-build-core",
+          "kind": "python_build_direct",
+          "requirement": "scikit-build-core>=1.0,<2",
+          "declared_at": "pyproject.toml:[build-system].requires",
+          "distribution_condition": "isolated PEP 517 build",
+          "license_assertion": {
+            "status": "VERIFIED_PEP639_ARTIFACT",
+            "spdx_expression": "Apache-2.0",
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
+          },
+          "core_boundary": "build_dependency_not_distributed"
+        },
+        {
+          "id": "pypi:pybind11",
+          "kind": "python_build_direct",
+          "requirement": "pybind11>=3.0.4,<4",
+          "declared_at": "pyproject.toml:[build-system].requires",
+          "distribution_condition": "isolated PEP 517 build",
+          "license_assertion": {
+            "status": "VERIFIED_PEP639_ARTIFACT",
+            "spdx_expression": "BSD-3-Clause",
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
+          },
+          "core_boundary": "build_dependency_not_distributed"
+        },
         {
           "id": "pypi:click",
           "kind": "python_direct",
@@ -12,9 +42,11 @@
           "declared_at": "pyproject.toml:[project].dependencies",
           "distribution_condition": "always",
           "license_assertion": {
-            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
-            "spdx_expression": null,
-            "local_evidence": []
+            "status": "VERIFIED_PEP639_ARTIFACT",
+            "spdx_expression": "BSD-3-Clause",
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
           },
           "core_boundary": "not_core_implementation"
         },
@@ -25,9 +57,11 @@
           "declared_at": "pyproject.toml:[project].dependencies",
           "distribution_condition": "always",
           "license_assertion": {
-            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "status": "VERIFIED_LEGACY_ARTIFACT_METADATA",
             "spdx_expression": null,
-            "local_evidence": []
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
           },
           "core_boundary": "not_core_implementation"
         },
@@ -38,9 +72,11 @@
           "declared_at": "pyproject.toml:[project].dependencies",
           "distribution_condition": "always",
           "license_assertion": {
-            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
-            "spdx_expression": null,
-            "local_evidence": []
+            "status": "VERIFIED_PEP639_ARTIFACT",
+            "spdx_expression": "MIT",
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
           },
           "core_boundary": "not_core_implementation"
         },
@@ -51,9 +87,11 @@
           "declared_at": "pyproject.toml:[project].dependencies",
           "distribution_condition": "always",
           "license_assertion": {
-            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
-            "spdx_expression": null,
-            "local_evidence": []
+            "status": "VERIFIED_PEP639_ARTIFACT",
+            "spdx_expression": "MIT OR Apache-2.0",
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
           },
           "core_boundary": "not_core_implementation"
         },
@@ -64,9 +102,11 @@
           "declared_at": "pyproject.toml:[project].dependencies",
           "distribution_condition": "always",
           "license_assertion": {
-            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
-            "spdx_expression": null,
-            "local_evidence": []
+            "status": "VERIFIED_PEP639_ARTIFACT",
+            "spdx_expression": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
           },
           "core_boundary": "not_core_implementation"
         },
@@ -77,9 +117,11 @@
           "declared_at": "pyproject.toml:[project].dependencies",
           "distribution_condition": "always",
           "license_assertion": {
-            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "status": "VERIFIED_LEGACY_ARTIFACT_METADATA",
             "spdx_expression": null,
-            "local_evidence": []
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
           },
           "core_boundary": "not_core_implementation"
         },
@@ -90,9 +132,11 @@
           "declared_at": "pyproject.toml:[project].dependencies",
           "distribution_condition": "always",
           "license_assertion": {
-            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "status": "VERIFIED_LEGACY_ARTIFACT_METADATA",
             "spdx_expression": null,
-            "local_evidence": []
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
           },
           "core_boundary": "not_core_implementation"
         },
@@ -103,9 +147,11 @@
           "declared_at": "pyproject.toml:[project].dependencies",
           "distribution_condition": "always",
           "license_assertion": {
-            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
+            "status": "VERIFIED_LEGACY_ARTIFACT_METADATA",
             "spdx_expression": null,
-            "local_evidence": []
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
           },
           "core_boundary": "not_core_implementation"
         },
@@ -116,9 +162,11 @@
           "declared_at": "pyproject.toml:[project].dependencies",
           "distribution_condition": "always",
           "license_assertion": {
-            "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
-            "spdx_expression": null,
-            "local_evidence": []
+            "status": "VERIFIED_PEP639_ARTIFACT",
+            "spdx_expression": "MIT",
+            "local_evidence": [
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
+            ]
           },
           "core_boundary": "not_core_implementation"
         }
@@ -131,8 +179,8 @@
         {
           "id": "cmake:pybind11",
           "kind": "cmake_direct",
-          "declaration": "find_package(pybind11 CONFIG REQUIRED)",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:28",
+          "declaration": "find_package(pybind11 3.0 CONFIG REQUIRED)",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:51",
           "distribution_condition": "always",
           "license_assertion": {
             "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
@@ -145,8 +193,8 @@
           "id": "cmake:Eigen3",
           "kind": "cmake_direct",
           "declaration": "find_package(Eigen3 3.3 REQUIRED NO_MODULE)",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:31",
-          "distribution_condition": "always",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:55",
+          "distribution_condition": "BUILD_CINOLIB_HEX or BUILD_ROBUSTHEX or BUILD_FTETWILD",
           "license_assertion": {
             "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
             "spdx_expression": null,
@@ -158,8 +206,8 @@
           "id": "source:cinolib",
           "kind": "cmake_direct",
           "declaration": "target_include_directories(cinolib_hex PRIVATE \"${CINOLIB_DIR}/include\")",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:58",
-          "distribution_condition": "always",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:107",
+          "distribution_condition": "BUILD_CINOLIB_HEX",
           "license_assertion": {
             "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
             "spdx_expression": null,
@@ -171,7 +219,7 @@
           "id": "source:robusthex",
           "kind": "cmake_direct",
           "declaration": "if(BUILD_ROBUSTHEX AND EXISTS \"${ROBUSTHEX_DIR}/src/meshio.cpp\")",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:120",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:184",
           "distribution_condition": "BUILD_ROBUSTHEX and ROBUSTHEX_DIR source present",
           "license_assertion": {
             "status": "UNVERIFIED_NO_LOCAL_ARTIFACT",
@@ -184,7 +232,7 @@
           "id": "source:fTetWild",
           "kind": "cmake_direct",
           "declaration": "if(BUILD_FTETWILD AND EXISTS \"${FTETWILD_SRC_DIR}/CMakeLists.txt\")",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:205",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:269",
           "distribution_condition": "BUILD_FTETWILD and FTETWILD_SRC_DIR present",
           "license_assertion": {
             "status": "LOCAL_EVIDENCE_RECORDED_NOT_RESOLVED",
@@ -199,7 +247,7 @@
           "id": "source:cfMesh",
           "kind": "cmake_direct",
           "declaration": "if(BUILD_CFMESH AND EXISTS \"${CFMESH_SRC_DIR}/CMakeLists.txt\")",
-          "declared_at": "auto_tessell_core/CMakeLists.txt:226",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:290",
           "distribution_condition": "BUILD_CFMESH and CFMESH_SRC_DIR present",
           "license_assertion": {
             "status": "LOCAL_EVIDENCE_RECORDED_NOT_RESOLVED",
@@ -209,6 +257,21 @@
             ]
           },
           "core_boundary": "external_adapter_excluded"
+        },
+        {
+          "id": "cmake:Boost.headers",
+          "kind": "cmake_direct",
+          "declaration": "find_package(Boost REQUIRED)",
+          "declared_at": "auto_tessell_core/CMakeLists.txt:155",
+          "distribution_condition": "BUILD_NATIVE_TET_PREDICATES",
+          "license_assertion": {
+            "status": "UPSTREAM_LICENSE_DECLARED_NOT_YET_RELEASE_AUDITED",
+            "spdx_expression": "BSL-1.0",
+            "local_evidence": [
+              "docs/licensing/native-core-provenance-manifest.json"
+            ]
+          },
+          "core_boundary": "build_dependency_not_distributed"
         }
       ]
     },
@@ -234,10 +297,11 @@
           "requirement": "pybind11>=3.0.4,<4",
           "distribution_condition": "isolated PEP 517 build",
           "license_assertion": {
-            "status": "UPSTREAM_LICENSE_DECLARED",
+            "status": "VERIFIED_PEP639_ARTIFACT",
             "spdx_expression": "BSD-3-Clause",
+            "artifact_evidence_id": "pypi:pybind11",
             "local_evidence": [
-              "docs/licensing/native-core-provenance-manifest.json"
+              "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json"
             ]
           },
           "core_boundary": "not_core_implementation"

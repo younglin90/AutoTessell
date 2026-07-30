@@ -123,9 +123,12 @@ sdist.include = [
     "auto_tessell_core/native_*_bind.cpp",
     "core/utils/_shewchuk/predicates.c",
     "docs/licensing/distribution-dependency-inventory.json",
+    "docs/licensing/evidence/python-wheel-core-cp312-manylinux-x86_64.json",
     "docs/licensing/first-party-native-wheel-profile.md",
     "docs/licensing/mit-core-transition-policy.md",
     "docs/licensing/native-core-provenance-manifest.json",
+    "scripts/collect_python_wheel_license_evidence.py",
+    "scripts/verify_distribution_dependency_inventory.py",
 ]
 sdist.exclude = [
     ".autoresearch/**",

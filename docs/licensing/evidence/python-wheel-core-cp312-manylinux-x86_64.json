@@ -1,0 +1,466 @@
+{
+  "schema_version": 1,
+  "profile": "python-wheel-core",
+  "target": {
+    "python_implementation": "CPython",
+    "python_version": "3.12",
+    "abi": "cp312",
+    "platform": "manylinux_x86_64",
+    "index": "https://pypi.org/simple",
+    "resolved_on": "2026-07-31"
+  },
+  "packages": [
+    {
+      "id": "pypi:scikit-build-core",
+      "role": "build_system_direct",
+      "requirement": "scikit-build-core>=1.0,<2",
+      "name": "scikit-build-core",
+      "version": "1.0.3",
+      "pypi_json_url": "https://pypi.org/pypi/scikit-build-core/1.0.3/json",
+      "artifact": {
+        "filename": "scikit_build_core-1.0.3-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/b7/b0/7ad8fa9aebb0835b2e20afebf1483cbe175d1612fe01e85042ce9ced8755/scikit_build_core-1.0.3-py3-none-any.whl",
+        "sha256": "ae95427b7d3c14a6cf8bbfd4d901f6138ab64c99e20cbe8ea7d75cd26093f085"
+      },
+      "metadata": {
+        "path": "scikit_build_core-1.0.3.dist-info/METADATA",
+        "sha256": "bfd7fef484ff85c723956d256c4f906695879428b4069707e7e101aa5c460fe0",
+        "metadata_version": "2.4",
+        "name": "scikit_build_core",
+        "version": "1.0.3",
+        "requires_python": ">=3.8",
+        "license_expression": "Apache-2.0",
+        "license_field_sha256": null,
+        "license_field_length": 0,
+        "license_classifiers": [],
+        "license_files": [
+          {
+            "declared_path": "LICENSE",
+            "archive_path": "scikit_build_core-1.0.3.dist-info/licenses/LICENSE",
+            "sha256": "203fb4d261f202242333928424e101de19abf5bf166620124418fb6dd6b279b5"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:pybind11",
+      "role": "build_system_direct",
+      "requirement": "pybind11>=3.0.4,<4",
+      "name": "pybind11",
+      "version": "3.0.4",
+      "pypi_json_url": "https://pypi.org/pypi/pybind11/3.0.4/json",
+      "artifact": {
+        "filename": "pybind11-3.0.4-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/b3/06/c3a23c9a0263b136c519f033a58d4641e73065fefc7754e9667ec206d992/pybind11-3.0.4-py3-none-any.whl",
+        "sha256": "961720ee652da51d531b7b2451a6bd2bc042b0106e6d9baa48ecb7d58034ce63"
+      },
+      "metadata": {
+        "path": "pybind11-3.0.4.dist-info/METADATA",
+        "sha256": "47a56e2b1dc5306b78e88091ebb754651147e552b7017499b7ae8f14a3699a28",
+        "metadata_version": "2.4",
+        "name": "pybind11",
+        "version": "3.0.4",
+        "requires_python": ">=3.8",
+        "license_expression": "BSD-3-Clause",
+        "license_field_sha256": null,
+        "license_field_length": 0,
+        "license_classifiers": [],
+        "license_files": [
+          {
+            "declared_path": "LICENSE",
+            "archive_path": "pybind11-3.0.4.dist-info/licenses/LICENSE",
+            "sha256": "83965b843b98f670d3a85bd041ed4b372c8ec50d7b4a5995a83ac697ba675dcb"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:click",
+      "role": "runtime_direct",
+      "requirement": "click>=8.1",
+      "name": "click",
+      "version": "8.4.2",
+      "pypi_json_url": "https://pypi.org/pypi/click/8.4.2/json",
+      "artifact": {
+        "filename": "click-8.4.2-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/fb/e2/79c688af8b210d232694e31e59da9f6ec747bae31c3f5946e4e9b98860d5/click-8.4.2-py3-none-any.whl",
+        "sha256": "e6f9f66136c816745b9d65817da91d61d957fb16e02e4dcd0552553c5a197b76"
+      },
+      "metadata": {
+        "path": "click-8.4.2.dist-info/METADATA",
+        "sha256": "194c9dd81d567f9081f026c7e401060fbafa7bc147c8e0a58b3668b40a64c031",
+        "metadata_version": "2.4",
+        "name": "click",
+        "version": "8.4.2",
+        "requires_python": ">=3.10",
+        "license_expression": "BSD-3-Clause",
+        "license_field_sha256": null,
+        "license_field_length": 0,
+        "license_classifiers": [],
+        "license_files": [
+          {
+            "declared_path": "LICENSE.txt",
+            "archive_path": "click-8.4.2.dist-info/licenses/LICENSE.txt",
+            "sha256": "9a8ad106a394e853bfe21f42f4e72d592819a22805d991b5f3275029292b658d"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:rich",
+      "role": "runtime_direct",
+      "requirement": "rich>=13.0",
+      "name": "rich",
+      "version": "15.0.0",
+      "pypi_json_url": "https://pypi.org/pypi/rich/15.0.0/json",
+      "artifact": {
+        "filename": "rich-15.0.0-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl",
+        "sha256": "33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb"
+      },
+      "metadata": {
+        "path": "rich-15.0.0.dist-info/METADATA",
+        "sha256": "fad34fc603fac4481bf81f8dd629492fc302c0ec31909c86644751512afb2e3b",
+        "metadata_version": "2.4",
+        "name": "rich",
+        "version": "15.0.0",
+        "requires_python": ">=3.9.0",
+        "license_expression": null,
+        "license_field_sha256": "e5dcffe836b6ec8a58e492419b550e65fb8cbdc308503979e5dacb33ac7ea3b7",
+        "license_field_length": 3,
+        "license_classifiers": [
+          "License :: OSI Approved :: MIT License"
+        ],
+        "license_files": [
+          {
+            "declared_path": "LICENSE",
+            "archive_path": "rich-15.0.0.dist-info/licenses/LICENSE",
+            "sha256": "deed7c17a4318158190a3ea239cc879a5a50271cebb98ae7025f48fbe58dca15"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:pydantic",
+      "role": "runtime_direct",
+      "requirement": "pydantic>=2.0",
+      "name": "pydantic",
+      "version": "2.13.4",
+      "pypi_json_url": "https://pypi.org/pypi/pydantic/2.13.4/json",
+      "artifact": {
+        "filename": "pydantic-2.13.4-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/fd/7b/122376b1fd3c62c1ed9dc80c931ace4844b3c55407b6fb2d199377c9736f/pydantic-2.13.4-py3-none-any.whl",
+        "sha256": "45a282cde31d808236fd7ea9d919b128653c8b38b393d1c4ab335c62924d9aba"
+      },
+      "metadata": {
+        "path": "pydantic-2.13.4.dist-info/METADATA",
+        "sha256": "d1e56c3412492512fb6b59a9dfc25ab7af2a8204585cd7bca000513023133394",
+        "metadata_version": "2.4",
+        "name": "pydantic",
+        "version": "2.13.4",
+        "requires_python": ">=3.9",
+        "license_expression": "MIT",
+        "license_field_sha256": null,
+        "license_field_length": 0,
+        "license_classifiers": [],
+        "license_files": [
+          {
+            "declared_path": "LICENSE",
+            "archive_path": "pydantic-2.13.4.dist-info/licenses/LICENSE",
+            "sha256": "a9e186f3ca16b5eef84318e7a701721351a00cb7b8ae3a4394b67b49e3529ef3"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:structlog",
+      "role": "runtime_direct",
+      "requirement": "structlog>=24.0",
+      "name": "structlog",
+      "version": "26.1.0",
+      "pypi_json_url": "https://pypi.org/pypi/structlog/26.1.0/json",
+      "artifact": {
+        "filename": "structlog-26.1.0-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/a9/18/489c97b834dfff9cf2fc2507cede4bcd4b11e67f84bc462acd1992496f86/structlog-26.1.0-py3-none-any.whl",
+        "sha256": "e081a26d6c373e6d201eca24eede26d8ffab07f88f477822e679183428d3d91e"
+      },
+      "metadata": {
+        "path": "structlog-26.1.0.dist-info/METADATA",
+        "sha256": "f5b6dd69ad5cf7e947b7cad6448bdbe0e0c94c4cdd2ffcb90df1d247bf6b0666",
+        "metadata_version": "2.4",
+        "name": "structlog",
+        "version": "26.1.0",
+        "requires_python": ">=3.10",
+        "license_expression": "MIT OR Apache-2.0",
+        "license_field_sha256": null,
+        "license_field_length": 0,
+        "license_classifiers": [
+          "License :: OSI Approved :: Apache Software License",
+          "License :: OSI Approved :: MIT License"
+        ],
+        "license_files": [
+          {
+            "declared_path": "LICENSE-APACHE",
+            "archive_path": "structlog-26.1.0.dist-info/licenses/LICENSE-APACHE",
+            "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+          },
+          {
+            "declared_path": "LICENSE-MIT",
+            "archive_path": "structlog-26.1.0.dist-info/licenses/LICENSE-MIT",
+            "sha256": "2bc12bb94eec2ccea211daebb763235bec3169276197a7be1f858963db31c5dd"
+          },
+          {
+            "declared_path": "NOTICE",
+            "archive_path": "structlog-26.1.0.dist-info/licenses/NOTICE",
+            "sha256": "274a71ae064275a87378f2a93ad2cf351b2929f016e280a33fc3c836a3f0f84c"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:numpy",
+      "role": "runtime_direct",
+      "requirement": "numpy>=2.0",
+      "name": "numpy",
+      "version": "2.5.1",
+      "pypi_json_url": "https://pypi.org/pypi/numpy/2.5.1/json",
+      "artifact": {
+        "filename": "numpy-2.5.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+        "url": "https://files.pythonhosted.org/packages/b8/a9/6e73d68500f80773f65f0654ea932019d6694329a0eb0ed0533de38df376/numpy-2.5.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+        "sha256": "59fda5e192b570217ec2580c96f00e9a7e12ef6866a900eb089b62c1a32545ca"
+      },
+      "metadata": {
+        "path": "numpy-2.5.1.dist-info/METADATA",
+        "sha256": "6ae45122ee97050e48849438320430d05f01814f72e66e69cbeed027d2c6a1e8",
+        "metadata_version": "2.4",
+        "name": "numpy",
+        "version": "2.5.1",
+        "requires_python": ">=3.12",
+        "license_expression": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+        "license_field_sha256": null,
+        "license_field_length": 0,
+        "license_classifiers": [],
+        "license_files": [
+          {
+            "declared_path": "LICENSE.txt",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/LICENSE.txt",
+            "sha256": "4860083caa0de2ac3292ca98bd074bd8f45d8b32624e37b1e70a240bff61e488"
+          },
+          {
+            "declared_path": "numpy/_core/include/numpy/libdivide/LICENSE.txt",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/_core/include/numpy/libdivide/LICENSE.txt",
+            "sha256": "fbc539f47d0cf83bc61378080fb873d5c14630126cacbfe754035c3926daa5ec"
+          },
+          {
+            "declared_path": "numpy/_core/src/common/pythoncapi-compat/COPYING",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/_core/src/common/pythoncapi-compat/COPYING",
+            "sha256": "3f2c1ffa76383a55ae0aac01c9737cd70050dff63e1f026694fbe9d662573c98"
+          },
+          {
+            "declared_path": "numpy/_core/src/highway/LICENSE",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/_core/src/highway/LICENSE",
+            "sha256": "e340270d4f64384569a91d546acb5b094d69ce47f0c015db77abb74dc6f815af"
+          },
+          {
+            "declared_path": "numpy/_core/src/multiarray/dragon4_LICENSE.txt",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/_core/src/multiarray/dragon4_LICENSE.txt",
+            "sha256": "f7b14309e5f54e5022b26448eefd419988ada2aec01d3c1162d84a0ea8f21f2c"
+          },
+          {
+            "declared_path": "numpy/_core/src/npysort/x86-simd-sort/LICENSE.md",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/_core/src/npysort/x86-simd-sort/LICENSE.md",
+            "sha256": "211e7d737d6179a08f791ebb0a99897ce7cd2457410c542876d125576edfe910"
+          },
+          {
+            "declared_path": "numpy/_core/src/umath/svml/LICENSE",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/_core/src/umath/svml/LICENSE",
+            "sha256": "c17011467b4fe6e20fbfbeda4df09e58c2bca5480a063e55735a4000a379aad9"
+          },
+          {
+            "declared_path": "numpy/fft/pocketfft/LICENSE.md",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/fft/pocketfft/LICENSE.md",
+            "sha256": "a85ca13fdf90160b64a0698215868c13b74d835ad0a4e2ba44713b8c5058a056"
+          },
+          {
+            "declared_path": "numpy/linalg/lapack_lite/LICENSE.txt",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/linalg/lapack_lite/LICENSE.txt",
+            "sha256": "a14cc25e10d40a3aa705b7de2fb764a6535d8ee9b2db4e1724900585457dfd55"
+          },
+          {
+            "declared_path": "numpy/ma/LICENSE",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/ma/LICENSE",
+            "sha256": "05f3b88351988ecfad10abe92c0c50e5875c6452d5009a0084cc291551ffcca6"
+          },
+          {
+            "declared_path": "numpy/random/LICENSE.md",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/random/LICENSE.md",
+            "sha256": "103166b62b80443afb9eb3488e052ea06be0cff566b908f199e561fde49af19f"
+          },
+          {
+            "declared_path": "numpy/random/src/distributions/LICENSE.md",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/random/src/distributions/LICENSE.md",
+            "sha256": "469778be8f33d54e1bcaab28c281cc472916d2d273f835e55bc487d30503face"
+          },
+          {
+            "declared_path": "numpy/random/src/mt19937/LICENSE.md",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/random/src/mt19937/LICENSE.md",
+            "sha256": "0e111337b25494a773106695f0e799f642b8567aaacca4f116a74a8177179156"
+          },
+          {
+            "declared_path": "numpy/random/src/pcg64/LICENSE.md",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/random/src/pcg64/LICENSE.md",
+            "sha256": "e7d4f4fb20358f314210a892ae17351e04993813646f697ec387385ca2a36918"
+          },
+          {
+            "declared_path": "numpy/random/src/philox/LICENSE.md",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/random/src/philox/LICENSE.md",
+            "sha256": "6f5828a57223d4cc7f8ea505a2623e7b978b242752c1515e355f46ba2cec1800"
+          },
+          {
+            "declared_path": "numpy/random/src/sfc64/LICENSE.md",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/random/src/sfc64/LICENSE.md",
+            "sha256": "9d4098846018319cd68e228ee6220361787f73bccbf00237a85e4fc9621b998f"
+          },
+          {
+            "declared_path": "numpy/random/src/splitmix64/LICENSE.md",
+            "archive_path": "numpy-2.5.1.dist-info/licenses/numpy/random/src/splitmix64/LICENSE.md",
+            "sha256": "268b0ca06759d31ea3ca68dd35f20e877916e927b1c2a835e4592a3c4354b1f9"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:scipy",
+      "role": "runtime_direct",
+      "requirement": "scipy>=1.13",
+      "name": "scipy",
+      "version": "1.18.0",
+      "pypi_json_url": "https://pypi.org/pypi/scipy/1.18.0/json",
+      "artifact": {
+        "filename": "scipy-1.18.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+        "url": "https://files.pythonhosted.org/packages/dd/aa/1b939f6c67ed68635bb538e6752d3dacc02f66535182e939a89581a44e9c/scipy-1.18.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl",
+        "sha256": "1f55797419e16e7f30cf88ffb3113ce0467f00cfe3f70d5c281730b21769bfc2"
+      },
+      "metadata": {
+        "path": "scipy-1.18.0.dist-info/METADATA",
+        "sha256": "157bd150af3af33b40ec61489be8153752b269fb10c4b45b8cea5104f3235420",
+        "metadata_version": "2.1",
+        "name": "scipy",
+        "version": "1.18.0",
+        "requires_python": ">=3.12",
+        "license_expression": null,
+        "license_field_sha256": "47943a8f720e867d82c4b3288bff6d7884ed83fe0a6ddb6f356f587f5a1cf39f",
+        "license_field_length": 54341,
+        "license_classifiers": [
+          "License :: OSI Approved :: BSD License"
+        ],
+        "license_files": []
+      }
+    },
+    {
+      "id": "pypi:trimesh",
+      "role": "runtime_direct",
+      "requirement": "trimesh>=4.5",
+      "name": "trimesh",
+      "version": "4.12.2",
+      "pypi_json_url": "https://pypi.org/pypi/trimesh/4.12.2/json",
+      "artifact": {
+        "filename": "trimesh-4.12.2-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/05/98/716a473cfb24750858ddd5d14e6527539dd206583a46408d08eeb2844a75/trimesh-4.12.2-py3-none-any.whl",
+        "sha256": "b5b5afa63c5272345f2858f7676bc8c217dc8a89f4fadf6193fe10a81b5ff2aa"
+      },
+      "metadata": {
+        "path": "trimesh-4.12.2.dist-info/METADATA",
+        "sha256": "d6dad20c824b92011da26dc13773cb6d7dbf0d53a55b7995c6e4f821dcf4ddfc",
+        "metadata_version": "2.4",
+        "name": "trimesh",
+        "version": "4.12.2",
+        "requires_python": ">=3.8",
+        "license_expression": null,
+        "license_field_sha256": "4fe7af17882703861b56707ad7ecc1b53263a1a2e33749bc1c545e6acfbfa3a0",
+        "license_field_length": 1237,
+        "license_classifiers": [
+          "License :: OSI Approved :: MIT License"
+        ],
+        "license_files": [
+          {
+            "declared_path": "LICENSE.md",
+            "archive_path": "trimesh-4.12.2.dist-info/licenses/LICENSE.md",
+            "sha256": "fe27b5ef8710676cc85255da28a32f394e2ef3f4ce47075a1c732a9ea1d7bd03"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:meshio",
+      "role": "runtime_direct",
+      "requirement": "meshio>=5.3",
+      "name": "meshio",
+      "version": "5.3.5",
+      "pypi_json_url": "https://pypi.org/pypi/meshio/5.3.5/json",
+      "artifact": {
+        "filename": "meshio-5.3.5-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/89/5f/39cbadc320cd78f4834b0a9f7a2fa3c980dca942bf193f315837eacb8870/meshio-5.3.5-py3-none-any.whl",
+        "sha256": "0736c6e34ecc768f62f2cde5d8233a3529512a9399b25c68ea2ca0d5900cdc10"
+      },
+      "metadata": {
+        "path": "meshio-5.3.5.dist-info/METADATA",
+        "sha256": "36888c15bc5644c5ff0863f045d26840e1f3b28bc2cc3962ba29bcfa7d49b57c",
+        "metadata_version": "2.1",
+        "name": "meshio",
+        "version": "5.3.5",
+        "requires_python": ">=3.8",
+        "license_expression": null,
+        "license_field_sha256": "5f9dcf4e6b6c62f034a3ebe6e8f1abd564fafbe706eb56885593f45b2bf1cab3",
+        "license_field_length": 1239,
+        "license_classifiers": [
+          "License :: OSI Approved :: MIT License"
+        ],
+        "license_files": [
+          {
+            "declared_path": "LICENSE.txt",
+            "archive_path": "meshio-5.3.5.dist-info/LICENSE.txt",
+            "sha256": "3152e464fdd307cac91bf9668c66f86cb8e02cd40d5b48a8da1a241ae1264e79"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pypi:pyvista",
+      "role": "runtime_direct",
+      "requirement": "pyvista>=0.44",
+      "name": "pyvista",
+      "version": "0.48.4",
+      "pypi_json_url": "https://pypi.org/pypi/pyvista/0.48.4/json",
+      "artifact": {
+        "filename": "pyvista-0.48.4-py3-none-any.whl",
+        "url": "https://files.pythonhosted.org/packages/4d/91/696d869e4df2e25a5b201a69ce69a2204d37fad3e90c2b731f7b3f1d7c68/pyvista-0.48.4-py3-none-any.whl",
+        "sha256": "a46eda178e10e279afda550c341676a82dcee607c86db74565fa455ac0bd23e2"
+      },
+      "metadata": {
+        "path": "pyvista-0.48.4.dist-info/METADATA",
+        "sha256": "598d0b7940d5a5c10228ad130023b98f2ac5df86cbd8a68b592f3dfe9d2bc02d",
+        "metadata_version": "2.4",
+        "name": "pyvista",
+        "version": "0.48.4",
+        "requires_python": ">=3.10",
+        "license_expression": "MIT",
+        "license_field_sha256": null,
+        "license_field_length": 0,
+        "license_classifiers": [],
+        "license_files": [
+          {
+            "declared_path": "LICENSE",
+            "archive_path": "pyvista-0.48.4.dist-info/licenses/LICENSE",
+            "sha256": "ef781b94ef972e69777b03022520150b77ae9bd1c6e0225c452a14e82251e9e5"
+          },
+          {
+            "declared_path": "AUTHORS.rst",
+            "archive_path": "pyvista-0.48.4.dist-info/licenses/AUTHORS.rst",
+            "sha256": "ff3c7978fde6dc07a43216b72da8dafe0592e748804abe2d73117be6e4a023d6"
+          }
+        ]
+      }
+    }
+  ]
+}
