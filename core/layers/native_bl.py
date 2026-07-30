@@ -6725,28 +6725,26 @@ def generate_native_bl(
     # SMESH-style layer-edge front topology. Default is diagnostic-only; strict
     # mode can conservatively drop faces touching non-manifold layer-front edges.
     try:
-        from core.layers.layer_front import build_layer_front
+        from core.layers.layer_front import build_layer_front_summary
 
         _front_strict = os.environ.get("AUTO_TESSELL_BL_FRONT_STRICT", "0") == "1"
-        _front = build_layer_front(
+        _front = build_layer_front_summary(
             faces,
             wall_face_indices,
-            strict_manifold=False,
             points=points,
         )
-        nonmanifold_edges = [edge for edge in _front.edges if edge.is_nonmanifold]
-        if nonmanifold_edges:
-            edge = nonmanifold_edges[0]
+        if _front.first_nonmanifold_edge is not None:
             message = (
                 "non-manifold selected wall topology: "
-                f"edge {edge.vertices} has {len(edge.faces)} incident wall faces "
-                f"{list(edge.faces)}"
+                f"edge {_front.first_nonmanifold_edge} has "
+                f"{len(_front.first_nonmanifold_faces)} incident wall faces "
+                f"{list(_front.first_nonmanifold_faces)}"
             )
             log.warning(
                 "native_bl_nonmanifold_wall_rejected",
-                edge=edge.vertices,
-                incident_faces=edge.faces,
-                n_nonmanifold_edges=len(nonmanifold_edges),
+                edge=_front.first_nonmanifold_edge,
+                incident_faces=_front.first_nonmanifold_faces,
+                n_nonmanifold_edges=_front.n_nonmanifold_edges,
             )
             return NativeBLResult(
                 success=False,
@@ -6757,10 +6755,10 @@ def generate_native_bl(
             "native_bl_layer_front",
             component="native_bl",
             phase="SMESH_FRONT1",
-            n_faces=len(_front.active_faces),
-            n_ignored=len(_front.ignored_faces),
-            n_vertices=len(_front.vertices),
-            n_edges=len(_front.edges),
+            n_faces=_front.n_faces,
+            n_ignored=_front.n_ignored,
+            n_vertices=_front.n_vertices,
+            n_edges=_front.n_edges,
             n_boundary_edges=_front.n_boundary_edges,
             n_nonmanifold_edges=_front.n_nonmanifold_edges,
             n_feature_vertices=_front.n_feature_vertices,

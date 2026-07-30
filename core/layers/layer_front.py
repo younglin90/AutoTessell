@@ -11,6 +11,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from core.utils.native_extensions import load_native_bl
+
 
 @dataclass(frozen=True)
 class LayerEdge:
@@ -56,6 +58,22 @@ class LayerFront:
     layer_vertices: tuple[LayerVertex, ...] = ()
     n_feature_vertices: int = 0
     n_blocked_vertices: int = 0
+
+
+@dataclass(frozen=True)
+class LayerFrontSummary:
+    """Compact production view without Python edge/vertex object graphs."""
+
+    n_faces: int
+    n_ignored: int
+    n_vertices: int
+    n_edges: int
+    n_boundary_edges: int
+    n_nonmanifold_edges: int
+    n_feature_vertices: int
+    n_blocked_vertices: int
+    first_nonmanifold_edge: tuple[int, int] | None = None
+    first_nonmanifold_faces: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -330,4 +348,85 @@ def build_layer_front(
         layer_vertices=tuple(layer_vertices),
         n_feature_vertices=int(n_feature_vertices),
         n_blocked_vertices=int(n_blocked_vertices),
+    )
+
+
+def build_layer_front_summary(
+    faces: list[list[int]],
+    candidate_faces: list[int],
+    *,
+    points: np.ndarray | None,
+    feature_cos_thresh: float = 0.9,
+) -> LayerFrontSummary:
+    """Return only the production diagnostics, using C++23 for triangles."""
+    active_seed = [
+        int(face_id)
+        for face_id in candidate_faces
+        if 0 <= face_id < len(faces) and len(faces[face_id]) >= 3
+    ]
+    native = load_native_bl()
+    if (
+        points is not None
+        and native is not None
+        and hasattr(native, "layer_front_summary")
+        and all(len(faces[face_id]) == 3 for face_id in active_seed)
+    ):
+        face_ids = np.asarray(active_seed, dtype=np.int64)
+        if active_seed:
+            triangles = np.asarray(
+                [faces[face_id] for face_id in active_seed],
+                dtype=np.int64,
+            )
+        else:
+            triangles = np.empty((0, 3), dtype=np.int64)
+        payload = native.layer_front_summary(
+            face_ids,
+            triangles,
+            np.asarray(points, dtype=np.float64),
+            float(feature_cos_thresh),
+        )
+        edge = payload["first_nonmanifold_edge"]
+        return LayerFrontSummary(
+            n_faces=int(payload["n_faces"]),
+            n_ignored=int(payload["n_ignored"]),
+            n_vertices=int(payload["n_vertices"]),
+            n_edges=int(payload["n_edges"]),
+            n_boundary_edges=int(payload["n_boundary_edges"]),
+            n_nonmanifold_edges=int(payload["n_nonmanifold_edges"]),
+            n_feature_vertices=int(payload["n_feature_vertices"]),
+            n_blocked_vertices=int(payload["n_blocked_vertices"]),
+            first_nonmanifold_edge=(
+                None if edge is None else (int(edge[0]), int(edge[1]))
+            ),
+            first_nonmanifold_faces=tuple(
+                int(face_id) for face_id in payload["first_nonmanifold_faces"]
+            ),
+        )
+
+    front = build_layer_front(
+        faces,
+        active_seed,
+        strict_manifold=False,
+        points=points,
+        feature_cos_thresh=feature_cos_thresh,
+    )
+    first_nonmanifold = next(
+        (edge for edge in front.edges if edge.is_nonmanifold),
+        None,
+    )
+    return LayerFrontSummary(
+        n_faces=len(front.active_faces),
+        n_ignored=len(front.ignored_faces),
+        n_vertices=len(front.vertices),
+        n_edges=len(front.edges),
+        n_boundary_edges=front.n_boundary_edges,
+        n_nonmanifold_edges=front.n_nonmanifold_edges,
+        n_feature_vertices=front.n_feature_vertices,
+        n_blocked_vertices=front.n_blocked_vertices,
+        first_nonmanifold_edge=(
+            None if first_nonmanifold is None else first_nonmanifold.vertices
+        ),
+        first_nonmanifold_faces=(
+            () if first_nonmanifold is None else first_nonmanifold.faces
+        ),
     )

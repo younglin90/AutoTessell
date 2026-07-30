@@ -621,6 +621,47 @@ report `40 passed, 3 skipped`; the wider native BL regression reports `172
 passed`.  No topology, wall coordinate, quality threshold, dependency, external
 source, or `third_party/` file changed.
 
+## Boundary-layer compact front-summary card
+
+The production BL route built the full Python `LayerFront`: dictionaries of
+edge owners, face-edge lists, sets for every vertex, frozen dataclass objects,
+normal stacks, and degree-squared NumPy cosine matrices.  The caller immediately
+discarded that graph and retained only eight counts plus the first
+non-manifold edge and its incident face ids.
+
+The first-party `native_bl` C++23 module now exposes `layer_front_summary` for
+the already-triangulated production front.  It validates contiguous face ids,
+triangle connectivity, finite points, indices, and feature threshold before
+releasing the GIL.  One reserved `3F` `LayerFrontEdgeRef` vector is sorted by
+canonical edge and original candidate order; a second flat vertex-face vector
+provides deterministic unique incidence and feature classification.  Boundary,
+non-manifold, feature, and blocked flags use dense byte arrays indexed by sorted
+vertex id.  No Python object is accessed while the GIL is released and no heap
+allocation occurs in the edge or face-normal inner loops.
+
+The expected complexity is `O(F log F + sum(d_v^2))` time and `O(F + V + E)`
+space.  The degree-squared term preserves the oracle's exact all-pairs feature
+normal test.  Edge groups retain original candidate-face ordering independently
+of sort implementation; the first non-manifold edge remains lexicographically
+first.  The public full-graph Python API is unchanged and is also the extension-
+absent production fallback.
+
+On a planar `45,000`-triangle front, complete summary time changes from
+`12.833594212 s` to native median `0.025557641 s` (`502.14x`).  Traced Python
+heap changes from `85.27 MiB` to `3.50 MiB` (`95.90%` reduction); this measure
+does not include C++ allocator memory.  Exact counts are `22,801` vertices,
+`67,800` edges, `600` boundary edges, zero non-manifold/feature vertices, and
+`600` blocked vertices.  Open-square, cube feature, shuffled non-contiguous
+face ids, ordered non-manifold, empty, degenerate, seeded soup, invalid ABI,
+fallback, and complete generated polyMesh byte-parity tests pass.  Focused
+native/fallback tests pass `20`; wider production BL validation passes `124`.
+GCC 13.3 builds the target warning-free in strict C++23 mode with compiler
+extensions disabled.
+
+No surface coordinate, topology threshold, feature cosine threshold, ordering,
+dependency, external implementation, or `third_party/` file changed.  The code
+is independently derived from the existing first-party Python oracle.
+
 ## Primary technical sources
 
 - WG21 P0009R18, `mdspan`, adopted for C++23:

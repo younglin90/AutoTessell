@@ -5,6 +5,7 @@
 
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 
 #include <algorithm>
 #include <array>
@@ -13,7 +14,10 @@
 #include <cstdint>
 #include <limits>
 #include <numeric>
+#include <ranges>
+#include <span>
 #include <stdexcept>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -57,6 +61,31 @@ struct IndexedRayTriangle {
     std::array<std::int64_t, 3> vertex_ids;
 };
 
+struct LayerFrontEdgeRef {
+    std::int64_t low;
+    std::int64_t high;
+    std::int64_t face_id;
+    size_t face_order;
+};
+
+struct LayerFrontVertexFaceRef {
+    std::int64_t vertex;
+    std::int64_t face_id;
+    size_t face_order;
+};
+
+struct LayerFrontCompactSummary {
+    size_t face_count{};
+    size_t vertex_count{};
+    size_t edge_count{};
+    size_t boundary_edge_count{};
+    size_t nonmanifold_edge_count{};
+    size_t feature_vertex_count{};
+    size_t blocked_vertex_count{};
+    std::array<std::int64_t, 2> first_nonmanifold_edge{-1, -1};
+    std::vector<std::int64_t> first_nonmanifold_faces;
+};
+
 [[nodiscard]] constexpr Point3 subtract(
     const Point3& left, const Point3& right) noexcept
 {
@@ -81,6 +110,229 @@ struct IndexedRayTriangle {
     const Point3& left, const Point3& right) noexcept
 {
     return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
+[[nodiscard]] LayerFrontCompactSummary compute_layer_front_summary(
+    const std::span<const std::int64_t> face_ids,
+    const std::span<const std::int64_t> triangles,
+    const std::span<const double> points,
+    const double feature_cos_threshold)
+{
+    const size_t face_count = face_ids.size();
+    std::vector<LayerFrontEdgeRef> edges;
+    std::vector<LayerFrontVertexFaceRef> vertex_faces;
+    std::vector<Point3> face_normals(face_count);
+    std::vector<std::uint8_t> face_has_normal(face_count, 0U);
+    edges.reserve(face_count * 3U);
+    vertex_faces.reserve(face_count * 3U);
+
+    for (size_t face = 0U; face < face_count; ++face) {
+        const std::int64_t face_id = face_ids[face];
+        const std::array<std::int64_t, 3> vertices{
+            triangles[face * 3U],
+            triangles[face * 3U + 1U],
+            triangles[face * 3U + 2U],
+        };
+        for (size_t local = 0U; local < 3U; ++local) {
+            const std::int64_t first = vertices[local];
+            const std::int64_t second = vertices[(local + 1U) % 3U];
+            edges.push_back({
+                std::min(first, second),
+                std::max(first, second),
+                face_id,
+                face,
+            });
+            vertex_faces.push_back({first, face_id, face});
+        }
+
+        const auto point_at = [&](const std::int64_t vertex) noexcept {
+            const size_t offset = static_cast<size_t>(vertex) * 3U;
+            return Point3{points[offset], points[offset + 1U], points[offset + 2U]};
+        };
+        const Point3 p0 = point_at(vertices[0]);
+        const Point3 p1 = point_at(vertices[1]);
+        const Point3 p2 = point_at(vertices[2]);
+        Point3 normal = cross(subtract(p1, p0), subtract(p2, p0));
+        const double magnitude = std::sqrt(dot(normal, normal));
+        if (magnitude >= 1.0e-30) {
+            for (double& value : normal) {
+                value /= magnitude;
+            }
+            face_normals[face] = normal;
+            face_has_normal[face] = 1U;
+        }
+    }
+
+    std::ranges::sort(edges, {}, [](const LayerFrontEdgeRef& edge) {
+        return std::tuple{edge.low, edge.high, edge.face_order};
+    });
+    std::ranges::sort(vertex_faces, {}, [](const LayerFrontVertexFaceRef& ref) {
+        return std::tuple{ref.vertex, ref.face_id, ref.face_order};
+    });
+
+    LayerFrontCompactSummary summary;
+    summary.face_count = face_count;
+    std::vector<std::int64_t> vertices;
+    vertices.reserve(vertex_faces.size());
+    for (const auto& ref : vertex_faces) {
+        if (vertices.empty() || vertices.back() != ref.vertex) {
+            vertices.push_back(ref.vertex);
+        }
+    }
+    summary.vertex_count = vertices.size();
+    std::unordered_map<std::int64_t, size_t> vertex_index;
+    vertex_index.max_load_factor(0.7F);
+    vertex_index.reserve(vertices.size());
+    for (size_t index = 0U; index < vertices.size(); ++index) {
+        vertex_index.emplace(vertices[index], index);
+    }
+    std::vector<std::uint8_t> boundary_vertex(vertices.size(), 0U);
+    std::vector<std::uint8_t> nonmanifold_vertex(vertices.size(), 0U);
+    std::vector<std::uint8_t> feature_vertex(vertices.size(), 0U);
+
+    for (size_t begin = 0U; begin < edges.size();) {
+        size_t end = begin + 1U;
+        while (end < edges.size()
+               && edges[end].low == edges[begin].low
+               && edges[end].high == edges[begin].high) {
+            ++end;
+        }
+        const size_t owners = end - begin;
+        ++summary.edge_count;
+        const bool is_boundary = owners == 1U;
+        const bool is_nonmanifold = owners > 2U;
+        summary.boundary_edge_count += static_cast<size_t>(is_boundary);
+        summary.nonmanifold_edge_count += static_cast<size_t>(is_nonmanifold);
+        if (is_boundary || is_nonmanifold) {
+            const size_t first_vertex = vertex_index.at(edges[begin].low);
+            const size_t second_vertex = vertex_index.at(edges[begin].high);
+            if (is_boundary) {
+                boundary_vertex[first_vertex] = 1U;
+                boundary_vertex[second_vertex] = 1U;
+            }
+            if (is_nonmanifold) {
+                nonmanifold_vertex[first_vertex] = 1U;
+                nonmanifold_vertex[second_vertex] = 1U;
+            }
+        }
+        if (is_nonmanifold && summary.first_nonmanifold_faces.empty()) {
+            summary.first_nonmanifold_edge = {edges[begin].low, edges[begin].high};
+            summary.first_nonmanifold_faces.reserve(owners);
+            for (size_t index = begin; index < end; ++index) {
+                summary.first_nonmanifold_faces.push_back(edges[index].face_id);
+            }
+        }
+        begin = end;
+    }
+
+    for (size_t begin = 0U; begin < vertex_faces.size();) {
+        size_t end = begin + 1U;
+        while (end < vertex_faces.size()
+               && vertex_faces[end].vertex == vertex_faces[begin].vertex) {
+            ++end;
+        }
+        std::vector<size_t> normal_faces;
+        normal_faces.reserve(end - begin);
+        std::int64_t previous_face_id = std::numeric_limits<std::int64_t>::min();
+        for (size_t index = begin; index < end; ++index) {
+            const auto& ref = vertex_faces[index];
+            if (ref.face_id == previous_face_id) {
+                continue;
+            }
+            previous_face_id = ref.face_id;
+            if (face_has_normal[ref.face_order] != 0U) {
+                normal_faces.push_back(ref.face_order);
+            }
+        }
+        for (size_t first = 0U;
+             first < normal_faces.size() && feature_vertex[vertex_index.at(
+                 vertex_faces[begin].vertex)] == 0U;
+             ++first) {
+            for (size_t second = first + 1U; second < normal_faces.size(); ++second) {
+                if (dot(face_normals[normal_faces[first]], face_normals[normal_faces[second]])
+                    < feature_cos_threshold) {
+                    feature_vertex[vertex_index.at(vertex_faces[begin].vertex)] = 1U;
+                    break;
+                }
+            }
+        }
+        begin = end;
+    }
+
+    for (size_t vertex = 0U; vertex < vertices.size(); ++vertex) {
+        const bool feature = feature_vertex[vertex] != 0U;
+        const bool blocked = feature
+            || boundary_vertex[vertex] != 0U
+            || nonmanifold_vertex[vertex] != 0U;
+        summary.feature_vertex_count += static_cast<size_t>(feature);
+        summary.blocked_vertex_count += static_cast<size_t>(blocked);
+    }
+    return summary;
+}
+
+py::dict layer_front_summary(
+    const py::array_t<std::int64_t, py::array::c_style | py::array::forcecast>& face_ids,
+    const py::array_t<std::int64_t, py::array::c_style | py::array::forcecast>& triangles,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points,
+    const double feature_cos_threshold)
+{
+    if (face_ids.ndim() != 1 || triangles.ndim() != 2 || triangles.shape(1) != 3
+        || triangles.shape(0) != face_ids.shape(0)) {
+        throw std::invalid_argument(
+            "face_ids must have shape (F,) and triangles shape (F, 3)");
+    }
+    if (points.ndim() != 2 || points.shape(1) != 3) {
+        throw std::invalid_argument("points must have shape (N, 3)");
+    }
+    if (!std::isfinite(feature_cos_threshold)) {
+        throw std::invalid_argument("feature_cos_threshold must be finite");
+    }
+    for (py::ssize_t index = 0; index < points.size(); ++index) {
+        if (!std::isfinite(points.data()[index])) {
+            throw std::invalid_argument("points must be finite");
+        }
+    }
+    const size_t point_count = static_cast<size_t>(points.shape(0));
+    for (py::ssize_t index = 0; index < triangles.size(); ++index) {
+        const std::int64_t vertex = triangles.data()[index];
+        if (vertex < 0 || static_cast<size_t>(vertex) >= point_count) {
+            throw std::invalid_argument("triangle vertex index is out of range");
+        }
+    }
+    for (py::ssize_t index = 0; index < face_ids.size(); ++index) {
+        if (face_ids.data()[index] < 0) {
+            throw std::invalid_argument("face ids must be non-negative");
+        }
+    }
+
+    LayerFrontCompactSummary summary;
+    {
+        py::gil_scoped_release release;
+        summary = compute_layer_front_summary(
+            {face_ids.data(), static_cast<size_t>(face_ids.size())},
+            {triangles.data(), static_cast<size_t>(triangles.size())},
+            {points.data(), static_cast<size_t>(points.size())},
+            feature_cos_threshold);
+    }
+
+    py::dict result;
+    result["n_faces"] = py::int_(summary.face_count);
+    result["n_ignored"] = py::int_(0);
+    result["n_vertices"] = py::int_(summary.vertex_count);
+    result["n_edges"] = py::int_(summary.edge_count);
+    result["n_boundary_edges"] = py::int_(summary.boundary_edge_count);
+    result["n_nonmanifold_edges"] = py::int_(summary.nonmanifold_edge_count);
+    result["n_feature_vertices"] = py::int_(summary.feature_vertex_count);
+    result["n_blocked_vertices"] = py::int_(summary.blocked_vertex_count);
+    if (summary.first_nonmanifold_faces.empty()) {
+        result["first_nonmanifold_edge"] = py::none();
+        result["first_nonmanifold_faces"] = py::tuple();
+    } else {
+        result["first_nonmanifold_edge"] = py::make_tuple(
+            summary.first_nonmanifold_edge[0], summary.first_nonmanifold_edge[1]);
+        result["first_nonmanifold_faces"] = py::cast(summary.first_nonmanifold_faces);
+    }
+    return result;
 }
 
 [[nodiscard]] double ray_triangle_distance(
@@ -612,4 +864,11 @@ PYBIND11_MODULE(native_bl, module)
         py::arg("triangle_vertex_ids"),
         py::arg("max_distance") = std::numeric_limits<double>::infinity(),
         py::arg("epsilon") = 1e-12);
+    module.def(
+        "layer_front_summary",
+        &layer_front_summary,
+        py::arg("face_ids"),
+        py::arg("triangles"),
+        py::arg("points"),
+        py::arg("feature_cos_threshold") = 0.9);
 }
