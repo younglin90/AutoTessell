@@ -4838,10 +4838,30 @@ def generate_native_tet(
                     )
                     if accepted:
                         final_pts = new_pts
+                        if _phase_a_observer is not None:
+                            _report_phase_a_provenance_checkpoint(
+                                _phase_a_observer,
+                                stage=f"post_sss_revival_pass_{_pass_idx}",
+                                source_points=_input_source_vertices,
+                                source_faces=_input_source_faces,
+                                candidate_points=final_pts,
+                                candidate_tets=final_tets,
+                            )
                         # plateau detect: mean_gain < 1e-4 면 추가 pass 효과 미미.
                         if _mean_gain < 1e-4:
                             break
                     else:
+                        if _phase_a_observer is not None:
+                            _report_phase_a_provenance_checkpoint(
+                                _phase_a_observer,
+                                stage=(
+                                    f"post_sss_revival_pass_{_pass_idx}_rejected"
+                                ),
+                                source_points=_input_source_vertices,
+                                source_faces=_input_source_faces,
+                                candidate_points=final_pts,
+                                candidate_tets=final_tets,
+                            )
                         # reject 시 즉시 중단 (다음 pass 도 동일 quality plateau).
                         break
             except Exception as exc:
