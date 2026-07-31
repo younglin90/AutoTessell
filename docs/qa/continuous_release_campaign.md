@@ -2716,3 +2716,86 @@ provenance gate.
   hypothesis, never to suppress a same-side refusal.  Continue authoritative
   Hex CAD corpus evidence and keep Poly source-cap work deferred pending owner
   semantics.  Gate 1--15 remain unmet; continue.
+
+## Cycle 62 reconciliation checkpoint -- 2026-07-31
+
+### Reconciled `master`
+
+- Reconciled against `master` `3448c9ae809ec38288545eb3c86d6728f48427a2`.
+  Cycle 56--61 implementation commits are reachable through the recorded merge
+  commits below.  This checkpoint adds no release claim.
+- Protected Poly DEFER worktree remains registered and must not be removed:
+  `/home/younglin90/work/claude_code/AutoTessell-wt-poly-cycle41`, branch
+  `codex/native-poly-cycle41-solid-volume-timeout-1`, `HEAD`
+  `70ce4b9be25e4f278388c90907e8139ba47e1a54`.  Current independent Hex and
+  Tet Cycle-62 worktrees are also active; Gate 1 cannot pass.
+
+### Cycle 56--61 exact evidence
+
+| Cycle | implementation / merge | exact evidence | release interpretation |
+| --- | --- | --- | --- |
+| 56 | `5fefec43` / `e58facf0` | `native_metrics` ABI ledger added the already-exported `triangle_surface_topology_audit` and `strict_quad_pair_preflight`; build-contract scanner `5 passed`; clean Release direct native tests `26 passed`. | ABI ledger repair only; no routing, product, or mesh-output claim. |
+| 57 | `172a45c6` / `560c223d` | linked extension binaries now fail closed; evidence/wheel tests `8 passed`; clean all-eight C++23 Release build generated and verified a manifest. | regular-file build provenance only. |
+| 58 | `ceb30c93` / `bb6db558` | staged-install verifier added; focused tests `10 passed`; clean external Release install staged eight modules, manifest, and contract; verifier passed. | one staged install row, not clean end-user packaging evidence. |
+| 59 | `49eadd70` / `078278c6` | inventory tests `13 passed, 7 expected diagnostic skips`; clean Release install staged exactly eight shipped modules; report-only `native_surface_product` absent; verifier passed. | tri/quad ABI inventory only; diagnostic remains default-OFF and non-shipping. |
+| 60 | `573a1cf5` / `02482700` | configuration-matrix tests `17 passed`; clean Release stage manifest records `Linux`, GCC `13.3.0`, C++23, install profile `ON`, and four external adapters `OFF`; verifier passed. | one recorded Linux configuration, not multi-OS or supported-matrix evidence. |
+| 61 | `666784a1` / `7aa5103e` | deterministic selected-scope Gate-3 AST audit tests `15 passed`; 96 skip/xfail/flaky markers collected; 21 exact unresolved DEFER rows recorded. | Gate 3 remains blocked; no test was weakened. |
+
+### Bundle and archive evidence
+
+- Cycle 57 bundle:
+  `/mnt/d/AutoTessell-cleanup-backup-20260730/research-bundles/native-build-evidence-regular-binary-l0-560c223d.bundle`,
+  SHA-256 `874a1398b48d5c1e78908aff483455cce2430d70cf630dfd13cea0e73f6751a3`.
+  `git bundle verify` passed; contains complete history with `560c223d`.
+- Cycle 58 bundle:
+  `/mnt/d/AutoTessell-cleanup-backup-20260730/research-bundles/native-clean-install-evidence-l0-bb6db558.bundle`,
+  SHA-256 `7cab1b62f73efff87d02e8ca06c7d8c06ebc15bfa2eca6e76bc39e808fee0437`.
+  `git bundle verify` passed; contains complete history with `bb6db558`.
+- No matching bundle path was located in the external archive for Cycles 56,
+  59, 60, or 61.  Their commits and focused evidence are retained in Git, but
+  no archive or SHA-256 is credited here.  The older
+  `native-build-evidence-manifest-1-41417ee5.bundle` verifies but predates this
+  cycle range and is not used as Cycle-56 evidence.
+
+### Focused versus full validation
+
+- The counts in the table are focused cards or explicit clean-build/install
+  checks.  They are not the Gate-3 full unit/integration/regression suite.
+- No full-suite execution result is recorded for Cycles 56--61.  This is
+  `UNVERIFIED`, not a timeout and not a pass.  No full-suite timeout is claimed
+  by this reconciliation.
+- Cycle-61's 21 unresolved marker rows are tracked in
+  `tests/gate3_marker_defer_l0.json`; the exact scanner detects marker, line,
+  reason, and scope drift fail-closed.
+
+### Gate re-evaluation
+
+| Gate | state | current limiting evidence |
+| --- | --- | --- |
+| 1 Repository | `FAIL` | protected Poly plus active research worktrees/branches remain. |
+| 2 Build | `UNVERIFIED` | one clean Linux/GCC Release install row exists; declared supported OS/compiler/configuration matrix is not complete. |
+| 3 Automated tests | `FAIL` | full suite absent and 21 selected-scope skip/xfail DEFER rows unresolved. |
+| 4 Shape preservation | `UNVERIFIED` | surface diagnostics/certificates do not supply a full source-preserving product corpus. |
+| 5 Mesh validity | `FAIL` | no full representative corpus proof of zero invalid/inverted outputs. |
+| 6 Cell count | `FAIL` | target tracking remains secondary and lacks engine-corpus acceptance evidence. |
+| 7 Boundary layer | `UNVERIFIED` | no full 0/1/multi-layer engine-corpus release evidence. |
+| 8 Quality | `UNVERIFIED` | no final fixture-specific quality corpus result. |
+| 9 Reproducibility | `UNVERIFIED` | no complete three-run, thread/order release corpus. |
+| 10 Robustness | `UNVERIFIED` | no complete adversarial fixture corpus result. |
+| 11 Performance | `UNVERIFIED` | focused timings/builds are not a release benchmark matrix. |
+| 12 Packaging | `UNVERIFIED` | staged native install exists; full clean user install/CLI/UI/reinstall evidence is absent. |
+| 13 License/provenance | `UNVERIFIED` | inventories exist; final release-package audit remains absent. |
+| 14 Documentation/operations | `UNVERIFIED` | release checklist, troubleshooting, and operational replay remain incomplete. |
+| 15 Release candidate | `FAIL` | no versioned candidate, complete evidence manifest, or zero blocking issues. |
+
+### Research register and next automatic action
+
+- Reference-only scan: arXiv `2512.08450` (2025 connectivity-preserving
+  cortical surface tetrahedralization) may inform future metrics discussion;
+  no code reuse.  The 2025 Boundary Recovery article (PMCID `PMC2841449`) is
+  post-processing context only and does not authorize geometry repair.
+- Continue the active Cycle-62 Tet source-provenance root-cause and Hex BREP
+  certificate cards without weakening strict refusal or shape gates.  Preserve
+  the protected Poly worktree.  Separately resolve the 21 Gate-3 DEFER markers
+  with stable reasons or verified replacement coverage, then schedule an actual
+  full-suite card.  Gate 1--15 remain unmet; continue.
