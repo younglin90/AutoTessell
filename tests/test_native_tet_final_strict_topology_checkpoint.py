@@ -12,12 +12,14 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from core.analyzer.readers import read_stl
 from core.generator.native_tet.mesher import generate_native_tet
 from core.generator.native_tet.rescue_gate import audit_tet_boundary
 
 _CUBE = Path(__file__).resolve().parent / "benchmarks" / "cube.stl"
+_SPHERE = Path(__file__).resolve().parent / "benchmarks" / "sphere.stl"
 _L0_DISABLED = (
     "AUTO_TESSELL_VVV2_QUEUE",
     "AUTO_TESSELL_VVV5B_OFF",
@@ -193,3 +195,69 @@ def test_cube_10000_l1_disabling_degenerate_rewrite_separates_contracts(
     assert audit.n_degenerate_tets > 0
     assert not (case_dir / "constant" / "polyMesh").exists()
     print("TET_FINAL_STRICT_TOPOLOGY_L1", result.n_cells, audit)
+
+
+@pytest.mark.parametrize("fixture", (_CUBE, _SPHERE))
+def test_degenerate_candidate_keeps_immutable_source_certificate(
+    fixture: Path,
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """L1: Cube and sphere candidate evidence is captured before later passes.
+
+    This is intentionally an observation of the BETA2825 transaction rather
+    than a success oracle for the final mesh.  The strict writer may still
+    reject later topology debt; this card only proves the candidate cannot
+    bypass immutable-source or inversion evidence at its own commit boundary.
+    """
+    import core.generator.native_tet.mesher as native_tet_mesher
+
+    original = native_tet_mesher._commit_degenerate_removal_source_candidate
+    observed: list[dict[str, object]] = []
+
+    def traced_transaction(*args):
+        selected_points, selected_tets, report = original(*args)
+        observed.append(
+            {
+                "selected_points_is_candidate": selected_points is args[4],
+                "selected_tets_is_candidate": selected_tets is args[5],
+                "report": report,
+            }
+        )
+        return selected_points, selected_tets, report
+
+    monkeypatch.setattr(
+        native_tet_mesher,
+        "_commit_degenerate_removal_source_candidate",
+        traced_transaction,
+    )
+    monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
+    monkeypatch.setenv("AUTO_TESSELL_CONVEX_EXTRUSION_RESCUE", "0")
+    mesh = read_stl(fixture)
+    result = generate_native_tet(
+        np.asarray(mesh.vertices, dtype=np.float64),
+        np.asarray(mesh.faces, dtype=np.int64),
+        tmp_path / fixture.stem,
+        target_cells=2000,
+        # The default Sphere Phase-A path resolves all BETA2825 candidates
+        # before this pass.  Zero iterations isolates the existing
+        # degenerate-removal transaction without changing production routing.
+        smooth_iterations=0 if fixture == _SPHERE else 2,
+        enable_bsp_insertion=False,
+        enable_edge_recovery=False,
+        enable_phase_b=False,
+        enable_phase_c=False,
+    )
+
+    assert result.success is False
+    assert len(observed) == 1
+    trace = observed[0]
+    report = trace["report"]
+    assert isinstance(report, dict)
+    assert report["accepted"] is True
+    assert report["candidate_component_bijective"] is True
+    assert report["candidate_source_faces_preserved"] is True
+    assert report["candidate_unowned_candidate_faces"] == 0
+    assert report["candidate_inverted_tets"] <= report["before_inverted_tets"]
+    assert trace["selected_points_is_candidate"] is True
+    assert trace["selected_tets_is_candidate"] is True
