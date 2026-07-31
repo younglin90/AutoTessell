@@ -30,6 +30,8 @@ _UNVERIFIED_FIELDS = (
 )
 
 _MAX_EXACT_SI_TRIANGLES = 5_000
+_FIXED_SIGNED_RAY_DIRECTION = np.asarray((1.0, 0.0, 0.0), dtype=np.float64)
+_SIGNED_RAY_TOLERANCE = np.finfo(np.float64).eps * 256.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,6 +240,97 @@ def _integral_admissibility(
     return self_intersection_status
 
 
+def _fixed_ray_side_decision(
+    point: NDArray[np.float64],
+    vertices: NDArray[np.float64],
+    triangles: NDArray[np.int64],
+) -> int | None:
+    """Return one fail-closed side decision using a fixed half-open +X ray.
+
+    ``t > 0`` is the symbolic half-open ray convention: the ray origin is
+    excluded.  Coplanar, origin, edge, and vertex contacts are deliberately
+    ambiguous rather than guessed.  This is valid only after the caller has
+    admitted a closed, oriented, self-intersection-clean target surface.
+    """
+    if not np.isfinite(point).all():
+        return None
+    intersections = 0
+    direction = _FIXED_SIGNED_RAY_DIRECTION
+    for triangle in triangles:
+        first, second, third = vertices[triangle]
+        edge_a = second - first
+        edge_b = third - first
+        normal = np.cross(edge_a, edge_b)
+        denominator = float(np.dot(normal, direction))
+        numerator = float(np.dot(normal, first - point))
+        normal_scale = float(np.linalg.norm(normal))
+        if not np.isfinite(denominator) or not np.isfinite(numerator) or normal_scale <= 0.0:
+            return None
+        tolerance = _SIGNED_RAY_TOLERANCE * normal_scale
+        if abs(denominator) <= tolerance:
+            if abs(numerator) <= tolerance:
+                return None
+            continue
+        ray_distance = numerator / denominator
+        if not np.isfinite(ray_distance):
+            return None
+        if abs(ray_distance) <= _SIGNED_RAY_TOLERANCE:
+            return None
+        if ray_distance < 0.0:
+            continue
+        hit = point + ray_distance * direction
+        dot_aa = float(np.dot(edge_a, edge_a))
+        dot_ab = float(np.dot(edge_a, edge_b))
+        dot_bb = float(np.dot(edge_b, edge_b))
+        hit_offset = hit - first
+        dot_ap = float(np.dot(edge_a, hit_offset))
+        dot_bp = float(np.dot(edge_b, hit_offset))
+        determinant = dot_aa * dot_bb - dot_ab * dot_ab
+        if not np.isfinite(determinant) or determinant <= _SIGNED_RAY_TOLERANCE:
+            return None
+        second_weight = (dot_bb * dot_ap - dot_ab * dot_bp) / determinant
+        third_weight = (dot_aa * dot_bp - dot_ab * dot_ap) / determinant
+        first_weight = 1.0 - second_weight - third_weight
+        weights = np.asarray((first_weight, second_weight, third_weight), dtype=np.float64)
+        if not np.isfinite(weights).all():
+            return None
+        if np.any(weights < -_SIGNED_RAY_TOLERANCE) or np.any(
+            weights > 1.0 + _SIGNED_RAY_TOLERANCE
+        ):
+            continue
+        if np.any(weights <= _SIGNED_RAY_TOLERANCE):
+            return None
+        if np.any(weights >= 1.0 - _SIGNED_RAY_TOLERANCE):
+            return None
+        intersections += 1
+    return -1 if intersections % 2 else 1
+
+
+def _signed_mean_if_unambiguous(
+    *,
+    samples: NDArray[np.float64],
+    distances: NDArray[np.float64],
+    target_vertices: NDArray[np.float64],
+    target_triangles: NDArray[np.int64],
+) -> float | None:
+    """Return a signed sample mean only when every side decision is exact."""
+    if (
+        len(samples) != len(distances)
+        or not np.isfinite(distances).all()
+        or np.any(distances <= _SIGNED_RAY_TOLERANCE)
+    ):
+        return None
+    signs = np.empty(len(samples), dtype=np.int8)
+    for index, sample in enumerate(samples):
+        decision = _fixed_ray_side_decision(sample, target_vertices, target_triangles)
+        if decision is None:
+            return None
+        signs[index] = decision
+    signed_distances = distances * signs
+    mean = float(np.mean(signed_distances, dtype=np.float64))
+    return mean if np.isfinite(mean) else None
+
+
 def _oriented_volume_and_centroid(
     points: NDArray[np.float64],
     triangles: NDArray[np.int64],
@@ -444,11 +537,36 @@ def measure_gate4_exact_surface_metrics(
     elif source_closed and output_closed:
         integral_status = "unverified_exhaustive_native_self_intersection_required"
 
-    signed_status = (
-        "unverified_exact_signed_sample_predicate_unavailable"
-        if integral_status.startswith("measured_")
-        else "unverified_validated_closed_surfaces_required"
-    )
+    signed_mean_source_to_output: float | None = None
+    signed_mean_output_to_source: float | None = None
+    if (
+        source_integral_admissibility
+        == "admitted_closed_orientation_consistent_native_si_clean"
+        and output_integral_admissibility
+        == "admitted_closed_orientation_consistent_native_si_clean"
+    ):
+        signed_mean_source_to_output = _signed_mean_if_unambiguous(
+            samples=source_samples,
+            distances=source_distances,
+            target_vertices=output_points,
+            target_triangles=output_triangles,
+        )
+        signed_mean_output_to_source = _signed_mean_if_unambiguous(
+            samples=output_samples,
+            distances=output_distances,
+            target_vertices=source_points,
+            target_triangles=source_triangles,
+        )
+        if (
+            signed_mean_source_to_output is not None
+            and signed_mean_output_to_source is not None
+        ):
+            signed_status = "measured_fixed_ray_half_open_all_samples_unambiguous"
+            available.append("distance.signed_mean")
+        else:
+            signed_status = "unverified_fixed_ray_side_ambiguous_or_zero_distance"
+    else:
+        signed_status = "unverified_validated_closed_surfaces_required"
     unverified = tuple(field for field in _UNVERIFIED_FIELDS if field not in available)
 
     return ExactSurfaceMetricRecord(
@@ -467,8 +585,8 @@ def measure_gate4_exact_surface_metrics(
         source_self_intersection_status=source_si_status,
         output_self_intersection_status=output_si_status,
         signed_status=signed_status,
-        signed_mean_source_to_output=None,
-        signed_mean_output_to_source=None,
+        signed_mean_source_to_output=signed_mean_source_to_output,
+        signed_mean_output_to_source=signed_mean_output_to_source,
         source_integral_admissibility=source_integral_admissibility,
         output_integral_admissibility=output_integral_admissibility,
         integral_status=integral_status,
