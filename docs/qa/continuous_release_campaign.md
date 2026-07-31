@@ -3191,6 +3191,36 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 109 pre-merge checkpoint -- 2026-07-31
+
+### Controlled Gate-4 bidirectional surface observations
+
+- `e943e661` adds a standalone, non-promoting actual-metric layer and
+  `538d42ca` rejects non-integer triangle indices before any measurement.
+  It records deterministic area-weighted samples and exact BVH
+  point-to-triangle distances in both directions; the reported symmetric value
+  is explicitly sampled, not a continuous exact Hausdorff claim.
+- Normal p95/p99 and flipped counts are recorded only when both triangle
+  surfaces are closed and orientation-consistent.  The layer is not wired into
+  the existing fidelity evaluator, schemas, routes, defaults, or Gate verdict.
+- The root focused runner passed `6` tests at concurrency `1` in `5.55 s`.
+  This is focused implementation evidence only, not actual-output or Gate-4
+  promotion evidence.
+- Self-intersection, signed distance, volume, centroid, authoritative feature
+  IDs, patch, physical-group, and source-to-output provenance remain explicitly
+  `UNVERIFIED`.  Every record retains `gate4_pass=false`.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15
+  remain unmet.  No `third_party/`, routing, default, mesh-generation,
+  topology-repair, or provenance behavior changed.
+- Next action: bind controlled metrics only to immutable actual-output
+  artifacts, then add authoritative source contracts before considering the
+  remaining Gate-4 fields.  Missing, timeout, error, or invalid evidence stays
+  `UNVERIFIED`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 108 pre-merge checkpoint -- 2026-07-31
 
 ### Bounded strict native-Hex cube actual-output probe
