@@ -44,13 +44,15 @@ def test_surface_product_registry_is_distinct_but_pipeline_routes_are_incomplete
     assert "native_tri_quad_mixed" not in routes
 
 
-def test_gui_has_no_three_way_native_surface_product_selector() -> None:
+def test_gui_exposes_three_native_surface_product_route_values() -> None:
     source = _GUI.read_text(encoding="utf-8")
 
     assert '"native_isotropic"' in source
     assert '"native_cvt"' in source
-    assert '"native_quad_strict"' not in source
-    assert '"native_tri_quad_mixed"' not in source
+    assert '"native_tri"' in source
+    assert '"native_strict_quad"' in source
+    assert '"native_tri_quad"' in source
+    assert '"native_quad_dominant"' not in source
 
 
 def test_quad_dominant_candidate_never_certifies_as_strict_quad() -> None:

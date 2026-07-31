@@ -761,6 +761,9 @@ class AutoTessellWindow:  # type: ignore[misc]
         if self._remesh_engine_combo is None:
             return "auto"
         try:
+            data = self._remesh_engine_combo.currentData()  # type: ignore[union-attr]
+            if isinstance(data, str) and data:
+                return data
             return self._remesh_engine_combo.currentText().lower()  # type: ignore[union-attr]
         except Exception:
             return "auto"
@@ -1999,7 +2002,15 @@ class AutoTessellWindow:  # type: ignore[misc]
     _TIER2_ENGINES: tuple[tuple[str, str], ...] = (
         ("native_isotropic", "Native Isotropic (Botsch)"),
         ("native_cvt", "Native CVT (Lloyd)"),
+        ("native_tri", "Native TRI — source contract fail-closed"),
+        ("native_strict_quad", "Native Strict QUAD — certificate required (deferred)"),
+        ("native_tri_quad", "Native TRI+QUAD — certificate required (deferred)"),
         ("disabled", "비활성화"),
+    )
+    _SURFACE_PRODUCT_ROUTE_ITEMS: tuple[tuple[str, str], ...] = (
+        ("Native TRI — source contract fail-closed", "native_tri"),
+        ("Native Strict QUAD — certificate required (deferred)", "native_strict_quad"),
+        ("Native TRI+QUAD — certificate required (deferred)", "native_tri_quad"),
     )
     # Tier 3 (볼륨 메쉬) — 기존 _build_section_engine 의 ENGINE_GROUPS 로부터 평면화.
     # GUI-CLEAN / beta2809 — 실제 구현 + tested 엔진만 노출.
@@ -2665,6 +2676,8 @@ class AutoTessellWindow:  # type: ignore[misc]
             "native_cvt",         # Lloyd CVT
             "disabled",
         ])
+        for label, route_identity in self._SURFACE_PRODUCT_ROUTE_ITEMS:
+            cb.addItem(label, route_identity)
         cb.setCurrentIndex(0)  # 기본값 native_isotropic
         cb.currentIndexChanged.connect(
             lambda _idx: self._refresh_tier_strip_engine_labels()
