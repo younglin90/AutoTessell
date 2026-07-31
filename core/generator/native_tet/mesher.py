@@ -344,6 +344,85 @@ def _commit_degenerate_removal_source_candidate(
     return before_points, before_tets, report
 
 
+def _commit_sss_relocation_source_candidate(
+    source_points: np.ndarray,
+    source_faces: np.ndarray,
+    before_points: np.ndarray,
+    before_tets: np.ndarray,
+    candidate_points: np.ndarray,
+    candidate_tets: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, dict[str, int | bool]]:
+    """Commit an SSS relocation only with source and local-validity evidence.
+
+    SSS moves source-surface vertices.  A mean-quality gain cannot compensate
+    for lost source ownership, an added inversion, or increased same-side
+    internal-face debt.  Rejection returns the exact pre-relocation arrays;
+    it neither projects, repairs, nor weakens any strict-audit threshold.
+    """
+    from core.generator.native_tet.rescue_gate import (
+        audit_source_component_bijection,
+        audit_tet_boundary,
+    )
+
+    before_source = audit_source_component_bijection(
+        source_points, source_faces, before_points, before_tets
+    )
+    candidate_source = audit_source_component_bijection(
+        source_points, source_faces, candidate_points, candidate_tets
+    )
+    before_boundary = audit_tet_boundary(before_points, before_tets)
+    candidate_boundary = audit_tet_boundary(candidate_points, candidate_tets)
+    accepted = bool(
+        candidate_source.bijective
+        and candidate_source.source_faces_preserved
+        and candidate_source.n_unowned_candidate_faces == 0
+        and candidate_boundary.valid
+        and candidate_boundary.n_inverted_tets
+        <= before_boundary.n_inverted_tets
+        and candidate_boundary.n_same_side_internal_faces
+        <= before_boundary.n_same_side_internal_faces
+        and candidate_boundary.n_ambiguous_internal_faces
+        <= before_boundary.n_ambiguous_internal_faces
+    )
+    report: dict[str, int | bool] = {
+        "accepted": accepted,
+        "before_component_bijective": bool(before_source.bijective),
+        "candidate_component_bijective": bool(candidate_source.bijective),
+        "before_source_faces_preserved": bool(
+            before_source.source_faces_preserved
+        ),
+        "candidate_source_faces_preserved": bool(
+            candidate_source.source_faces_preserved
+        ),
+        "before_unowned_candidate_faces": int(
+            before_source.n_unowned_candidate_faces
+        ),
+        "candidate_unowned_candidate_faces": int(
+            candidate_source.n_unowned_candidate_faces
+        ),
+        "before_boundary_valid": bool(before_boundary.valid),
+        "candidate_boundary_valid": bool(candidate_boundary.valid),
+        "before_inverted_tets": int(before_boundary.n_inverted_tets),
+        "candidate_inverted_tets": int(candidate_boundary.n_inverted_tets),
+        "before_same_side_internal_faces": int(
+            before_boundary.n_same_side_internal_faces
+        ),
+        "candidate_same_side_internal_faces": int(
+            candidate_boundary.n_same_side_internal_faces
+        ),
+        "before_ambiguous_internal_faces": int(
+            before_boundary.n_ambiguous_internal_faces
+        ),
+        "candidate_ambiguous_internal_faces": int(
+            candidate_boundary.n_ambiguous_internal_faces
+        ),
+        "exact_rollback": not accepted,
+    }
+    if accepted:
+        return candidate_points, candidate_tets, report
+    return before_points, before_tets, report
+
+
 def _optional_pass_result(result: Any, n_expected: int) -> tuple[Any, str | None]:
     """Normalize an optional-pass return value without raising downstream.
 
@@ -836,6 +915,7 @@ def generate_native_tet(
     t0 = time.perf_counter()
     _smooth_then_drop_sidedness_transaction: dict[str, int | bool] | None = None
     _degenerate_removal_source_transaction: dict[str, int | bool] | None = None
+    _sss_relocation_source_transaction: dict[str, int | bool] | None = None
     try:
         from scipy.spatial import Delaunay
     except Exception as exc:
@@ -4852,7 +4932,25 @@ def generate_native_tet(
                     _post_mean = float(_q_post.mean())
                     _worst_drop = _pre_min - _post_min
                     _mean_gain = _post_mean - _pre_mean
-                    accepted = bool(_worst_drop <= 0.015 and _mean_gain >= -1e-12)
+                    quality_accepted = bool(
+                        _worst_drop <= 0.015 and _mean_gain >= -1e-12
+                    )
+                    (
+                        selected_pts,
+                        selected_tets,
+                        _sss_relocation_source_transaction,
+                    ) = _commit_sss_relocation_source_candidate(
+                        _input_source_vertices,
+                        _input_source_faces,
+                        final_pts,
+                        final_tets,
+                        new_pts,
+                        final_tets,
+                    )
+                    accepted = bool(
+                        quality_accepted
+                        and _sss_relocation_source_transaction["accepted"]
+                    )
                     if _phase_a_observer is not None and _pass_idx == 0:
                         _report_phase_a_provenance_checkpoint(
                             _phase_a_observer,
@@ -4871,9 +4969,14 @@ def generate_native_tet(
                         pre_mean=_pre_mean, post_mean=_post_mean,
                         worst_drop=_worst_drop, mean_gain=_mean_gain,
                         accepted=accepted,
+                        quality_accepted=quality_accepted,
+                        source_transaction_accepted=(
+                            _sss_relocation_source_transaction["accepted"]
+                        ),
                     )
                     if accepted:
-                        final_pts = new_pts
+                        final_pts = selected_pts
+                        final_tets = selected_tets
                         if _phase_a_observer is not None:
                             _report_phase_a_provenance_checkpoint(
                                 _phase_a_observer,
@@ -6643,6 +6746,10 @@ def generate_native_tet(
     if _degenerate_removal_source_transaction is not None:
         debug_info["degenerate_removal_source_transaction"] = (
             _degenerate_removal_source_transaction
+        )
+    if _sss_relocation_source_transaction is not None:
+        debug_info["sss_relocation_source_transaction"] = (
+            _sss_relocation_source_transaction
         )
     warnings_list: list[str] = []
     try:
