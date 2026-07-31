@@ -3191,6 +3191,21 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 173 pre-merge checkpoint -- 2026-07-31
+
+### TRI+QUAD independent current validation
+
+- The TRI+QUAD current validation runner used concurrency `1` and passed in
+  `4.758139906 s`:
+  `/tmp/autotessell-c173-tri-quad-current-runner-evidence.json`.
+- TRI+QUAD remains an independent default-off, unrouted product.  This does
+  not claim or relabel native Tri or strict Quad behavior.
+
+### Release state
+
+- No Gate or release claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 171 pre-merge checkpoint -- 2026-07-31
 
 ### Tet same-side strict transaction rerun
