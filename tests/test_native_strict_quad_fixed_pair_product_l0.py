@@ -10,6 +10,9 @@ import numpy as np
 import pytest
 
 from core.analyzer.readers import read_stl
+from core.evaluator.surface_physical_group_provenance import (
+    AuthoritativePhysicalGroupMapping,
+)
 from core.preprocessor.native_quad.strict_pair_product_l0 import (
     materialize_strict_quad_fixed_pair_product_l0,
     strict_quad_fixed_pair_product_l0_enabled,
@@ -37,19 +40,29 @@ def _square() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarra
     return vertices, triangles, quads, provenance, features
 
 
-def _cube() -> tuple[
-    np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[int], list[int]
-]:
+def _cube() -> (
+    tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[int], list[int]]
+):
     vertices = np.array(
         (
-            (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (1.0, 1.0, 0.0), (0.0, 1.0, 0.0),
-            (0.0, 0.0, 1.0), (1.0, 0.0, 1.0), (1.0, 1.0, 1.0), (0.0, 1.0, 1.0),
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (1.0, 1.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (1.0, 0.0, 1.0),
+            (1.0, 1.0, 1.0),
+            (0.0, 1.0, 1.0),
         ),
         dtype=np.float64,
     )
     source_quads = (
-        (0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4),
-        (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7),
+        (0, 3, 2, 1),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
     )
     triangles = np.asarray(
         [
@@ -85,6 +98,8 @@ def _materialize(
     features: np.ndarray,
     source_patches: object,
     quad_patches: object,
+    source_groups: object,
+    quad_groups: object,
     *,
     candidate_vertices: np.ndarray | None = None,
     candidate_triangles: np.ndarray | None = None,
@@ -99,6 +114,8 @@ def _materialize(
         features,
         source_patch_ids=source_patches,
         candidate_quad_patch_ids=quad_patches,
+        source_physical_groups=source_groups,
+        candidate_quad_physical_groups=quad_groups,
     )
 
 
@@ -106,7 +123,15 @@ def test_l0_default_off_rejects_valid_candidate_without_product_or_fallback() ->
     vertices, triangles, quads, provenance, features = _square()
     with patch.dict(os.environ, {}, clear=True):
         result = _materialize(
-            vertices, triangles, quads, provenance, features, ["wall", "wall"], ["wall"]
+            vertices,
+            triangles,
+            quads,
+            provenance,
+            features,
+            ["wall", "wall"],
+            ["wall"],
+            AuthoritativePhysicalGroupMapping(("wall", "wall"), True),
+            ["wall"],
         )
 
     assert strict_quad_fixed_pair_product_l0_enabled() is False
@@ -123,7 +148,15 @@ def test_l0_enabled_square_materializes_read_only_strict_quad_three_times() -> N
     with patch.dict(os.environ, {_ENV: "1"}):
         results = [
             _materialize(
-                vertices, triangles, quads, provenance, features, ["wall", "wall"], ["wall"]
+                vertices,
+                triangles,
+                quads,
+                provenance,
+                features,
+                ["wall", "wall"],
+                ["wall"],
+                AuthoritativePhysicalGroupMapping(("wall", "wall"), True),
+                ["wall"],
             )
             for _ in range(3)
         ]
@@ -136,13 +169,51 @@ def test_l0_enabled_square_materializes_read_only_strict_quad_three_times() -> N
     assert product.triangles.shape == (0, 3)
     assert product.quads.shape == (1, 4)
     assert product.quad_patch_ids == ("wall",)
+    assert product.quad_physical_groups == ("wall",)
+    np.testing.assert_array_equal(product.quad_source_pairs, provenance)
     assert not product.vertices.flags.writeable
     assert not product.triangles.flags.writeable
     assert not product.quads.flags.writeable
+    assert not product.quad_source_pairs.flags.writeable
+    assert product.source_patch_hash
+    assert product.source_physical_group_hash
+    assert product.feature_hash
     assert np.array_equal(product.vertices, vertices)
     assert np.array_equal(product.quads, quads)
     assert results[0].product_certificate is not None
     assert results[0].product_certificate.classification is SurfaceProductClassification.STRICT_QUAD
+
+
+@pytest.mark.parametrize(
+    "source_groups",
+    (
+        None,
+        ("wall", "wall"),
+        AuthoritativePhysicalGroupMapping(("wall", "wall"), False),
+        AuthoritativePhysicalGroupMapping(("wall", "other"), True),
+    ),
+)
+def test_l0_missing_bare_non_authoritative_or_mixed_physical_groups_reject(
+    source_groups: object,
+) -> None:
+    vertices, triangles, quads, provenance, features = _square()
+    with patch.dict(os.environ, {_ENV: "1"}):
+        result = _materialize(
+            vertices,
+            triangles,
+            quads,
+            provenance,
+            features,
+            ["wall", "wall"],
+            ["wall"],
+            source_groups,
+            ["wall"],
+        )
+
+    assert result.accepted is False
+    assert result.status == "reject_strict_quad_fixed_pair_preflight"
+    assert "physical_group_payload_preserved" in result.preflight.rejection_reasons
+    assert result.product is None
 
 
 @pytest.mark.parametrize(
@@ -178,6 +249,11 @@ def test_l0_unsafe_candidate_explicitly_rejects_without_any_fallback(kind: str) 
             features,
             ["wall", "wall"],
             kwargs.pop("quad_patches", ["wall"]),
+            kwargs.pop(
+                "source_groups",
+                AuthoritativePhysicalGroupMapping(("wall", "wall"), True),
+            ),
+            kwargs.pop("quad_groups", ["wall"]),
             **kwargs,
         )
 
@@ -200,6 +276,11 @@ def test_l1_cube_materializes_strict_fixed_pair_product_deterministically() -> N
                 features,
                 source_patches,
                 quad_patches,
+                AuthoritativePhysicalGroupMapping(
+                    tuple(str(value) for value in source_patches),
+                    True,
+                ),
+                [str(value) for value in quad_patches],
             )
             for _ in range(3)
         ]
@@ -228,6 +309,11 @@ def test_l1_missing_fixed_pair_candidate_rejects_without_tri_quad_fallback(fixtu
             np.empty((0, 2), dtype=np.int64),
             np.empty((0, 2), dtype=np.int64),
             [None] * len(triangles),
+            [],
+            AuthoritativePhysicalGroupMapping(
+                tuple("wall" for _ in triangles),
+                True,
+            ),
             [],
         )
 

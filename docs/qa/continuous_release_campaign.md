@@ -2998,6 +2998,41 @@ provenance gate.
   strict-Quad, or default behavior.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 98 pre-merge checkpoint -- 2026-07-31
+
+### Independent strict-Quad product, artifact, and dispatch L0
+
+- `fa80b24f` binds the fixed-pair strict-Quad product to authoritative source
+  physical groups.  Missing, bare, non-authoritative, or mixed-pair group
+  payloads fail closed.  The immutable product retains canonical quad source
+  pairs and groups plus source patch, physical-group, feature, and provenance
+  hashes; no Tri+Quad product is reused.
+- Phase-A's first runner is ruff `ERROR` / `UNVERIFIED` from two import-order
+  findings; it supplies no pass.  After the local import-only repair, final
+  Phase-A runner passed at concurrency `2` in `4.56 s`.
+- `dc848f25` adds a separate default-OFF strict-Quad writer.  An accepted
+  strict product only is atomically staged/read back and published to a fresh
+  non-symlink target.  Its artifact contains exactly `vertices.npy`,
+  `quads.npy`, `quad_source_pairs.npy`, and `manifest.json`; there is no
+  triangle array or Tri+Quad conversion.  Phase-B advisor runner passed at
+  concurrency `2` in `4.10 s`.
+- `c48bc40a` adds an explicit Python-only dispatch request.  It requires exact
+  source arrays, canonical full pair plan, features, authoritative patch IDs
+  and physical groups, and a fresh target.  It materializes first and calls
+  the writer only after accepted product admission and both explicit gates.
+  Phase-C advisor runner passed at concurrency `2` in `3.99 s`.
+- All paths remain runtime-disconnected with no native-Tri, Tri+Quad, default,
+  UI, pipeline, plugin, OpenFOAM, or public-route claim.
+
+### Release state
+
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+  change is included.
+- Next action: define real external authoritative-source ingress and an
+  independent strict-Quad route contract; do not infer authority or alter
+  existing product defaults.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
