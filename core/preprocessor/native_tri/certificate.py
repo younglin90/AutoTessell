@@ -9,12 +9,20 @@ vertices or connectivity is rejected even if it supplies face provenance.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 from numbers import Integral
 
 import numpy as np
+
+_TOPOLOGY_AUDIT_CPP23_ENV = "AUTO_TESSELL_TRI_TOPOLOGY_AUDIT_CPP23"
+
+
+def topology_audit_cpp23_enabled() -> bool:
+    """Return whether the optional read-only C++23 source audit is enabled."""
+    return os.environ.get(_TOPOLOGY_AUDIT_CPP23_ENV) == "1"
 
 
 def _array_hash(values: np.ndarray) -> str:
@@ -69,7 +77,7 @@ class _SurfaceTopologyAudit:
     euler_characteristic: int | None
 
 
-def _surface_topology_audit(
+def _surface_topology_audit_python(
     vertices: np.ndarray | None,
     faces: np.ndarray | None,
 ) -> _SurfaceTopologyAudit:
@@ -118,6 +126,63 @@ def _surface_topology_audit(
         component_count,
         len(vertices) - len(edge_faces) + len(faces),
     )
+
+
+def _native_surface_topology_audit(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+) -> _SurfaceTopologyAudit:
+    """Decode a strict native audit result without allowing coercion."""
+    from core.utils.native_extensions import load_native_metrics
+
+    native = load_native_metrics()
+    if native is None or not hasattr(native, "triangle_surface_topology_audit"):
+        return _surface_topology_audit_python(vertices, faces)
+    result = native.triangle_surface_topology_audit(
+        np.ascontiguousarray(vertices, dtype=np.float64),
+        np.ascontiguousarray(faces, dtype=np.int64),
+    )
+    if not isinstance(result, dict):
+        raise RuntimeError("native triangle_surface_topology_audit returned a non-dict result")
+    valid = result.get("valid")
+    closed_oriented = result.get("closed_oriented_manifold")
+    edge_count = result.get("edge_count")
+    component_count = result.get("component_count")
+    euler = result.get("euler_characteristic")
+    if (
+        not isinstance(valid, bool)
+        or not isinstance(closed_oriented, bool)
+        or isinstance(edge_count, bool)
+        or not isinstance(edge_count, Integral)
+        or isinstance(component_count, bool)
+        or not isinstance(component_count, Integral)
+        or (euler is not None and (isinstance(euler, bool) or not isinstance(euler, Integral)))
+        or int(edge_count) < 0
+        or int(component_count) < 0
+        or (
+            not valid
+            and (closed_oriented or edge_count != 0 or component_count != 0 or euler is not None)
+        )
+        or (valid and euler is None)
+    ):
+        raise RuntimeError("native triangle_surface_topology_audit returned invalid audit")
+    return _SurfaceTopologyAudit(
+        valid,
+        closed_oriented,
+        int(edge_count),
+        int(component_count),
+        None if euler is None else int(euler),
+    )
+
+
+def _surface_topology_audit(
+    vertices: np.ndarray | None,
+    faces: np.ndarray | None,
+) -> _SurfaceTopologyAudit:
+    """Use the explicit C++23 audit only when its strict ABI is available."""
+    if not topology_audit_cpp23_enabled() or vertices is None or faces is None:
+        return _surface_topology_audit_python(vertices, faces)
+    return _native_surface_topology_audit(vertices, faces)
 
 
 def _sharp_feature_edges(vertices: np.ndarray, faces: np.ndarray) -> set[tuple[int, int]]:
