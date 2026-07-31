@@ -12,7 +12,13 @@ from scripts.release_native_corpus_verifier import (
 )
 
 
-def _write_run(root: Path, *, negative_volumes: int = 0, unverified_fields: object = None) -> None:
+def _write_run(
+    root: Path,
+    *,
+    negative_volumes: int = 0,
+    unverified_fields: object = None,
+    legacy_gate4_fields: bool = False,
+) -> None:
     poly_mesh = root / "constant" / "polyMesh"
     poly_mesh.mkdir(parents=True, exist_ok=True)
     for name in ("points", "faces", "owner", "neighbour", "boundary"):
@@ -27,10 +33,14 @@ def _write_run(root: Path, *, negative_volumes: int = 0, unverified_fields: obje
             {
                 "evaluation_summary": {
                     "checkmesh": {"negative_volumes": negative_volumes},
-                    "gate4_evidence": {
-                        "gate4_pass": False,
-                        "unverified_fields": fields,
-                    },
+                    "gate4_evidence": (
+                        {"gate4_pass": False, "unverified_fields": fields}
+                        if legacy_gate4_fields
+                        else {
+                            "gate4_pass": False,
+                            "actual_surface_metrics": {"unverified_fields": fields},
+                        }
+                    ),
                 }
             }
         ),
@@ -149,3 +159,27 @@ def test_split_legacy_reports_cannot_replace_one_quality_report(tmp_path: Path) 
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "missing_quality_report"
+
+
+def test_legacy_top_level_fields_are_explicitly_supported_but_ambiguous_shape_rejects(
+    tmp_path: Path,
+) -> None:
+    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    _write_run(first, legacy_gate4_fields=True)
+    _write_run(second, legacy_gate4_fields=True)
+    manifest = _manifest(first, first, second)
+
+    report = verify_release_native_corpus(manifest, [first, second])
+
+    assert report["cases"][0]["reason"] == "measured_evidence_release_incomplete"
+    report_path = first / "quality-report.json"
+    value = json.loads(report_path.read_text(encoding="utf-8"))
+    value["evaluation_summary"]["gate4_evidence"]["actual_surface_metrics"] = {
+        "unverified_fields": ["distance.signed_mean"]
+    }
+    report_path.write_text(json.dumps(value), encoding="utf-8")
+
+    report = verify_release_native_corpus(manifest, [first, second])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "invalid_quality_report_schema"

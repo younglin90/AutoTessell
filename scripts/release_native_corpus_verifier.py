@@ -115,7 +115,16 @@ def _expected_polymesh_identity(value: object) -> dict[str, object] | None:
 def _unverified_gate4_fields(value: object) -> tuple[str, ...] | None:
     if not isinstance(value, dict) or value.get("gate4_pass") is not False:
         return None
-    fields = value.get("unverified_fields")
+    current_metrics = value.get("actual_surface_metrics")
+    legacy_fields = value.get("unverified_fields")
+    if current_metrics is not None and legacy_fields is not None:
+        return None
+    if current_metrics is not None:
+        if not isinstance(current_metrics, dict):
+            return None
+        fields = current_metrics.get("unverified_fields")
+    else:
+        fields = legacy_fields
     if (
         not isinstance(fields, list)
         or not fields
