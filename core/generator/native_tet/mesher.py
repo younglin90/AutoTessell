@@ -4817,6 +4817,8 @@ def generate_native_tet(
                         np.add.at(nbr_sum, vk_flat[mask_lap], V[wk_flat[mask_lap]])
                         np.add.at(nbr_cnt, vk_flat[mask_lap], 1)
                         target_pts = nbr_sum / np.maximum(nbr_cnt[:, None], 1)
+                    if _phase_a_observer is not None and _pass_idx == 0:
+                        _report_phase_a_provenance_checkpoint(_phase_a_observer, stage="pre_sss_pass0_relocate", source_points=_input_source_vertices, source_faces=_input_source_faces, candidate_points=final_pts, candidate_tets=final_tets)
                     new_pts = _envelope_bounded_relocate(
                         final_pts, surface_idx, target_pts, vn, env,
                     )
@@ -4826,6 +4828,8 @@ def generate_native_tet(
                     _worst_drop = _pre_min - _post_min
                     _mean_gain = _post_mean - _pre_mean
                     accepted = bool(_worst_drop <= 0.015 and _mean_gain >= -1e-12)
+                    if _phase_a_observer is not None and _pass_idx == 0:
+                        _report_phase_a_provenance_checkpoint(_phase_a_observer, stage="post_sss_pass0_relocate_pre_accept", source_points=_input_source_vertices, source_faces=_input_source_faces, candidate_points=new_pts, candidate_tets=final_tets)
                     log.info(
                         "native_tet_p3_sss_revival",
                         pass_idx=int(_pass_idx),

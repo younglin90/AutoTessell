@@ -34,6 +34,8 @@ _STAGES = (
     "post_nnn3_insert",
     "post_nnn4_amips",
     "post_rrr2_targeted_amips",
+    "pre_sss_pass0_relocate",
+    "post_sss_pass0_relocate_pre_accept",
     "post_sss_revival_pass_0",
     "post_sss_revival_pass_1",
     "post_sss_revival",
@@ -61,9 +63,11 @@ def _worker(repeat: int, case_dir: Path) -> dict[str, object]:
     faces = np.ascontiguousarray(mesh.faces, dtype=np.int64)
     records: list[dict[str, object]] = []
     immutable = True
+    pass0_before: np.ndarray | None = None
+    relocation_delta: dict[str, object] | None = None
 
     def observe(checkpoint: Any) -> None:
-        nonlocal immutable
+        nonlocal immutable, pass0_before, relocation_delta
         arrays = (
             checkpoint.source_points,
             checkpoint.source_faces,
@@ -79,6 +83,17 @@ def _worker(repeat: int, case_dir: Path) -> dict[str, object]:
             except ValueError:
                 continue
             immutable = False
+        if checkpoint.stage == "pre_sss_pass0_relocate":
+            pass0_before = checkpoint.candidate_points.copy()
+        elif checkpoint.stage == "post_sss_pass0_relocate_pre_accept":
+            assert pass0_before is not None
+            displacement = np.linalg.norm(
+                checkpoint.candidate_points - pass0_before, axis=1
+            )
+            relocation_delta = {
+                "moved_vertices": int((displacement > 0.0).sum()),
+                "max_displacement": float(displacement.max()),
+            }
         records.append(
             {
                 "stage": checkpoint.stage,
@@ -109,6 +124,7 @@ def _worker(repeat: int, case_dir: Path) -> dict[str, object]:
     return {
         "records": records,
         "immutable": immutable,
+        "relocation_delta": relocation_delta,
         "first_failed": first_failed,
         "result": {
             "success": result.success,
@@ -150,14 +166,17 @@ def test_sphere_provenance_interval_l1(tmp_path: Path) -> None:
     for payload in payloads:
         records = payload["records"]
         assert payload["immutable"] is True
+        assert isinstance(payload["relocation_delta"], dict)
+        assert payload["relocation_delta"]["moved_vertices"] > 0
+        assert payload["relocation_delta"]["max_displacement"] > 0.0
         assert payload["result"]["success"] is False
         assert payload["result"]["writer"] is False
         assert tuple(item["stage"] for item in records) == _STAGES
-        assert payload["first_failed"] == "post_sss_revival_pass_0"
+        assert payload["first_failed"] == "post_sss_pass0_relocate_pre_accept"
         first_failed_index = next(
             index
             for index, item in enumerate(records)
-            if item["stage"] == "post_sss_revival_pass_0"
+            if item["stage"] == "post_sss_pass0_relocate_pre_accept"
         )
         for item in records[:first_failed_index]:
             assert _passes(item["record"]) is True
