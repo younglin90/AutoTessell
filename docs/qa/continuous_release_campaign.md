@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `90`
+- cycle: `91`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
-- next_action: `Isolate the missing strict-source predicate in the CVT-off cube same-side candidate; do not relax topology.`
+- next_action: `Isolate the CVT-off cube candidate ambiguity explosion with constrained connectivity only; do not relax topology.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2827,6 +2827,29 @@ provenance gate.
 ### Release state
 
 - Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 91 pre-merge checkpoint -- 2026-07-31
+
+### Tet cube CVT-off same-side audit
+
+- The first `/tmp` runner probe had a missing workspace `PYTHONPATH` and is
+  `UNVERIFIED`; it supplies no correctness result.  The corrected bounded
+  runner passed at concurrency `1` in `7.12 s`.
+- Transaction candidate evidence: source component bijection `true`, source
+  faces preserved `true`, unowned faces `0`, inverted tets `0`, and same-side
+  debt `4 -> 0`.  It still rolled back because ambiguous internal faces rose
+  `4 -> 292` under the unchanged strict predicate.
+- Post-rollback base evidence is separate: source faces preserved `false`
+  (missing `12`, unowned `9`, area mismatch `1`, feature mismatch `1`, overlap
+  pairs `2`); boundary has nonmanifold edges `4`, degenerate tets `1`, and
+  ambiguous internal faces `4`.
+
+### Release state
+
+- Default behavior is unchanged.  No Gate `PASS`; Gates 1--15 remain unmet.
+  Next action is no-relaxation ambiguity root cause and constrained
+  connectivity only.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 90 pre-merge checkpoint -- 2026-07-31
