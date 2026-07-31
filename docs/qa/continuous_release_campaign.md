@@ -3191,6 +3191,23 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 128 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tet sphere bounded reproducibility observation
+
+- Two additional full strict native-Tet sphere CLI runs passed at concurrency
+  `1` in `15.85 s` and `15.46 s`; with Cycle 118's first run, all three have
+  byte-identical SHA-256 values for `polyMesh` `points`, `faces`, `owner`,
+  `neighbour`, and `boundary`.
+- This adds a second serial fixture only.  Thread/order matrix and
+  cross-product corpus evidence remain absent, so Gate 9 remains `UNVERIFIED`.
+
+### Release state
+
+- No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing,
+  default, UI, mesh, provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 127 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Tet cube third bounded reproducibility run
