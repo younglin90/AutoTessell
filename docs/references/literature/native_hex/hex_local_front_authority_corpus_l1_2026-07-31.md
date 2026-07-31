@@ -95,3 +95,25 @@ target-hard condition, not a geometry or target-cell claim.  Roll back if any
 duplicate reaches sidecar/preflight, a caller iteration order selects an
 authority, an artifact/candidate exists, production mesh state changes, or
 the card enters routing/default behavior.  `third_party/` remains unchanged.
+
+## L3 immutable source-digest preflight
+
+`LocalFrontCorpusSourceDigestL3` binds every already-unambiguous L2 metadata
+row to the canonical lowercase SHA-256 of the bytes at its declared source
+path.  It streams exact bytes in fixed 1 MiB binary chunks: no STL/STEP reader,
+source-geometry parse, sidecar, numeric clearance preflight, or candidate is
+involved.  Thus a path
+retargeted to different bytes rejects `reject_source_digest_mismatch`; a
+missing path rejects `reject_source_digest_file_not_found`; malformed digest
+metadata rejects before file access.  An unreadable existing path also returns
+an explicit rejection rather than raising.
+
+The canonical cube fixture is measured three times with an identical digest
+report.  An altered 64-hex digest and an absent cube path are explicit
+fail-closed cases.  All L3 cases use forbidden sidecar/numeric sentinels and
+assert candidate, production mesh, and artifact values remain false/zero.
+
+This is L3 report-only evidence retained as `CORRECTNESS_KEEP`; it does not
+claim `L3_REGRESSION_PASS`, a local-front, topology, target-cell, routing, or
+packaging result.  Roll back if byte identity can be bypassed, if source
+geometry is parsed here, or if any downstream path runs.
