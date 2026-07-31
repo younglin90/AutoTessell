@@ -152,7 +152,7 @@
       "module": "cad_entity_ingress",
       "classification": "excluded_adapter",
       "implementation_provenance": "Independent AutoTessell metadata plumbing over public OCP APIs; no OpenCASCADE or external mesher implementation source copied.",
-      "algorithm_source": "OpenCASCADE B-Rep face orientation and polygon-on-triangulation APIs provide authority; AutoTessell only transports and validates their metadata.",
+      "algorithm_source": "OpenCASCADE B-Rep face orientation, polygon-on-triangulation, and XDE layer/color/assembly APIs provide authority; AutoTessell only transports and validates their metadata and never infers physical semantics.",
       "direct_dependencies": ["NumPy (BSD-3-Clause)", "OCP/cadquery-ocp (LGPL-2.1-only OpenCASCADE binding distribution)"],
       "license_status": "optional external CAD adapter; excluded from future dependency-free MIT native core",
       "mit_core_eligible": false,

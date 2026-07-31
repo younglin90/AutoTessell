@@ -12,6 +12,7 @@ OCP 가 미설치되면 graceful fallback 을 위해 ImportError 를 raise (file
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
@@ -38,6 +39,13 @@ class CadEntityProvenance:
     oriented_canonical_faces: np.ndarray
     face_names: tuple[str | None, ...]
     physical_group_names: tuple[str | None, ...]
+    xde_layer_names: tuple[tuple[str, ...], ...]
+    xde_surface_colors: tuple[tuple[float, float, float] | None, ...]
+    xde_assembly_paths: tuple[tuple[str, ...] | None, ...]
+    xde_layer_authoritative: bool
+    xde_layer_coverage_count: int
+    xde_color_display_metadata_authoritative: bool
+    xde_assembly_identity_authoritative: bool
     face_ordinals_authoritative: bool
     face_orientation_authoritative: bool
     seam_connectivity_authoritative: bool
@@ -46,6 +54,7 @@ class CadEntityProvenance:
     ordered_face_ordinal_sha256: str
     ordered_orientation_sha256: str
     seam_connectivity_sha256: str
+    xde_metadata_sha256: str
 
 
 @dataclass(frozen=True)
@@ -213,8 +222,9 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
     Surface identities are deterministic ordinals of actual B-Rep faces.
     Shared triangulation nodes are joined only when the same topological B-Rep
     edge exposes the same IEEE-754 coordinate; unrelated coincident geometry
-    is never welded.  STEPControl does not expose XDE names or physical groups,
-    so those authority flags remain false instead of inventing labels.
+    is never welded. STEPCAF/XDE supplies optional layer, display-color, and
+    assembly identity metadata. None is promoted to physical-group or boundary-
+    condition meaning without a separate explicit user/import mapping contract.
     """
     vertices, faces = load_cad_native(path, fmt)
     try:
@@ -223,23 +233,34 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
         from OCP.BRepTools import BRepTools
         from OCP.IFSelect import IFSelect_RetDone
         from OCP.IGESControl import IGESControl_Reader
-        from OCP.STEPControl import STEPControl_Reader
+        from OCP.Quantity import Quantity_Color, Quantity_TOC_RGB
+        from OCP.STEPCAFControl import STEPCAFControl_Reader
+        from OCP.TCollection import TCollection_ExtendedString
+        from OCP.TDF import TDF_AttributeIterator, TDF_Label, TDF_LabelSequence
+        from OCP.TDocStd import TDocStd_Document
         from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_REVERSED
         from OCP.TopExp import TopExp, TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Shape
         from OCP.TopTools import TopTools_IndexedMapOfShape
+        from OCP.XCAFDoc import XCAFDoc_ColorSurf, XCAFDoc_DocumentTool
     except ImportError as exc:
         raise ImportError("OCP provenance traversal unavailable") from exc
 
     ext = fmt.lstrip(".").lower()
     shape: Any
+    xde_document: Any = None
     if ext in ("step", "stp"):
-        reader = STEPControl_Reader()
+        reader = STEPCAFControl_Reader()
+        reader.SetNameMode(True)
+        reader.SetLayerMode(True)
+        reader.SetColorMode(True)
         if reader.ReadFile(str(path)) != IFSelect_RetDone:
             raise ValueError(f"STEP provenance parsing failed: {path}")
-        reader.TransferRoots()
-        shape = reader.OneShape()
+        xde_document = TDocStd_Document(TCollection_ExtendedString("MDTV-XCAF"))
+        if not reader.Transfer(xde_document):
+            raise ValueError(f"STEP XDE provenance transfer failed: {path}")
+        shape = reader.Reader().OneShape()
     elif ext in ("iges", "igs"):
         reader = IGESControl_Reader()
         if reader.ReadFile(str(path)) != IFSelect_RetDone:
@@ -257,6 +278,8 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
     BRepMesh_IncrementalMesh(shape, 0.01, False, 0.1, True)
     edge_map = TopTools_IndexedMapOfShape()
     TopExp.MapShapes_s(shape, TopAbs_EDGE, edge_map)
+    face_map = TopTools_IndexedMapOfShape()
+    TopExp.MapShapes_s(shape, TopAbs_FACE, face_map)
 
     face_ordinals: list[int] = []
     orientation_reversed: list[bool] = []
@@ -369,6 +392,147 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
     canonical_faces = seam_vertex_ids[oriented_faces]
     canonical_source_array = np.asarray(canonical_sources, dtype=np.int64)
     triangle_coordinates = vertices[faces]
+
+    xde_face_names: list[str | None] = [None] * face_ordinal
+    xde_layers: list[set[str]] = [set() for _ in range(face_ordinal)]
+    xde_colors: list[tuple[float, float, float] | None] = [None] * face_ordinal
+    xde_paths: list[tuple[str, ...] | None] = [None] * face_ordinal
+    xde_assembly_root_count = 0
+    if xde_document is not None:
+        shape_tool = XCAFDoc_DocumentTool.ShapeTool_s(xde_document.Main())
+        color_tool = XCAFDoc_DocumentTool.ColorTool_s(xde_document.Main())
+        layer_tool = XCAFDoc_DocumentTool.LayerTool_s(xde_document.Main())
+
+        def label_name(label: Any) -> str | None:
+            attributes = TDF_AttributeIterator(label)
+            while attributes.More():
+                attribute = attributes.Value()
+                if attribute.get_type_name_s() == "TDataStd_Name":
+                    value = attribute.Get().ToExtString().strip()
+                    return value or None
+                attributes.Next()
+            return None
+
+        def mapped_face_ordinals(source_shape: Any) -> tuple[int, ...]:
+            mapped: list[int] = []
+            face_explorer = TopExp_Explorer(source_shape, TopAbs_FACE)
+            while face_explorer.More():
+                ordinal = int(face_map.FindIndex(face_explorer.Current())) - 1
+                if ordinal < 0:
+                    raise ValueError("XDE shape does not map to the B-Rep face stream")
+                mapped.append(ordinal)
+                face_explorer.Next()
+            return tuple(mapped)
+
+        def inspect_face_label(label: Any) -> None:
+            label_shape = shape_tool.GetShape_s(label)
+            if label_shape.IsNull() or label_shape.ShapeType() != TopAbs_FACE:
+                return
+            layer_labels = TDF_LabelSequence()
+            has_layers = layer_tool.GetLayers(label, layer_labels)
+            layer_names: list[str] = []
+            if has_layers:
+                for layer_index in range(1, layer_labels.Length() + 1):
+                    layer_name = TCollection_ExtendedString()
+                    if not layer_tool.GetLayer(layer_labels.Value(layer_index), layer_name):
+                        raise ValueError("XDE layer label has no authoritative name")
+                    value = layer_name.ToExtString().strip()
+                    if not value:
+                        raise ValueError("XDE layer name must be nonblank")
+                    layer_names.append(value)
+            color = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
+            has_color = color_tool.GetColor(label_shape, XCAFDoc_ColorSurf, color)
+            name = label_name(label)
+            if not layer_names and not has_color and name is None:
+                return
+            ordinals = mapped_face_ordinals(label_shape)
+            if len(ordinals) != 1:
+                raise ValueError("XDE face metadata must map to exactly one B-Rep face")
+            ordinal = ordinals[0]
+            xde_layers[ordinal].update(layer_names)
+            if name is not None:
+                previous_name = xde_face_names[ordinal]
+                if previous_name is not None and previous_name != name:
+                    raise ValueError("conflicting XDE face names")
+                xde_face_names[ordinal] = name
+            if has_color:
+                candidate = (float(color.Red()), float(color.Green()), float(color.Blue()))
+                previous_color = xde_colors[ordinal]
+                if previous_color is not None and previous_color != candidate:
+                    raise ValueError("conflicting XDE surface colors")
+                xde_colors[ordinal] = candidate
+
+        free_shapes = TDF_LabelSequence()
+        shape_tool.GetFreeShapes(free_shapes)
+        for root_index in range(1, free_shapes.Length() + 1):
+            root_label = free_shapes.Value(root_index)
+            root_name = label_name(root_label)
+            subshapes = TDF_LabelSequence()
+            shape_tool.GetSubShapes_s(root_label, subshapes)
+            for subshape_index in range(1, subshapes.Length() + 1):
+                inspect_face_label(subshapes.Value(subshape_index))
+
+            if not shape_tool.IsAssembly_s(root_label):
+                continue
+            xde_assembly_root_count += 1
+            components = TDF_LabelSequence()
+            if not shape_tool.GetComponents_s(root_label, components, True):
+                raise ValueError("XDE assembly has no authoritative components")
+            for component_index in range(1, components.Length() + 1):
+                component_label = components.Value(component_index)
+                referred_label = TDF_Label()
+                if not shape_tool.GetReferredShape_s(component_label, referred_label):
+                    raise ValueError("XDE component has no referred shape")
+                component_name = label_name(component_label)
+                referred_name = label_name(referred_label)
+                if root_name is None or component_name is None or referred_name is None:
+                    continue
+                assembly_path = (root_name, component_name, referred_name)
+                for ordinal in mapped_face_ordinals(shape_tool.GetShape_s(component_label)):
+                    previous_path = xde_paths[ordinal]
+                    if previous_path is not None and previous_path != assembly_path:
+                        raise ValueError("ambiguous XDE assembly path for B-Rep face")
+                    xde_paths[ordinal] = assembly_path
+
+                referred_subshapes = TDF_LabelSequence()
+                shape_tool.GetSubShapes_s(referred_label, referred_subshapes)
+                for subshape_index in range(1, referred_subshapes.Length() + 1):
+                    subshape_label = referred_subshapes.Value(subshape_index)
+                    layer_labels = TDF_LabelSequence()
+                    has_layers = layer_tool.GetLayers(subshape_label, layer_labels)
+                    subshape = shape_tool.GetShape_s(subshape_label)
+                    probe_color = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
+                    has_color = not subshape.IsNull() and color_tool.GetColor(
+                        subshape, XCAFDoc_ColorSurf, probe_color
+                    )
+                    if has_layers or has_color or label_name(subshape_label) is not None:
+                        raise ValueError(
+                            "located XDE component face metadata requires an explicit "
+                            "instance mapping contract"
+                        )
+
+    xde_layer_names = tuple(tuple(sorted(names)) for names in xde_layers)
+    xde_surface_colors = tuple(xde_colors)
+    xde_assembly_paths = tuple(xde_paths)
+    xde_layer_coverage = sum(bool(names) for names in xde_layer_names)
+    xde_layer_authoritative = xde_layer_coverage > 0
+    xde_color_authoritative = any(color is not None for color in xde_surface_colors)
+    xde_assembly_authoritative = (
+        xde_assembly_root_count > 0
+        and bool(xde_assembly_paths)
+        and all(path is not None for path in xde_assembly_paths)
+    )
+    xde_metadata_payload = {
+        "face_names": xde_face_names,
+        "layer_names": xde_layer_names,
+        "surface_colors": xde_surface_colors,
+        "assembly_paths": xde_assembly_paths,
+        "layer_authoritative": xde_layer_authoritative,
+        "physical_group_authoritative": False,
+    }
+    xde_metadata_hash = sha256(
+        json.dumps(xde_metadata_payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
     physical_groups_authoritative = False
     provenance = CadEntityProvenance(
         status="partial_authority_physical_groups_unavailable",
@@ -379,8 +543,15 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
         seam_vertex_ids=_readonly(seam_vertex_ids),
         canonical_vertex_source_ids=_readonly(canonical_source_array),
         oriented_canonical_faces=_readonly(canonical_faces),
-        face_names=(None,) * face_ordinal,
+        face_names=tuple(xde_face_names),
         physical_group_names=(None,) * face_ordinal,
+        xde_layer_names=xde_layer_names,
+        xde_surface_colors=xde_surface_colors,
+        xde_assembly_paths=xde_assembly_paths,
+        xde_layer_authoritative=xde_layer_authoritative,
+        xde_layer_coverage_count=xde_layer_coverage,
+        xde_color_display_metadata_authoritative=xde_color_authoritative,
+        xde_assembly_identity_authoritative=xde_assembly_authoritative,
         face_ordinals_authoritative=True,
         face_orientation_authoritative=True,
         seam_connectivity_authoritative=True,
@@ -389,5 +560,6 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
         ordered_face_ordinal_sha256=_array_sha256(face_ordinal_array, "<i8"),
         ordered_orientation_sha256=_array_sha256(reversed_array, "u1"),
         seam_connectivity_sha256=_array_sha256(canonical_faces, "<i8"),
+        xde_metadata_sha256=xde_metadata_hash,
     )
     return CadNativeTriangulation(vertices, faces, provenance)
