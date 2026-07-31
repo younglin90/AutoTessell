@@ -3191,6 +3191,57 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 154 pre-merge checkpoint -- 2026-07-31
+
+### Clean first-party native Release build, Unix Makefiles
+
+- Fresh source at `2dab0218` configured with Unix Makefiles, `Release`, the
+  first-party native install profile, injected `pybind11_DIR`, and cfMesh,
+  cinolib, fTetWild, and RobustHex all `OFF`.  The serial build target is
+  `native_build_evidence`; it neither configures nor builds `third_party/`.
+- The bounded validation runner passed at concurrency `1`: clean preflight
+  `0.400 s`, configure `4.400 s`, serial build `81.337 s`, exact native-build
+  contract verification `0.168 s`, and clean postflight `0.414 s`.
+  Evidence: `/tmp/autotessell-c154-native-release-make-pybind-evidence.json`.
+- This is one clean Linux/GNU Unix-Makefiles configuration row.  It is build
+  evidence only; it does not claim a supported build matrix, packaging, or a
+  release PASS.
+
+### Release state
+
+- Gate 2 remains `UNVERIFIED`: Ninja, other generators, operating systems,
+  compilers, and supported-configuration matrix evidence remain absent.  No
+  Gate is promoted to `PASS`; Gates 1--15 remain unmet.
+- `third_party/` is untouched.  `allowed_to_stop: false` remains binding.
+
+## Cycle 153 pre-merge checkpoint -- 2026-07-31
+
+### Clean Release Makefiles dependency failure
+
+- The serial Unix-Makefiles configuration without an injected `pybind11_DIR`
+  stopped for missing pybind11 CMake-package discovery.  The configure,
+  dependent build, and contract-verification jobs are `ERROR`; no build
+  started and the runner is `UNVERIFIED`.
+- The clean preflight and postflight passed.  This failure supplies no Gate-2
+  build evidence and changes no source, route, default, or `third_party/`
+  behavior.
+
+## Cycle 152 pre-merge checkpoint -- 2026-07-31
+
+### Clean Release Ninja availability failure
+
+- The bounded Ninja probe is `ERROR` / `UNVERIFIED`: Ninja was unavailable,
+  so CMake configuration and the native build never started.  It supplies no
+  build or generator-support claim.
+
+## Cycle 151 pre-merge checkpoint -- 2026-07-31
+
+### Clean Release generator quoting failure
+
+- The first bounded Unix-Makefiles runner command is `ERROR` / `UNVERIFIED`
+  because its generator quoting was invalid.  CMake and the native build never
+  started; the result is retained solely as failure evidence.
+
 ## Cycle 150 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Tri strict planar-flip source-lock ingress
