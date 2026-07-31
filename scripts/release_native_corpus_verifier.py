@@ -15,6 +15,12 @@ from pathlib import Path
 
 _REQUIRED_POLYMESH_FILES = ("points", "faces", "owner", "neighbour", "boundary")
 _MANIFEST_SCHEMA = "autotessell/release-native-corpus/v1"
+_NATIVE_PRODUCT_CONTRACT_FIELDS = (
+    "tier_evaluated",
+    "mesh_type",
+    "checker_engine_used",
+    "quality_level",
+)
 
 
 def _sha256(path: Path) -> str:
@@ -152,6 +158,24 @@ def _quality_report_evidence(value: object) -> tuple[int, tuple[str, ...]] | Non
     return negative_volumes, unverified_fields
 
 
+def _native_product_contract(value: object) -> dict[str, str] | None:
+    required = set(_NATIVE_PRODUCT_CONTRACT_FIELDS)
+    if not isinstance(value, dict) or set(value) != required:
+        return None
+    if not all(isinstance(value[name], str) and value[name].strip() for name in required):
+        return None
+    return {name: value[name] for name in sorted(required)}
+
+
+def _quality_report_product_contract(value: object) -> dict[str, str] | None:
+    if not isinstance(value, dict) or not isinstance(value.get("evaluation_summary"), dict):
+        return None
+    summary = value["evaluation_summary"]
+    return _native_product_contract(
+        {name: summary.get(name) for name in _NATIVE_PRODUCT_CONTRACT_FIELDS}
+    )
+
+
 def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
     if not isinstance(case, dict) or not isinstance(case.get("id"), str) or not case["id"]:
         return {"status": "UNVERIFIED", "reason": "invalid_case_id"}
@@ -165,6 +189,13 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
         return {"id": case["id"], "status": "UNVERIFIED", "reason": "invalid_source_snapshot"}
     if _sha256(source_path) != expected_source_hash:
         return {"id": case["id"], "status": "UNVERIFIED", "reason": "source_snapshot_hash_mismatch"}
+    expected_product_contract = _native_product_contract(case.get("native_product_contract"))
+    if expected_product_contract is None:
+        return {
+            "id": case["id"],
+            "status": "UNVERIFIED",
+            "reason": "native_product_contract_required",
+        }
 
     runs = case.get("runs")
     if not isinstance(runs, list) or len(runs) < 3:
@@ -218,6 +249,13 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
                 "status": "UNVERIFIED",
                 "reason": "invalid_quality_report_schema",
             }
+        observed_product_contract = _quality_report_product_contract(quality_report)
+        if observed_product_contract != expected_product_contract:
+            return {
+                "id": case["id"],
+                "status": "UNVERIFIED",
+                "reason": "native_product_contract_mismatch",
+            }
         negative_volumes, unverified_fields = quality_evidence
         if negative_volumes != 0:
             return {"id": case["id"], "status": "UNVERIFIED", "reason": "negative_volumes_not_zero"}
@@ -226,6 +264,7 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
                 "artifact_dir": str(artifact_dir),
                 "poly_mesh_sha256": actual_mesh["sha256"],
                 "quality_report_sha256": actual_quality_report_hash,
+                "native_product_contract": observed_product_contract,
                 "gate4_unverified_fields": unverified_fields,
             }
         )
