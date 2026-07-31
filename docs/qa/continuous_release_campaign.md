@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `52`
+- cycle: `53`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `53f6b2dc197570112fa4ec4c4ce119e7e3ef09db`
+- last_verified_master: `0cf28a3a6e8e6586e61576c6f6d5bc31f45f5920`
 - allowed_to_stop: `false`
-- next_action: `Continue strict-quad route/evaluator planning, Tet ambiguity L1 evidence collection, native-hex authority-corpus expansion, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
+- next_action: `Continue separate tri/quad/tri_quad evaluator planning, authoritative CAD-to-front corpus expansion, Tet initial-overlap root-cause evidence, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2568,3 +2568,54 @@ is deliberately secondary.
   Expand authoritative Hex source-front corpus without activating a shell.
   Keep Poly deferred until owner semantics are explicitly authorized.  Gate
   1--15 remain unmet; continue.
+
+## Cycle 53 checkpoint -- 2026-07-31
+
+### Integrated evidence-only hardening
+
+- `4ddddc32` materializes a default-OFF strict-quad fixed-pair product only
+  after the existing fixed-vertex certificate succeeds.  It copies certified
+  source vertices, accepts supplied quads, emits zero triangles, and retains
+  immutable patch/hash evidence.  It does not infer pairs, route a mesh,
+  change a default, or fall back to mixed output.  Post-merge focused tests:
+  `21 passed, 4 skipped` (no optional external native module).  Bundle SHA-256:
+  `51af1bb8b55ce09de541f992f709b3e309a3bb68524d07bb905fa14dc79dc264`.
+- `88f9b366` adds the Hex local-front authority corpus L1 admission evidence.
+  The runtime allowlist executes before any sidecar or numeric preflight;
+  unknown authority rejects with no candidate or artifact delta.  It does not
+  activate a shell or construct an output mesh.  Independent review accepted;
+  post-merge focused tests: `13 passed, 2 skipped`.  Bundle SHA-256:
+  `30c8c5e3d366fbd8346bc107945195e75e92603d88d71b409a3242dbf7dc75ff`.
+- `0cf28a3a` adds a Tet ambiguity stage ledger L1.  It records immutable
+  dtype/shape/byte hashes and exact legacy ambiguity partitions after existing
+  stages.  It is not imported by the generator and changes no predicate,
+  strict refusal, target-cell path, writer, transaction, or source array.
+  Cube and sphere isolated three-run evidence is deterministic and emits no
+  writer artifact; post-merge ledger plus strict-topology/result regression:
+  `13 passed` in `92.87 s`.  Bundle SHA-256:
+  `42c7bf053c7a3ee8ebef2ea235d29565a25d3851e00178d11fa0431b8da1b234`.
+- Both integrated research worktrees and their merged branches were removed
+  only after bundle creation.  The sole registered research worktree is the
+  protected, unmerged Poly DEFER stack.  `third_party/` remains unchanged.
+- Native C++ source identity evidence verifies all eight declared modules on
+  GCC `13.3.0` / C++23 for `0cf28a3a`; this is source identity evidence, not a
+  clean supported-platform Release-build claim.
+
+### Cycle-53 gate re-evaluation
+
+Gate states remain deliberately conservative.  Gate 1 is `FAIL` while the
+protected Poly research worktree and tracked installer executable remain.
+Gate 4 remains `UNVERIFIED`: all three surface products have contract or
+certificate evidence, not a full source-preserving output corpus.  Gate 5
+remains `FAIL`: Tet cube/sphere successful zero-overlap output is absent.
+Gate 6 stays `FAIL` and secondary by policy.  Gates 2--3 and 7--15 remain
+`UNVERIFIED` or previously recorded `FAIL` pending their mechanical evidence.
+
+### Next automatic action
+
+- Begin a report-only evaluator/planning card that keeps `tri`, strict `quad`,
+  and `tri_quad` metrics and acceptance reports separate; do not alter routing
+  or output.  In parallel, extend authoritative Hex source-front fixtures and
+  use the Tet ledger only to localize the first strict-overlap source.  Keep
+  Poly source-cap work deferred until an explicit owner-semantics policy exists.
+  Gate 1--15 remain unmet; continue.
