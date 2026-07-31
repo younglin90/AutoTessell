@@ -528,6 +528,18 @@ class Gate4ActualSurfaceMetricEvidence(BaseModel):
     normal_p95_deg: float | None = None
     normal_p99_deg: float | None = None
     normal_flipped: int | None = None
+    source_sha256: str | None = None
+    output_sha256: str | None = None
+    source_self_intersection_status: str = "unverified_not_checked"
+    output_self_intersection_status: str = "unverified_not_checked"
+    signed_status: str = "unverified_not_measured"
+    signed_mean_source_to_output: float | None = None
+    signed_mean_output_to_source: float | None = None
+    integral_status: str = "unverified_not_measured"
+    source_signed_volume: float | None = None
+    output_signed_volume: float | None = None
+    volume_error_pct: float | None = None
+    centroid_shift_rel: float | None = None
     available_fields: tuple[str, ...] = ()
     unverified_fields: tuple[str, ...]
     gate4_pass: bool = False

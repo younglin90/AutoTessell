@@ -3191,6 +3191,30 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 123 pre-merge checkpoint -- 2026-07-31
+
+### Bounded oriented integral evidence
+
+- `f41f230f` adds output-observation fields only.  It measures volume error
+  percent and centroid relative shift only when both source and strict output
+  are finite, closed, orientation-consistent, and independently obtain
+  `measured_no_intersections` from the bounded native exhaustive SI audit.
+- The record carries source and output SHA-256 identities.  Native predicate
+  absence or error, triangle limit, non-closed surface, inconsistent
+  orientation, or invalid oriented integral remains `UNVERIFIED`.
+- Signed mean remains explicitly `UNVERIFIED`: no exact deterministic side
+  predicate exists yet.  No jittered ray, absolute-normal proxy, heuristic,
+  routing, or default change was introduced.
+- Root focused runners passed at concurrency `1`: exact metrics `5.25 s`,
+  substrate `4.01 s`.  An actual artifact rerun remains pending.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; all evidence retains `gate4_pass=false`.  No
+  Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No UI, mesh,
+  provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 122 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Tet cube strict bounded observation

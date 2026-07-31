@@ -99,3 +99,55 @@ def test_sampling_is_deterministic() -> None:
     )
 
     assert first == second
+
+
+def test_clean_closed_native_audit_enables_oriented_integrals_only(monkeypatch) -> None:
+    class _NativeMetrics:
+        @staticmethod
+        def aabb_overlap_pairs(*_args):
+            return np.empty((0, 2), dtype=np.int64)
+
+        @staticmethod
+        def triangle_intersections_segment(*_args):
+            return 0, np.empty((0, 2), dtype=np.int64)
+
+    monkeypatch.setattr(
+        "core.utils.native_extensions.load_native_metrics", lambda: _NativeMetrics()
+    )
+    record = measure_gate4_exact_surface_metrics(
+        _TETRA_POINTS,
+        _TETRA_FACES,
+        _TETRA_POINTS,
+        _TETRA_FACES,
+        sample_count=64,
+        source_sha256="a" * 64,
+        output_sha256="b" * 64,
+    )
+
+    assert record.source_self_intersection_status == "measured_no_intersections"
+    assert record.output_self_intersection_status == "measured_no_intersections"
+    assert record.integral_status == "measured_closed_orientation_consistent_native_si_clean"
+    assert record.source_signed_volume == record.output_signed_volume == 1.0 / 6.0
+    assert record.volume_error_pct == 0.0
+    assert record.centroid_shift_rel == 0.0
+    assert "integral.volume_error_pct" in record.available_fields
+    assert "integral.volume_error_pct" not in record.unverified_fields
+    assert record.signed_status == "unverified_exact_signed_sample_predicate_unavailable"
+    assert record.signed_mean_source_to_output is None
+    assert record.source_sha256 == "a" * 64
+    assert record.output_sha256 == "b" * 64
+    assert record.gate4_pass is False
+
+
+def test_intersection_or_missing_native_audit_keeps_integrals_unverified(monkeypatch) -> None:
+    monkeypatch.setattr("core.utils.native_extensions.load_native_metrics", lambda: None)
+    record = measure_gate4_exact_surface_metrics(
+        _TETRA_POINTS, _TETRA_FACES, _TETRA_POINTS, _TETRA_FACES, sample_count=64
+    )
+
+    assert record.integral_status == "unverified_exhaustive_native_self_intersection_required"
+    assert record.volume_error_pct is None
+    assert record.centroid_shift_rel is None
+    assert "integral.volume_error_pct" in record.unverified_fields
+    assert record.signed_status == "unverified_validated_closed_surfaces_required"
+    assert record.gate4_pass is False
