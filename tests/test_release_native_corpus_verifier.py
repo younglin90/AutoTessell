@@ -48,12 +48,13 @@ def _write_run(
     )
 
 
-def _manifest(source_root: Path, first: Path, second: Path) -> dict[str, object]:
+def _manifest(source_root: Path, first: Path, second: Path, third: Path) -> dict[str, object]:
     source = source_root / "source.stl"
     source.write_bytes(b"frozen-source")
     first_identity = _polymesh_identity(first)
     second_identity = _polymesh_identity(second)
-    assert first_identity is not None and second_identity is not None
+    third_identity = _polymesh_identity(third)
+    assert first_identity is not None and second_identity is not None and third_identity is not None
     return {
         "schema": "autotessell/release-native-corpus/v1",
         "cases": [
@@ -75,6 +76,11 @@ def _manifest(source_root: Path, first: Path, second: Path) -> dict[str, object]
                         "poly_mesh": second_identity,
                         "quality_report": "quality-report.json",
                     },
+                    {
+                        "artifact_dir": str(third.resolve()),
+                        "poly_mesh": third_identity,
+                        "quality_report": "quality-report.json",
+                    },
                 ],
             }
         ],
@@ -82,12 +88,13 @@ def _manifest(source_root: Path, first: Path, second: Path) -> dict[str, object]
 
 
 def test_complete_bounded_evidence_still_never_returns_release_pass(tmp_path: Path) -> None:
-    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
     _write_run(first)
     _write_run(second)
-    manifest = _manifest(first, first, second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
 
-    report = verify_release_native_corpus(manifest, [first, second])
+    report = verify_release_native_corpus(manifest, [first, second, third])
 
     assert report["status"] == "UNVERIFIED"
     assert report["reason"] == "release_gate_evidence_incomplete"
@@ -100,62 +107,80 @@ def test_complete_bounded_evidence_still_never_returns_release_pass(tmp_path: Pa
     )
 
 
-def test_polymesh_change_after_manifest_is_unverified(tmp_path: Path) -> None:
-    first, second = tmp_path / "run-one", tmp_path / "run-two"
+def test_exactly_two_runs_are_unverified_before_artifact_inspection(tmp_path: Path) -> None:
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
     _write_run(first)
     _write_run(second)
-    manifest = _manifest(first, first, second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
+    manifest["cases"][0]["runs"] = manifest["cases"][0]["runs"][:2]
+
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "repeat_runs_required"
+
+
+def test_polymesh_change_after_manifest_is_unverified(tmp_path: Path) -> None:
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
+    _write_run(first)
+    _write_run(second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
     (second / "constant" / "polyMesh" / "points").write_text("changed", encoding="utf-8")
 
-    report = verify_release_native_corpus(manifest, [first, second])
+    report = verify_release_native_corpus(manifest, [first, second, third])
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "polymesh_identity_mismatch"
 
 
 def test_negative_volume_or_missing_gate4_inventory_is_unverified(tmp_path: Path) -> None:
-    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
     _write_run(first, negative_volumes=1)
     _write_run(second)
-    manifest = _manifest(first, first, second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
 
-    report = verify_release_native_corpus(manifest, [first, second])
+    report = verify_release_native_corpus(manifest, [first, second, third])
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "negative_volumes_not_zero"
 
     _write_run(first, negative_volumes=0, unverified_fields=[])
-    manifest = _manifest(first, first, second)
-    report = verify_release_native_corpus(manifest, [first, second])
+    manifest = _manifest(first, first, second, third)
+    report = verify_release_native_corpus(manifest, [first, second, third])
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "invalid_quality_report_schema"
 
 
 def test_repeat_hash_mismatch_is_unverified_even_when_each_identity_matches(tmp_path: Path) -> None:
-    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
     _write_run(first)
     _write_run(second)
+    _write_run(third)
     (second / "constant" / "polyMesh" / "faces").write_text("different-faces", encoding="utf-8")
-    manifest = _manifest(first, first, second)
+    manifest = _manifest(first, first, second, third)
 
-    report = verify_release_native_corpus(manifest, [first, second])
+    report = verify_release_native_corpus(manifest, [first, second, third])
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "repeat_polymesh_hash_mismatch"
 
 
 def test_split_legacy_reports_cannot_replace_one_quality_report(tmp_path: Path) -> None:
-    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
     _write_run(first)
     _write_run(second)
-    manifest = _manifest(first, first, second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
     for run in manifest["cases"][0]["runs"]:
         run.pop("quality_report")
         run["native_checker_report"] = "native-checker.json"
         run["gate4_evidence"] = "gate4-evidence.json"
 
-    report = verify_release_native_corpus(manifest, [first, second])
+    report = verify_release_native_corpus(manifest, [first, second, third])
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "missing_quality_report"
@@ -164,12 +189,13 @@ def test_split_legacy_reports_cannot_replace_one_quality_report(tmp_path: Path) 
 def test_legacy_top_level_fields_are_explicitly_supported_but_ambiguous_shape_rejects(
     tmp_path: Path,
 ) -> None:
-    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
     _write_run(first, legacy_gate4_fields=True)
     _write_run(second, legacy_gate4_fields=True)
-    manifest = _manifest(first, first, second)
+    _write_run(third, legacy_gate4_fields=True)
+    manifest = _manifest(first, first, second, third)
 
-    report = verify_release_native_corpus(manifest, [first, second])
+    report = verify_release_native_corpus(manifest, [first, second, third])
 
     assert report["cases"][0]["reason"] == "measured_evidence_release_incomplete"
     report_path = first / "quality-report.json"
@@ -179,7 +205,7 @@ def test_legacy_top_level_fields_are_explicitly_supported_but_ambiguous_shape_re
     }
     report_path.write_text(json.dumps(value), encoding="utf-8")
 
-    report = verify_release_native_corpus(manifest, [first, second])
+    report = verify_release_native_corpus(manifest, [first, second, third])
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "invalid_quality_report_schema"
