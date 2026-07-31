@@ -15,14 +15,9 @@
     "test_ui*.py"
   ],
   "marker_count": 96,
-  "marker_sha256": "84d44b90047680485fd7d402ba555143303a88b0d6fb21c51460d4e11b9fe809",
+  "marker_sha256": "b4a9ecb0361ddd7fd622b760c1e080dc752d3e5176066f7553bf6c0b9c4ab18f",
   "deferred": [
     {"file": "tests/test_gui_visual.py", "line": 36, "marker": "pytest.skip", "reason": "<dynamic reason>"},
-    {"file": "tests/test_native_poly.py", "line": 38, "marker": "pytest.skip", "reason": "<no explicit reason>"},
-    {"file": "tests/test_native_poly.py", "line": 49, "marker": "pytest.skip", "reason": "<no explicit reason>"},
-    {"file": "tests/test_native_poly.py", "line": 62, "marker": "pytest.skip", "reason": "<no explicit reason>"},
-    {"file": "tests/test_native_poly.py", "line": 89, "marker": "pytest.skip", "reason": "<no explicit reason>"},
-    {"file": "tests/test_native_poly.py", "line": 101, "marker": "pytest.skip", "reason": "<no explicit reason>"},
     {"file": "tests/test_native_poly_dual.py", "line": 388, "marker": "pytest.skip", "reason": "<no explicit reason>"},
     {"file": "tests/test_native_poly_dual.py", "line": 418, "marker": "pytest.skip", "reason": "<no explicit reason>"},
     {"file": "tests/test_native_poly_dual.py", "line": 440, "marker": "pytest.skip", "reason": "<no explicit reason>"},
