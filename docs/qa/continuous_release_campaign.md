@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `91`
+- cycle: `92`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
-- next_action: `Isolate the CVT-off cube candidate ambiguity explosion with constrained connectivity only; do not relax topology.`
+- next_action: `Develop only a source-locked bounded local 2↔3/3↔2 strict transaction for same-side Tet debt.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2827,6 +2827,23 @@ provenance gate.
 ### Release state
 
 - Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 92 pre-merge checkpoint -- 2026-07-31
+
+### Tet cube Delaunay ambiguity classification
+
+- Formal runner passed at concurrency `1` in `5.39 s`.  The CVT-off candidate
+  has internal faces `2869`, opposite-side `2577`, same-side `0`, and ambiguous
+  `292`.
+- All `292` ambiguous faces are exact predicate-zero cases; floor-only
+  same-side and opposite-side counts are `0`.  This is unconstrained Qhull
+  coplanar degeneracy, not a tolerance change or duplicate connectivity.
+
+### Release state
+
+- No code/default change and no Gate `PASS`.  Next action is a source-locked,
+  bounded local `2↔3`/`3↔2` strict connectivity transaction only.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
