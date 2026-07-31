@@ -208,6 +208,18 @@ def _as_actual_metric_evidence(record) -> Gate4ActualSurfaceMetricEvidence:
         normal_p95_deg=record.normal_p95_deg,
         normal_p99_deg=record.normal_p99_deg,
         normal_flipped=record.normal_flipped,
+        source_sha256=record.source_sha256,
+        output_sha256=record.output_sha256,
+        source_self_intersection_status=record.source_self_intersection_status,
+        output_self_intersection_status=record.output_self_intersection_status,
+        signed_status=record.signed_status,
+        signed_mean_source_to_output=record.signed_mean_source_to_output,
+        signed_mean_output_to_source=record.signed_mean_output_to_source,
+        integral_status=record.integral_status,
+        source_signed_volume=record.source_signed_volume,
+        output_signed_volume=record.output_signed_volume,
+        volume_error_pct=record.volume_error_pct,
+        centroid_shift_rel=record.centroid_shift_rel,
         available_fields=record.available_fields,
         unverified_fields=record.unverified_fields,
         gate4_pass=False,
@@ -217,6 +229,7 @@ def _as_actual_metric_evidence(record) -> Gate4ActualSurfaceMetricEvidence:
 def _measure_actual_surface_metrics(
     *,
     source: Gate4SourceIdentity,
+    output: Gate4OutputArtifactIdentity,
     case_dir: Path,
     topology_valid: bool,
     sample_count: int,
@@ -247,6 +260,8 @@ def _measure_actual_surface_metrics(
             output_points,
             output_triangles,
             sample_count=sample_count,
+            source_sha256=source.sha256,
+            output_sha256=output.sha256,
         )
     except Exception:  # noqa: BLE001
         return _unverified_actual_metric(
@@ -331,6 +346,7 @@ def evaluate_gate4_fidelity_evidence(
 
     actual_surface_metrics = _measure_actual_surface_metrics(
         source=source,
+        output=before,
         case_dir=case_dir,
         topology_valid=surface_topology.topology_valid,
         sample_count=exact_metric_sample_count,

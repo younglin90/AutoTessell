@@ -1,9 +1,11 @@
 """Controlled, non-promoting Gate-4 surface-distance observations.
 
 The distances in this module are exact point-to-triangle distances at a
-deterministic, area-weighted sample set.  They are deliberately *not* claimed
-to be an exact continuous Hausdorff distance, a signed distance, or an
-authoritative source-to-output mapping.
+deterministic, area-weighted sample set.  Oriented volume and centroid
+observations are available only after bounded native self-intersection audits
+of both closed surfaces.  They are deliberately *not* an exact continuous
+Hausdorff distance, a signed-distance substitute, or an authoritative
+source-to-output mapping.
 """
 
 from __future__ import annotations
@@ -26,6 +28,8 @@ _UNVERIFIED_FIELDS = (
     "physical_groups.authoritative_mapping",
     "provenance.source_to_output",
 )
+
+_MAX_EXACT_SI_TRIANGLES = 5_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +56,18 @@ class ExactSurfaceMetricRecord:
     normal_p95_deg: float | None
     normal_p99_deg: float | None
     normal_flipped: int | None
+    source_sha256: str | None
+    output_sha256: str | None
+    source_self_intersection_status: str
+    output_self_intersection_status: str
+    signed_status: str
+    signed_mean_source_to_output: float | None
+    signed_mean_output_to_source: float | None
+    integral_status: str
+    source_signed_volume: float | None
+    output_signed_volume: float | None
+    volume_error_pct: float | None
+    centroid_shift_rel: float | None
     available_fields: tuple[str, ...]
     unverified_fields: tuple[str, ...]
     gate4_pass: bool = False
@@ -69,6 +85,18 @@ def _invalid_record(status: str, sample_count: int) -> ExactSurfaceMetricRecord:
         normal_p95_deg=None,
         normal_p99_deg=None,
         normal_flipped=None,
+        source_sha256=None,
+        output_sha256=None,
+        source_self_intersection_status="unverified_not_checked",
+        output_self_intersection_status="unverified_not_checked",
+        signed_status="unverified_not_measured",
+        signed_mean_source_to_output=None,
+        signed_mean_output_to_source=None,
+        integral_status="unverified_not_measured",
+        source_signed_volume=None,
+        output_signed_volume=None,
+        volume_error_pct=None,
+        centroid_shift_rel=None,
         available_fields=(),
         unverified_fields=_UNVERIFIED_FIELDS,
         gate4_pass=False,
@@ -162,6 +190,93 @@ def _closed_and_orientation_consistent(faces: NDArray[np.int64]) -> bool:
     )
 
 
+def _bounded_native_self_intersection_status(
+    points: NDArray[np.float64],
+    triangles: NDArray[np.int64],
+) -> str:
+    """Return only a bounded exhaustive native self-intersection observation."""
+    if not len(triangles):
+        return "unverified_not_checked"
+    if len(triangles) > _MAX_EXACT_SI_TRIANGLES:
+        return "unverified_triangle_limit"
+    try:
+        from core.utils.native_extensions import load_native_metrics  # noqa: PLC0415
+
+        native = load_native_metrics()
+        if (
+            native is None
+            or not hasattr(native, "aabb_overlap_pairs")
+            or not hasattr(native, "triangle_intersections_segment")
+        ):
+            return "unverified_native_predicate_unavailable"
+        tri_points = points[triangles]
+        candidate_pairs = native.aabb_overlap_pairs(
+            tri_points.min(axis=1), tri_points.max(axis=1), 1.0e-12
+        )
+        _tested, pairs = native.triangle_intersections_segment(
+            points, triangles, candidate_pairs, 1.0e-12
+        )
+        return "measured_no_intersections" if len(pairs) == 0 else "measured_intersections_present"
+    except Exception:  # noqa: BLE001
+        return "unverified_native_predicate_failed"
+
+
+def _oriented_volume_and_centroid(
+    points: NDArray[np.float64],
+    triangles: NDArray[np.int64],
+) -> tuple[float, NDArray[np.float64]] | None:
+    """Use translated oriented tetrahedra; never erase surface winding sign."""
+    origin = np.mean(points, axis=0, dtype=np.float64)
+    tri_points = points[triangles] - origin
+    contributions = (
+        np.einsum(
+            "ij,ij->i",
+            tri_points[:, 0],
+            np.cross(tri_points[:, 1], tri_points[:, 2]),
+        )
+        / 6.0
+    )
+    volume = float(np.sum(contributions, dtype=np.float64))
+    scale = float(np.linalg.norm(np.ptp(points, axis=0)))
+    minimum_volume = np.finfo(np.float64).eps * max(scale**3, 1.0) * 4096.0
+    if not np.isfinite(volume) or abs(volume) <= minimum_volume:
+        return None
+    tetra_centroids = (points[triangles].sum(axis=1) + origin) / 4.0
+    centroid = np.sum(contributions[:, None] * tetra_centroids, axis=0) / volume
+    if not np.isfinite(centroid).all():
+        return None
+    return volume, centroid.astype(np.float64)
+
+
+def _integral_observation(
+    source_points: NDArray[np.float64],
+    source_triangles: NDArray[np.int64],
+    output_points: NDArray[np.float64],
+    output_triangles: NDArray[np.int64],
+) -> tuple[str, float | None, float | None, float | None, float | None]:
+    """Measure integrals only after both exact bounded SI audits are clean."""
+    source_integral = _oriented_volume_and_centroid(source_points, source_triangles)
+    output_integral = _oriented_volume_and_centroid(output_points, output_triangles)
+    if source_integral is None or output_integral is None:
+        return "unverified_oriented_volume_or_centroid_invalid", None, None, None, None
+    source_volume, source_centroid = source_integral
+    output_volume, output_centroid = output_integral
+    volume_error_pct = 100.0 * abs(output_volume - source_volume) / abs(source_volume)
+    source_scale = float(np.linalg.norm(np.ptp(source_points, axis=0)))
+    if not np.isfinite(source_scale) or source_scale <= 0.0:
+        return "unverified_source_centroid_scale_invalid", None, None, None, None
+    centroid_shift_rel = float(np.linalg.norm(output_centroid - source_centroid) / source_scale)
+    if not np.isfinite(volume_error_pct) or not np.isfinite(centroid_shift_rel):
+        return "unverified_oriented_integral_nonfinite", None, None, None, None
+    return (
+        "measured_closed_orientation_consistent_native_si_clean",
+        source_volume,
+        output_volume,
+        volume_error_pct,
+        centroid_shift_rel,
+    )
+
+
 def _face_normals(points: NDArray[np.float64], triangles: NDArray[np.int64]) -> NDArray[np.float64]:
     tri_points = points[triangles]
     normals = np.cross(tri_points[:, 1] - tri_points[:, 0], tri_points[:, 2] - tri_points[:, 0])
@@ -175,12 +290,15 @@ def measure_gate4_exact_surface_metrics(
     output_faces: object,
     *,
     sample_count: int = 4096,
+    source_sha256: str | None = None,
+    output_sha256: str | None = None,
 ) -> ExactSurfaceMetricRecord:
     """Measure controlled bidirectional surface distances without promotion.
 
     The function is intentionally geometry-only.  Callers must separately bind
-    immutable source and output artifacts, and must not infer patch, physical
-    group, provenance, signed-distance, or self-intersection authority here.
+    immutable source and output artifacts.  Signed means remain unavailable
+    unless an exact deterministic side-classifier is supplied in a later card;
+    this function never substitutes a jittered ray or absolute-normal proxy.
     """
     if (
         isinstance(sample_count, bool)
@@ -194,6 +312,18 @@ def measure_gate4_exact_surface_metrics(
         return _invalid_record("unverified_invalid_finite_triangle_surface", sample_count)
     source_points, source_triangles = source
     output_points, output_triangles = output
+    source_closed = _closed_and_orientation_consistent(source_triangles)
+    output_closed = _closed_and_orientation_consistent(output_triangles)
+    source_si_status = (
+        _bounded_native_self_intersection_status(source_points, source_triangles)
+        if source_closed
+        else "unverified_surface_not_closed_or_orientation_consistent"
+    )
+    output_si_status = (
+        _bounded_native_self_intersection_status(output_points, output_triangles)
+        if output_closed
+        else "unverified_surface_not_closed_or_orientation_consistent"
+    )
 
     source_samples, source_sample_triangles = _sample_surface(
         source_points, source_triangles, count=sample_count, seed=0
@@ -233,9 +363,7 @@ def measure_gate4_exact_surface_metrics(
     normal_p95: float | None = None
     normal_p99: float | None = None
     normal_flipped: int | None = None
-    if _closed_and_orientation_consistent(source_triangles) and _closed_and_orientation_consistent(
-        output_triangles
-    ):
+    if source_closed and output_closed:
         source_normals = _face_normals(source_points, source_triangles)
         output_normals = _face_normals(output_points, output_triangles)
         dots_a = np.einsum(
@@ -252,6 +380,45 @@ def measure_gate4_exact_surface_metrics(
         normal_status = "measured_closed_orientation_consistent"
         available.extend(("normals.p95_deg", "normals.p99_deg", "normals.flipped"))
 
+    integral_status = "unverified_validated_closed_surfaces_required"
+    source_volume: float | None = None
+    output_volume: float | None = None
+    volume_error_pct: float | None = None
+    centroid_shift_rel: float | None = None
+    if source_closed and output_closed:
+        if (
+            source_si_status == "measured_no_intersections"
+            and output_si_status == "measured_no_intersections"
+        ):
+            (
+                integral_status,
+                source_volume,
+                output_volume,
+                volume_error_pct,
+                centroid_shift_rel,
+            ) = _integral_observation(
+                source_points,
+                source_triangles,
+                output_points,
+                output_triangles,
+            )
+            if volume_error_pct is not None and centroid_shift_rel is not None:
+                available.extend(
+                    (
+                        "integral.volume_error_pct",
+                        "integral.centroid_shift_rel",
+                    )
+                )
+        else:
+            integral_status = "unverified_exhaustive_native_self_intersection_required"
+
+    signed_status = (
+        "unverified_exact_signed_sample_predicate_unavailable"
+        if integral_status.startswith("measured_")
+        else "unverified_validated_closed_surfaces_required"
+    )
+    unverified = tuple(field for field in _UNVERIFIED_FIELDS if field not in available)
+
     return ExactSurfaceMetricRecord(
         status="unverified_authority_incomplete",
         sample_count=sample_count,
@@ -263,7 +430,19 @@ def measure_gate4_exact_surface_metrics(
         normal_p95_deg=normal_p95,
         normal_p99_deg=normal_p99,
         normal_flipped=normal_flipped,
+        source_sha256=source_sha256,
+        output_sha256=output_sha256,
+        source_self_intersection_status=source_si_status,
+        output_self_intersection_status=output_si_status,
+        signed_status=signed_status,
+        signed_mean_source_to_output=None,
+        signed_mean_output_to_source=None,
+        integral_status=integral_status,
+        source_signed_volume=source_volume,
+        output_signed_volume=output_volume,
+        volume_error_pct=volume_error_pct,
+        centroid_shift_rel=centroid_shift_rel,
         available_fields=tuple(available),
-        unverified_fields=_UNVERIFIED_FIELDS,
+        unverified_fields=unverified,
         gate4_pass=False,
     )
