@@ -3191,6 +3191,26 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 146 pre-merge checkpoint -- 2026-07-31
+
+### Bounded no-mask native shard evidence
+
+- Validation runner concurrency `1` passed the bounded native shards without a
+  display mask: Tet same-side `24.301 s`, Poly face geometry with no dynamic
+  skip `4.302 s`, strict-Quad authoritative cube `4.142 s`, and independent
+  Tri+Quad authoritative cube `4.027 s`.  Durable evidence:
+  `/tmp/autotessell-c146-native-no-mask-evidence.json`.
+- This records focused shard evidence only.  Strict-Quad and Tri+Quad remain
+  default-off offline artifacts; neither gains a route, UI, product, or
+  release claim.  Tet and Poly retain their known authority and other open
+  evidence gaps.
+
+### Release state
+
+- No Gate is promoted to `PASS`.  The full suite, CI execution, and fixture
+  matrix were not run and remain `UNVERIFIED`; Gates 1--15 remain unmet.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 145 pre-merge checkpoint -- 2026-07-31
 
 ### Independent Tri+Quad authoritative cube offline transaction
