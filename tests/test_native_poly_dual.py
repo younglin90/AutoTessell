@@ -385,7 +385,7 @@ def test_tet_to_poly_dual_star_validity_convex_and_nonmanifold(
 
 def test_tet_to_poly_dual_from_sphere(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-poly-dual fixture precondition")
     m = read_stl(SPHERE_STL)
     base = tmp_case_dir / "base_tet"
     tet_res = generate_native_tet(
@@ -415,7 +415,7 @@ def test_tet_to_poly_dual_from_sphere(tmp_case_dir: Path) -> None:
 def test_tet_to_poly_dual_polymesh_valid(tmp_case_dir: Path) -> None:
     """dual 결과가 NativeMeshChecker 로 검증되고 negative_volumes=0."""
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-poly-dual fixture precondition")
     m = read_stl(SPHERE_STL)
     base = tmp_case_dir / "base_tet"
     tet_res = generate_native_tet(
@@ -437,7 +437,7 @@ def test_tet_to_poly_dual_polymesh_valid(tmp_case_dir: Path) -> None:
 def test_native_poly_harness_passes_on_sphere(tmp_case_dir: Path) -> None:
     """harness 가 sphere 에서 negative_volumes=0 + cells>0 으로 PASS 한다."""
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-poly-dual fixture precondition")
     m = read_stl(SPHERE_STL)
     res = run_native_poly_harness(
         m.vertices,
@@ -462,7 +462,7 @@ def test_native_poly_harness_empty_input_fails(tmp_case_dir: Path) -> None:
 def test_tet_to_poly_dual_writes_polymesh_structure(tmp_case_dir: Path) -> None:
     """dual 결과 polyMesh 가 읽을 수 있는 format 인지 확인."""
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-poly-dual fixture precondition")
     from core.utils.polymesh_reader import (
         parse_foam_boundary,
         parse_foam_faces,
