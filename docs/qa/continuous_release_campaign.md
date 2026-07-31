@@ -3191,6 +3191,30 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 161 pre-merge checkpoint -- 2026-07-31
+
+### Gate-4 report attestation crossbind
+
+- `a5ea561a` crossbinds each hash-verified report's internal Gate-4 source
+  SHA-256 and output aggregate/per-file identities to the manifest source and
+  actual `polyMesh`.  Missing, malformed, source-mismatched, or
+  output-mismatched attestations fail closed as `UNVERIFIED` and the observed
+  row records the verified attestation.
+- Focused unit runner passed at concurrency `1` in `3.717 s`:
+  `/tmp/autotessell-c161-release-native-quality-attestation-evidence.json`.
+  Actual bounded Tet and Hex corpus runners remain expected `ERROR` /
+  `UNVERIFIED` with exit `1`: Tet `0.038 s`, aggregate `cb2f...f23f`, evidence
+  `/tmp/autotessell-c161-tet-cube-corpus-evidence.json`; Hex `0.039 s`,
+  aggregate `4451...ef6f`, evidence
+  `/tmp/autotessell-c161-hex-cube-corpus-evidence.json`.  Runner evidence:
+  `/tmp/autotessell-c161-native-corpus-attestation-runner-evidence.json`.
+
+### Release state
+
+- No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
+  product, route, default, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 160 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Tet and native-Hex product-contract rebind
