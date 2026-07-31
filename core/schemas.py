@@ -425,6 +425,7 @@ class BoundaryLayerStats(BaseModel):
 
 class NativeBLPhase2Stats(BaseModel):
     """beta76 — native_bl Phase 2 (beta63-65) 에서 생성된 BL 품질 메트릭."""
+
     n_prism_cells: int = 0
     n_wall_faces: int = 0
     n_wall_verts: int = 0
@@ -505,6 +506,33 @@ class Gate4SurfaceTopologyEvidence(BaseModel):
     malformed_reason: str | None = None
 
 
+class Gate4DirectedSurfaceDistanceEvidence(BaseModel):
+    """Controlled deterministic samples with exact point-to-triangle queries."""
+
+    rms: float
+    p95: float
+    p99: float
+    maximum: float
+
+
+class Gate4ActualSurfaceMetricEvidence(BaseModel):
+    """Non-promoting actual-surface observations bound to Gate-4 identities."""
+
+    status: str
+    sample_count: int
+    method: str
+    source_to_output: Gate4DirectedSurfaceDistanceEvidence | None = None
+    output_to_source: Gate4DirectedSurfaceDistanceEvidence | None = None
+    symmetric_sampled_max: float | None = None
+    normal_status: str
+    normal_p95_deg: float | None = None
+    normal_p99_deg: float | None = None
+    normal_flipped: int | None = None
+    available_fields: tuple[str, ...] = ()
+    unverified_fields: tuple[str, ...]
+    gate4_pass: bool = False
+
+
 class Gate4MetricCompletenessEvidence(BaseModel):
     """Fail-closed inventory of unavailable Gate-4 metric fields."""
 
@@ -525,6 +553,7 @@ class Gate4FidelityEvidence(BaseModel):
     metric_status: str
     geometry_fidelity: GeometryFidelity | None = None
     surface_topology: Gate4SurfaceTopologyEvidence | None = None
+    actual_surface_metrics: Gate4ActualSurfaceMetricEvidence | None = None
     metric_completeness: Gate4MetricCompletenessEvidence | None = None
     gate4_pass: bool = False
 
