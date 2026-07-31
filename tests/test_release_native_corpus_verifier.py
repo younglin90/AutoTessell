@@ -11,10 +11,19 @@ from scripts.release_native_corpus_verifier import (
     verify_release_native_corpus,
 )
 
+_REQUIRED_CASES = (
+    ("native-tet-cube", "tier_native_tet", "tet"),
+    ("native-tet-sphere", "tier_native_tet", "tet"),
+    ("native-hex-cube", "tier_native_hex", "hex_dominant"),
+    ("native-poly-cube", "tier_native_poly", "poly"),
+)
+
 
 def _write_run(
     root: Path,
     *,
+    tier_evaluated: str = "tier_native_tet",
+    mesh_type: str = "tet",
     negative_volumes: int = 0,
     unverified_fields: object = None,
     legacy_gate4_fields: bool = False,
@@ -32,8 +41,8 @@ def _write_run(
         json.dumps(
             {
                 "evaluation_summary": {
-                    "tier_evaluated": "tier_native_tet",
-                    "mesh_type": "tet",
+                    "tier_evaluated": tier_evaluated,
+                    "mesh_type": mesh_type,
                     "checker_engine_used": "native",
                     "quality_level": "draft",
                     "checkmesh": {"negative_volumes": negative_volumes},
@@ -55,29 +64,44 @@ def _write_run(
 def _manifest(source_root: Path, first: Path, second: Path, third: Path) -> dict[str, object]:
     source = source_root / "source.stl"
     source.write_bytes(b"frozen-source")
-    first_identity = _polymesh_identity(first)
-    second_identity = _polymesh_identity(second)
-    third_identity = _polymesh_identity(third)
-    assert first_identity is not None and second_identity is not None and third_identity is not None
     source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-    for root, identity in (
-        (first, first_identity),
-        (second, second_identity),
-        (third, third_identity),
-    ):
-        report_path = root / "quality-report.json"
-        report = json.loads(report_path.read_text(encoding="utf-8"))
-        report["evaluation_summary"]["gate4_evidence"]["source"] = {"sha256": source_hash}
-        report["evaluation_summary"]["gate4_evidence"]["output"] = identity
-        report_path.write_text(json.dumps(report), encoding="utf-8")
-    return {
-        "schema": "autotessell/release-native-corpus/v1",
-        "cases": [
+    case_runs: dict[str, tuple[Path, Path, Path]] = {
+        "native-tet-cube": (first, second, third),
+    }
+    for case_id, tier_evaluated, mesh_type in _REQUIRED_CASES[1:]:
+        runs = tuple(source_root.parent / f"{case_id}-run-{index}" for index in range(3))
+        for root in runs:
+            _write_run(root, tier_evaluated=tier_evaluated, mesh_type=mesh_type)
+        case_runs[case_id] = runs
+
+    cases: list[dict[str, object]] = []
+    artifact_dirs: list[str] = []
+    for case_id, tier_evaluated, mesh_type in _REQUIRED_CASES:
+        runs = case_runs[case_id]
+        run_rows: list[dict[str, object]] = []
+        for root in runs:
+            identity = _polymesh_identity(root)
+            assert identity is not None
+            report_path = root / "quality-report.json"
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            report["evaluation_summary"]["gate4_evidence"]["source"] = {"sha256": source_hash}
+            report["evaluation_summary"]["gate4_evidence"]["output"] = identity
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+            run_rows.append(
+                {
+                    "artifact_dir": str(root.resolve()),
+                    "poly_mesh": identity,
+                    "quality_report": "quality-report.json",
+                    "quality_report_sha256": hashlib.sha256(report_path.read_bytes()).hexdigest(),
+                }
+            )
+            artifact_dirs.append(str(root.resolve()))
+        cases.append(
             {
-                "id": "native-tet-cube",
+                "id": case_id,
                 "native_product_contract": {
-                    "tier_evaluated": "tier_native_tet",
-                    "mesh_type": "tet",
+                    "tier_evaluated": tier_evaluated,
+                    "mesh_type": mesh_type,
                     "checker_engine_used": "native",
                     "quality_level": "draft",
                 },
@@ -86,35 +110,18 @@ def _manifest(source_root: Path, first: Path, second: Path, third: Path) -> dict
                     "path": "source.stl",
                     "sha256": source_hash,
                 },
-                "runs": [
-                    {
-                        "artifact_dir": str(first.resolve()),
-                        "poly_mesh": first_identity,
-                        "quality_report": "quality-report.json",
-                        "quality_report_sha256": hashlib.sha256(
-                            (first / "quality-report.json").read_bytes()
-                        ).hexdigest(),
-                    },
-                    {
-                        "artifact_dir": str(second.resolve()),
-                        "poly_mesh": second_identity,
-                        "quality_report": "quality-report.json",
-                        "quality_report_sha256": hashlib.sha256(
-                            (second / "quality-report.json").read_bytes()
-                        ).hexdigest(),
-                    },
-                    {
-                        "artifact_dir": str(third.resolve()),
-                        "poly_mesh": third_identity,
-                        "quality_report": "quality-report.json",
-                        "quality_report_sha256": hashlib.sha256(
-                            (third / "quality-report.json").read_bytes()
-                        ).hexdigest(),
-                    },
-                ],
+                "runs": run_rows,
             }
-        ],
+        )
+    return {
+        "schema": "autotessell/release-native-corpus/v1",
+        "cases": cases,
+        "_test_artifact_dirs": artifact_dirs,
     }
+
+
+def _verify(manifest: dict[str, object]) -> dict[str, object]:
+    return verify_release_native_corpus(manifest, manifest["_test_artifact_dirs"])
 
 
 def test_complete_bounded_evidence_still_never_returns_release_pass(tmp_path: Path) -> None:
@@ -124,7 +131,7 @@ def test_complete_bounded_evidence_still_never_returns_release_pass(tmp_path: Pa
     _write_run(third)
     manifest = _manifest(first, first, second, third)
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["reason"] == "release_gate_evidence_incomplete"
@@ -151,6 +158,53 @@ def test_complete_bounded_evidence_still_never_returns_release_pass(tmp_path: Pa
     }
 
 
+def test_required_native_matrix_rejects_missing_extra_and_contract_mismatch(tmp_path: Path) -> None:
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
+    _write_run(first)
+    _write_run(second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
+
+    report = _verify(manifest)
+
+    assert report["reason"] == "release_gate_evidence_incomplete"
+    assert [row["id"] for row in report["cases"]] == [
+        "native-tet-cube",
+        "native-tet-sphere",
+        "native-hex-cube",
+        "native-poly-cube",
+    ]
+
+    manifest = _manifest(first, first, second, third)
+    manifest["cases"].pop()
+    report = _verify(manifest)
+    assert report == {
+        "status": "UNVERIFIED",
+        "reason": "required_native_case_missing",
+        "cases": (),
+    }
+
+    manifest = _manifest(first, first, second, third)
+    strict_quad = json.loads(json.dumps(manifest["cases"][0]))
+    strict_quad["id"] = "native-strict-quad-cube"
+    manifest["cases"].append(strict_quad)
+    report = _verify(manifest)
+    assert report == {
+        "status": "UNVERIFIED",
+        "reason": "required_native_case_extra",
+        "cases": (),
+    }
+
+    manifest = _manifest(first, first, second, third)
+    manifest["cases"][1]["native_product_contract"]["mesh_type"] = "quad"
+    report = _verify(manifest)
+    assert report == {
+        "status": "UNVERIFIED",
+        "reason": "required_native_case_contract_mismatch",
+        "cases": (),
+    }
+
+
 def test_exactly_two_runs_are_unverified_before_artifact_inspection(tmp_path: Path) -> None:
     first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
     _write_run(first)
@@ -159,7 +213,7 @@ def test_exactly_two_runs_are_unverified_before_artifact_inspection(tmp_path: Pa
     manifest = _manifest(first, first, second, third)
     manifest["cases"][0]["runs"] = manifest["cases"][0]["runs"][:2]
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "repeat_runs_required"
@@ -173,16 +227,16 @@ def test_case_ids_and_run_artifacts_are_unique_across_the_manifest(tmp_path: Pat
     manifest = _manifest(first, first, second, third)
     manifest["cases"].append(json.loads(json.dumps(manifest["cases"][0])))
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report == {"status": "UNVERIFIED", "reason": "duplicate_case_id", "cases": ()}
 
     manifest = _manifest(first, first, second, third)
-    duplicate_artifacts = json.loads(json.dumps(manifest["cases"][0]))
-    duplicate_artifacts["id"] = "native-tet-cube-copy"
-    manifest["cases"].append(duplicate_artifacts)
+    manifest["cases"][1]["runs"][0]["artifact_dir"] = manifest["cases"][0]["runs"][0][
+        "artifact_dir"
+    ]
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report == {
         "status": "UNVERIFIED",
@@ -199,7 +253,7 @@ def test_polymesh_change_after_manifest_is_unverified(tmp_path: Path) -> None:
     manifest = _manifest(first, first, second, third)
     (second / "constant" / "polyMesh" / "points").write_text("changed", encoding="utf-8")
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "polymesh_identity_mismatch"
@@ -212,14 +266,14 @@ def test_negative_volume_or_missing_gate4_inventory_is_unverified(tmp_path: Path
     _write_run(third)
     manifest = _manifest(first, first, second, third)
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "negative_volumes_not_zero"
 
     _write_run(first, negative_volumes=0, unverified_fields=[])
     manifest = _manifest(first, first, second, third)
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "invalid_quality_report_schema"
@@ -233,7 +287,7 @@ def test_repeat_hash_mismatch_is_unverified_even_when_each_identity_matches(tmp_
     (second / "constant" / "polyMesh" / "faces").write_text("different-faces", encoding="utf-8")
     manifest = _manifest(first, first, second, third)
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "repeat_polymesh_hash_mismatch"
@@ -250,7 +304,7 @@ def test_split_legacy_reports_cannot_replace_one_quality_report(tmp_path: Path) 
         run["native_checker_report"] = "native-checker.json"
         run["gate4_evidence"] = "gate4-evidence.json"
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "missing_quality_report"
@@ -264,14 +318,14 @@ def test_quality_report_hash_is_required_and_exact(tmp_path: Path) -> None:
     manifest = _manifest(first, first, second, third)
     manifest["cases"][0]["runs"][0].pop("quality_report_sha256")
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "quality_report_hash_required"
 
     manifest = _manifest(first, first, second, third)
     manifest["cases"][0]["runs"][0]["quality_report_sha256"] = "A" * 64
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "quality_report_hash_required"
@@ -280,7 +334,7 @@ def test_quality_report_hash_is_required_and_exact(tmp_path: Path) -> None:
     (second / "quality-report.json").write_bytes(
         (second / "quality-report.json").read_bytes() + b"\n"
     )
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "quality_report_hash_mismatch"
@@ -294,17 +348,25 @@ def test_native_product_contract_is_required_typed_and_exact(tmp_path: Path) -> 
     manifest = _manifest(first, first, second, third)
     manifest["cases"][0].pop("native_product_contract")
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
-    assert report["cases"][0]["reason"] == "native_product_contract_required"
+    assert report == {
+        "status": "UNVERIFIED",
+        "reason": "required_native_case_contract_mismatch",
+        "cases": (),
+    }
 
     manifest = _manifest(first, first, second, third)
     manifest["cases"][0]["native_product_contract"]["quality_level"] = 0
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
-    assert report["cases"][0]["reason"] == "native_product_contract_required"
+    assert report == {
+        "status": "UNVERIFIED",
+        "reason": "required_native_case_contract_mismatch",
+        "cases": (),
+    }
 
     manifest = _manifest(first, first, second, third)
     manifest["cases"][0]["native_product_contract"] = {
@@ -312,10 +374,14 @@ def test_native_product_contract_is_required_typed_and_exact(tmp_path: Path) -> 
         "mesh_type": "tet",
         "checker_engine_used": "native",
     }
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
-    assert report["cases"][0]["reason"] == "native_product_contract_required"
+    assert report == {
+        "status": "UNVERIFIED",
+        "reason": "required_native_case_contract_mismatch",
+        "cases": (),
+    }
 
     manifest = _manifest(first, first, second, third)
     report_path = first / "quality-report.json"
@@ -325,7 +391,7 @@ def test_native_product_contract_is_required_typed_and_exact(tmp_path: Path) -> 
     manifest["cases"][0]["runs"][0]["quality_report_sha256"] = hashlib.sha256(
         report_path.read_bytes()
     ).hexdigest()
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "native_product_contract_mismatch"
@@ -345,7 +411,7 @@ def test_quality_report_gate4_identity_is_required_and_crossbound(tmp_path: Path
         report_path.read_bytes()
     ).hexdigest()
 
-    outcome = verify_release_native_corpus(manifest, [first, second, third])
+    outcome = _verify(manifest)
 
     assert outcome["status"] == "UNVERIFIED"
     assert outcome["cases"][0]["reason"] == "quality_report_gate4_identity_invalid"
@@ -357,7 +423,7 @@ def test_quality_report_gate4_identity_is_required_and_crossbound(tmp_path: Path
     manifest["cases"][0]["runs"][0]["quality_report_sha256"] = hashlib.sha256(
         report_path.read_bytes()
     ).hexdigest()
-    outcome = verify_release_native_corpus(manifest, [first, second, third])
+    outcome = _verify(manifest)
 
     assert outcome["status"] == "UNVERIFIED"
     assert outcome["cases"][0]["reason"] == "quality_report_source_identity_mismatch"
@@ -369,7 +435,7 @@ def test_quality_report_gate4_identity_is_required_and_crossbound(tmp_path: Path
     manifest["cases"][0]["runs"][0]["quality_report_sha256"] = hashlib.sha256(
         report_path.read_bytes()
     ).hexdigest()
-    outcome = verify_release_native_corpus(manifest, [first, second, third])
+    outcome = _verify(manifest)
 
     assert outcome["status"] == "UNVERIFIED"
     assert outcome["cases"][0]["reason"] == "quality_report_output_identity_mismatch"
@@ -384,7 +450,7 @@ def test_legacy_top_level_fields_are_explicitly_supported_but_ambiguous_shape_re
     _write_run(third, legacy_gate4_fields=True)
     manifest = _manifest(first, first, second, third)
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["cases"][0]["reason"] == "measured_evidence_release_incomplete"
     report_path = first / "quality-report.json"
@@ -397,7 +463,7 @@ def test_legacy_top_level_fields_are_explicitly_supported_but_ambiguous_shape_re
         report_path.read_bytes()
     ).hexdigest()
 
-    report = verify_release_native_corpus(manifest, [first, second, third])
+    report = _verify(manifest)
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "invalid_quality_report_schema"
