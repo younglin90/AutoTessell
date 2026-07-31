@@ -52,6 +52,7 @@ def test_cylinder_overlap_candidate_rolls_back_deterministically(
     mesh = load_mesh(CYLINDER)
     signatures: list[tuple[str, str]] = []
     reports: list[dict[str, int | bool]] = []
+    degenerate_transactions: list[dict[str, int | bool]] = []
     for repeat in range(3):
         case_dir = tmp_path / f"cylinder_{repeat}"
         result = generate_native_tet(
@@ -112,6 +113,9 @@ def test_cylinder_overlap_candidate_rolls_back_deterministically(
             "n_dropped": 0,
         }
         reports.append(report)
+        degenerate_transactions.append(
+            result.debug_info["degenerate_removal_source_transaction"]
+        )
         signatures.append(
             (
                 hashlib.sha256(np.ascontiguousarray(result.tet_points)).hexdigest(),
@@ -120,6 +124,15 @@ def test_cylinder_overlap_candidate_rolls_back_deterministically(
         )
 
     assert reports[1:] == reports[:-1]
+    assert degenerate_transactions[1:] == degenerate_transactions[:-1]
+    assert degenerate_transactions[0]["accepted"] is True
+    assert degenerate_transactions[0]["candidate_component_bijective"] is True
+    assert degenerate_transactions[0]["candidate_source_faces_preserved"] is True
+    assert degenerate_transactions[0]["candidate_unowned_candidate_faces"] == 0
+    assert (
+        degenerate_transactions[0]["candidate_inverted_tets"]
+        <= degenerate_transactions[0]["before_inverted_tets"]
+    )
     assert signatures[1:] == signatures[:-1]
     assert signatures[0] == (
         "453039a0fb6341d8d05d6985bf88f5188a0e86d9214ee0d7979a632167348f04",
@@ -246,6 +259,10 @@ def test_boundary_lock_refuses_cube_and_sphere_internal_overlap(
     strict = result.debug_info["strict_source_topology"]
     assert strict["valid"] is False
     assert strict["polymesh_artifacts_removed"] is True
+    # The default Sphere Phase-A path has no BETA2825 candidate.  Do not
+    # fabricate a transaction or infer a degenerate-removal improvement.
+    if fixture == SPHERE:
+        assert "degenerate_removal_source_transaction" not in result.debug_info
     transaction = result.debug_info["smooth_then_drop_sidedness_transaction"]
     assert transaction["accepted"] is transaction_accepted
     assert transaction["before_same_side_internal_faces"] == (transaction_before_same)

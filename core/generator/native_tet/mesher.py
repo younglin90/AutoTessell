@@ -230,6 +230,73 @@ def _commit_cvt3d_sidedness_nonincreasing_candidate(
     }
 
 
+def _commit_degenerate_removal_source_candidate(
+    source_points: np.ndarray,
+    source_faces: np.ndarray,
+    before_points: np.ndarray,
+    before_tets: np.ndarray,
+    candidate_points: np.ndarray,
+    candidate_tets: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, dict[str, int | bool]]:
+    """Commit a BETA2825 candidate only with immutable-source provenance.
+
+    The local 3-2/collapse/flap operations may remove a degenerate tet while
+    also changing the exterior's source ownership.  Area and absolute-volume
+    checks cannot certify that contract.  Each source-provenance predicate and
+    inversion count is therefore an independent commit condition.  Rejection
+    returns the exact pre-candidate objects; no repair is attempted here.
+    """
+    from core.generator.native_tet.rescue_gate import (
+        audit_source_component_bijection,
+        audit_tet_boundary,
+    )
+
+    before_components = audit_source_component_bijection(
+        source_points,
+        source_faces,
+        before_points,
+        before_tets,
+    )
+    candidate_components = audit_source_component_bijection(
+        source_points,
+        source_faces,
+        candidate_points,
+        candidate_tets,
+    )
+    before_boundary = audit_tet_boundary(before_points, before_tets)
+    candidate_boundary = audit_tet_boundary(candidate_points, candidate_tets)
+    accepted = bool(
+        candidate_components.bijective
+        and candidate_components.source_faces_preserved
+        and candidate_components.n_unowned_candidate_faces == 0
+        and candidate_boundary.n_inverted_tets
+        <= before_boundary.n_inverted_tets
+    )
+    report: dict[str, int | bool] = {
+        "accepted": accepted,
+        "before_component_bijective": bool(before_components.bijective),
+        "candidate_component_bijective": bool(candidate_components.bijective),
+        "before_source_faces_preserved": bool(
+            before_components.source_faces_preserved
+        ),
+        "candidate_source_faces_preserved": bool(
+            candidate_components.source_faces_preserved
+        ),
+        "before_unowned_candidate_faces": int(
+            before_components.n_unowned_candidate_faces
+        ),
+        "candidate_unowned_candidate_faces": int(
+            candidate_components.n_unowned_candidate_faces
+        ),
+        "before_inverted_tets": int(before_boundary.n_inverted_tets),
+        "candidate_inverted_tets": int(candidate_boundary.n_inverted_tets),
+        "exact_rollback": not accepted,
+    }
+    if accepted:
+        return candidate_points, candidate_tets, report
+    return before_points, before_tets, report
+
+
 def _optional_pass_result(result: Any, n_expected: int) -> tuple[Any, str | None]:
     """Normalize an optional-pass return value without raising downstream.
 
@@ -720,6 +787,7 @@ def generate_native_tet(
     """
     t0 = time.perf_counter()
     _smooth_then_drop_sidedness_transaction: dict[str, int | bool] | None = None
+    _degenerate_removal_source_transaction: dict[str, int | bool] | None = None
     try:
         from scipy.spatial import Delaunay
     except Exception as exc:
@@ -3061,14 +3129,31 @@ def generate_native_tet(
                         abs_vol_post=round(abs_vol_post, 9),
                     )
                 else:
-                    final_tets = work_tets
-                    log.info(
-                        "native_tet_degenerate_removal",
-                        n_flip32=int(n_flip32), n_flap=int(n_flap),
-                        n_collapse1b=int(n_collapse1b),
-                        n_degen_pre=int(n_degen_pre),
-                        n_degen_post=int(n_degen_post),
+                    (
+                        final_pts,
+                        final_tets,
+                        _degenerate_removal_source_transaction,
+                    ) = _commit_degenerate_removal_source_candidate(
+                        _input_source_vertices,
+                        _input_source_faces,
+                        pre_pts,
+                        pre_tets,
+                        final_pts,
+                        work_tets,
                     )
+                    if not _degenerate_removal_source_transaction["accepted"]:
+                        log.warning(
+                            "native_tet_degenerate_removal_source_revert",
+                            **_degenerate_removal_source_transaction,
+                        )
+                    else:
+                        log.info(
+                            "native_tet_degenerate_removal",
+                            n_flip32=int(n_flip32), n_flap=int(n_flap),
+                            n_collapse1b=int(n_collapse1b),
+                            n_degen_pre=int(n_degen_pre),
+                            n_degen_post=int(n_degen_post),
+                        )
         except Exception as exc:
             log.debug("native_tet_degenerate_removal_skipped", reason=str(exc))
 
@@ -6343,6 +6428,10 @@ def generate_native_tet(
     if _smooth_then_drop_sidedness_transaction is not None:
         debug_info["smooth_then_drop_sidedness_transaction"] = (
             _smooth_then_drop_sidedness_transaction
+        )
+    if _degenerate_removal_source_transaction is not None:
+        debug_info["degenerate_removal_source_transaction"] = (
+            _degenerate_removal_source_transaction
         )
     warnings_list: list[str] = []
     try:
