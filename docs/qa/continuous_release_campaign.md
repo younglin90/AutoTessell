@@ -3191,6 +3191,28 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 113 pre-merge checkpoint -- 2026-07-31
+
+### Cycle-80 Tet same-side retriangulation revalidation
+
+- The bounded sphere opt-in revalidation passed `2` tests at concurrency `1` in
+  `27.51 s`.  Source faces and components remain bijectively preserved; the
+  candidate has `0` unowned faces and `0` inverted elements, and its same-side
+  internal-face debt is strictly reduced.
+- The strict writer path creates a polyMesh for this card.  The transaction is
+  still default-off; no transaction is enabled by this evidence.
+- No topology predicate is relaxed.  This limited sphere card makes no
+  target-cell, broad Tet-product, or Gate-success claim.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15
+  remain unmet.  No default, routing, UI, mesh, provenance, or `third_party/`
+  behavior changed.
+- Next action: keep the strict transaction fail-closed and expand only through
+  separately bounded evidence that preserves every topology invariant.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 112 pre-merge checkpoint -- 2026-07-31
 
 ### Independent Tri+Quad fixed-pair transaction evidence
