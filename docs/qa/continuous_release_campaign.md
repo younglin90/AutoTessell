@@ -3191,6 +3191,25 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 131 pre-merge checkpoint -- 2026-07-31
+
+### Unified quality-report release evidence
+
+- `9ecd6bea` requires each corpus run to name one explicit `quality_report`
+  JSON path.  It strictly extracts
+  `evaluation_summary.checkmesh.negative_volumes=0` and
+  `evaluation_summary.gate4_evidence` from that same report.
+- Split legacy checker/Gate-4 reports are rejected.  Missing, malformed, or
+  schema-ambiguous report evidence remains `UNVERIFIED`.  Root focused runner
+  passed at concurrency `1` in `3.45 s`.
+- Actual corpus manifest and artifacts remain pending.
+
+### Release state
+
+- No release or Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No
+  routing, default, UI, mesh, provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 130 pre-merge checkpoint -- 2026-07-31
 
 ### Fail-closed first-party native release-corpus verifier

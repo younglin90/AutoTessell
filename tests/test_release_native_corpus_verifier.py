@@ -17,16 +17,24 @@ def _write_run(root: Path, *, negative_volumes: int = 0, unverified_fields: obje
     poly_mesh.mkdir(parents=True, exist_ok=True)
     for name in ("points", "faces", "owner", "neighbour", "boundary"):
         (poly_mesh / name).write_text(f"stable-{name}", encoding="utf-8")
-    (root / "native-checker.json").write_text(
-        json.dumps({"negative_volumes": negative_volumes}), encoding="utf-8"
-    )
     fields = (
         ["distance.signed_mean", "patches.compared"]
         if unverified_fields is None
         else unverified_fields
     )
-    (root / "gate4-evidence.json").write_text(
-        json.dumps({"gate4_pass": False, "unverified_fields": fields}), encoding="utf-8"
+    (root / "quality-report.json").write_text(
+        json.dumps(
+            {
+                "evaluation_summary": {
+                    "checkmesh": {"negative_volumes": negative_volumes},
+                    "gate4_evidence": {
+                        "gate4_pass": False,
+                        "unverified_fields": fields,
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
     )
 
 
@@ -50,14 +58,12 @@ def _manifest(source_root: Path, first: Path, second: Path) -> dict[str, object]
                     {
                         "artifact_dir": str(first.resolve()),
                         "poly_mesh": first_identity,
-                        "native_checker_report": "native-checker.json",
-                        "gate4_evidence": "gate4-evidence.json",
+                        "quality_report": "quality-report.json",
                     },
                     {
                         "artifact_dir": str(second.resolve()),
                         "poly_mesh": second_identity,
-                        "native_checker_report": "native-checker.json",
-                        "gate4_evidence": "gate4-evidence.json",
+                        "quality_report": "quality-report.json",
                     },
                 ],
             }
@@ -113,7 +119,7 @@ def test_negative_volume_or_missing_gate4_inventory_is_unverified(tmp_path: Path
     report = verify_release_native_corpus(manifest, [first, second])
 
     assert report["status"] == "UNVERIFIED"
-    assert report["cases"][0]["reason"] == "invalid_gate4_evidence"
+    assert report["cases"][0]["reason"] == "invalid_quality_report_schema"
 
 
 def test_repeat_hash_mismatch_is_unverified_even_when_each_identity_matches(tmp_path: Path) -> None:
@@ -127,3 +133,19 @@ def test_repeat_hash_mismatch_is_unverified_even_when_each_identity_matches(tmp_
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "repeat_polymesh_hash_mismatch"
+
+
+def test_split_legacy_reports_cannot_replace_one_quality_report(tmp_path: Path) -> None:
+    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    _write_run(first)
+    _write_run(second)
+    manifest = _manifest(first, first, second)
+    for run in manifest["cases"][0]["runs"]:
+        run.pop("quality_report")
+        run["native_checker_report"] = "native-checker.json"
+        run["gate4_evidence"] = "gate4-evidence.json"
+
+    report = verify_release_native_corpus(manifest, [first, second])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "missing_quality_report"
