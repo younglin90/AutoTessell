@@ -4,7 +4,7 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `86`
+- cycle: `87`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
@@ -2827,6 +2827,26 @@ provenance gate.
 ### Release state
 
 - Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 87 pre-merge checkpoint -- 2026-07-31
+
+### Hex reader snapshot provenance L0
+
+- `16136736` adds an explicit exact-OFF, reader-owned provenance path.  It
+  streams a private `0700` / `0600` source snapshot in `1 MiB` chunks, hashes
+  and `fsync`s it, and lets the reader consume only that snapshot path.
+- Snapshot cleanup and the canonical reader-payload digest are report-only.
+  Strict B-Rep arrays/hashes/coverage remain required; physical groups are
+  exactly unavailable.  Every result remains nonaccepting with no candidate,
+  mesh, or artifact.
+- Advisor validation runner: `PASS`, concurrency `1`, `4.23 s`, three suites.
+  Routing, defaults, C++, and `third_party/` remain unchanged.
+
+### Release state
+
+- Output-boundary -> B-Rep remains `DEFER`; no physical or output-product
+  claim is made.  Gates 1--15 remain unmet; no gate changes to `PASS`.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 86 pre-merge checkpoint -- 2026-07-31
