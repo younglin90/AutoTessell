@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `48`
+- cycle: `49`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `217615cfd84db82323137b8d35cb5bbafe0544ea`
+- last_verified_master: `4da76b27e11092c1c22d2533a5a51f2af468889b`
 - allowed_to_stop: `false`
-- next_action: `Continue Tet initial-overlap diagnosis, Tri source-certificate preflight, and Poly cap-sector policy feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
+- next_action: `Continue Tet BETA2825 source transaction, surface-mode contract for distinct tri/quad/tri_quad products, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2384,3 +2384,61 @@ scope. Future MIT-core boundary follows
   preflight, and the policy-bounded Poly feasibility queue.  Merge only
   independently reviewed cards, clean their worktrees, and keep target-cell
   work behind shape, topology, validity, provenance, and boundary layers.
+
+## Cycle 49 checkpoint -- 2026-07-31
+
+### Integrated native Tri provenance diagnostic
+
+- `4da76b27` merges `TRI-SOURCE-CERTIFICATE-PREFLIGHT-1` as
+  `CORRECTNESS_KEEP`, runtime-disconnected evidence.  The diagnostic exposes
+  canonical declared feature edges and a dedicated SHA-256 hash.  It preserves
+  the distinction between no declaration, an explicit empty declaration, and a
+  non-empty canonical declaration; invalid non-source declarations fail closed.
+- Independent review accepted the card.  Post-merge certificate, shell-
+  provenance, and local-guard tests pass `17/17`; no routing, default, mesh
+  output, threshold, or `third_party/` change occurred.
+- Bundle:
+  `/mnt/d/AutoTessell-cleanup-backup-20260730/research-bundles/triquad49-source-certificate-4da76b27.bundle`
+  SHA-256 `d1765878c8117a681b1e9a228d4e7159033b197911ff2790ac9a580fdd63bc3b`.
+  The merged Tri worktree and branch were removed only after bundle verification.
+
+### Surface-engine product split
+
+- User product contract now distinguishes three independent surface meshers:
+  `tri` emits triangles only; `quad` emits quads only and otherwise fails
+  closed; `tri_quad` may emit both types and reports both counts.
+- Existing `native_quad_dominant` is not a strict quad-only engine because it
+  permits residual triangles.  It is a future `tri_quad` candidate only; it
+  must never satisfy the `quad` contract by name or fallback.
+- First card is contract/routing/evaluator separation with default and mesh
+  output unchanged.  C++23 geometry kernels remain the implementation target;
+  Python may carry only orchestration/schema diagnostics until native parity is
+  proved.
+
+### Tet active evidence
+
+- The unsafe Tet Phase-A smoothing attempt was deferred, not merged.  Exact
+  patch archive:
+  `/mnt/d/AutoTessell-cleanup-backup-20260730/research-bundles/tet45-phase-a-smoothing-deferred-20260731.patch`,
+  SHA-256 `fbe9c4f8785b8c480bb840b3a61d8fd547450e5cff40c50fb787c50b0f81b450`.
+- Earliest sphere source loss is BETA2825 degenerate removal.  Active
+  `TET-DEGENERATE-REMOVAL-SOURCE-TRANSACTION-1` may commit a candidate only
+  when immutable source components are bijective, source faces remain present,
+  unowned source facets are zero, and inversion does not increase; otherwise it
+  restores exact pre-candidate arrays.
+
+### Cycle-49 gate re-evaluation
+
+Gate states unchanged from Cycle 48.  Gate 1 remains `FAIL` because the Tet
+and Poly research worktrees remain and the installer executable is tracked.
+Gate 4 remains `UNVERIFIED`: Tri evidence certifies only fail-closed diagnostic
+inputs, not topology-changing surface output.  Gate 5 remains `FAIL`; Gate 6
+is deliberately secondary.
+
+### Next automatic action
+
+- Run the distinct `tri`/`quad`/`tri_quad` contract-card baseline without
+  changing defaults or output.  Continue Tet BETA2825 source transaction in
+  parallel.  Keep the Poly cap-sector proposal deferred until a source-cell
+  ownership policy exists.  Do not stop while a gate is `FAIL` or
+  `UNVERIFIED`.
