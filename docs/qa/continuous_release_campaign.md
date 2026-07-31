@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `50`
+- cycle: `51`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `542314e1ef4cc1d1da7db33001e92f397e48c281`
+- last_verified_master: `0a915eb0a52e1248acdaaa6c183ab35c107f1a31`
 - allowed_to_stop: `false`
-- next_action: `Continue runtime-disconnected C++23 tri topology audit, explicit tri/quad/tri_quad routing planning, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
+- next_action: `Continue strict-quad C++23 preflight planning, Tet topology-calibration research, native-hex card selection, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2484,3 +2484,44 @@ is deliberately secondary.
   changing tri output.  Then add public routing only after independent
   tri/quad/tri_quad product contracts and evaluator reports exist.  Gate 1--15
   remain unmet; continue.
+
+## Cycle 51 checkpoint -- 2026-07-31
+
+### Integrated tri-only C++23 audit
+
+- `0a915eb0` merges `TRI-SOURCE-TOPOLOGY-AUDIT-CPP23-1` as default-OFF,
+  runtime-disconnected `CORRECTNESS_KEEP`.  The first-party C++23 audit uses
+  sorted directed edge records and DSU components to report only finite input
+  validity, closed-oriented status, edge count, component count, and Euler
+  characteristic.  It never edits mesh arrays, routing, defaults, acceptance,
+  or output.
+- Explicit external Release build loading validates direct ABI, invalid-input
+  rejection, immutable input, deterministic repetition, malformed-native
+  fail-closed behavior, and full source-certificate equality (cube/cylinder/
+  sphere, three repeats).  Post-merge explicit-native tests pass `24/24` in
+  `16.86 s`.  Native audit median on the documented 20,480-face fixture is
+  `0.003275630 s` versus Python `0.676991239 s`; this is observability only,
+  not a route-promotion claim.
+- Bundle:
+  `/mnt/d/AutoTessell-cleanup-backup-20260730/research-bundles/tri-source-topology-audit-cpp23-0a915eb0.bundle`,
+  SHA-256 `af15a7ded250567e089d23ece196d2337db0d4edcf1330d39c0f99d8455375ee`.
+  The exact two external native build directories (`13.0 MiB`) and merged Tri
+  worktree/branch were removed after validation.
+
+### Quad research availability
+
+- User-supplied PDFs for `10.1137/1.9781611978575.6` and
+  `10.1137/1.9781611979138.18` are byte-verified and `FULL_READ`; their
+  independent strict-quad lessons are recorded in native-quad literature.
+  The remaining unavailable full text is only `10.1002/nme.7644`.
+- Both methods require narrow topology/parameterization prerequisites and lack
+  AutoTessell's source envelope, feature/patch provenance, deterministic, and
+  explicit-rejection contracts.  They cannot be copied or promoted directly.
+
+### Next automatic action
+
+- Run strict-quad C++23 output/preflight planning separately from `tri_quad`.
+  Run Tet report-only calibration to identify which strict predicates may be
+  safely reclassified as diagnostics without weakening source semantics.  Run
+  independent native-hex card selection.  Poly source-cap partition remains
+  deferred pending a user policy.  Gate 1--15 remain unmet; continue.
