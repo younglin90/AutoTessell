@@ -17,6 +17,10 @@ import numpy as np
 
 from core.analyzer.geometry_analyzer import GeometryAnalyzer
 from core.evaluator.fidelity import GeometryFidelityChecker
+from core.evaluator.gate4_fidelity_substrate import (
+    capture_immutable_source,
+    evaluate_gate4_fidelity_evidence,
+)
 from core.evaluator.metrics import AdditionalMetricsComputer
 from core.evaluator.quality_checker import MeshQualityChecker
 from core.evaluator.report import EvaluationReporter
@@ -26,6 +30,7 @@ from core.preprocessor.pipeline import Preprocessor
 from core.schemas import (
     GeneratorLog,
     GeometryReport,
+    Gate4SourceIdentity,
     MeshStrategy,
     PreprocessedReport,
     QualityReport,
@@ -173,6 +178,20 @@ class PipelineOrchestrator:
                 log.debug("progress_callback_failed", error=str(exc))
 
         try:
+            gate4_source: Gate4SourceIdentity | None = None
+            gate4_source_status = "unverified_source_snapshot_missing"
+            if additional_input_paths:
+                gate4_source_status = "unverified_multi_source_contract_required"
+            else:
+                try:
+                    gate4_source = capture_immutable_source(
+                        Path(input_path),
+                        output_dir / "_work" / "gate4-source",
+                    )
+                except (OSError, ValueError) as exc:
+                    gate4_source_status = "unverified_source_snapshot_missing"
+                    log.warning("gate4_source_snapshot_unavailable", error=str(exc))
+
             supported_boolean_operations = {"union", "intersection", "difference"}
             if boolean_operation not in supported_boolean_operations:
                 raise ValueError(
@@ -784,7 +803,8 @@ class PipelineOrchestrator:
                         iteration=iteration,
                         tier=successful_tier,
                         quality_level=quality_level,
-                        preprocessed_path=preprocessed_path,
+                        gate4_source=gate4_source,
+                        gate4_source_status=gate4_source_status,
                         geometry_report=geometry_report,
                         bl_phase2_stats=_bl_p2_for_eval,
                     )
@@ -938,7 +958,8 @@ class PipelineOrchestrator:
         iteration: int,
         tier: str,
         quality_level: str,
-        preprocessed_path: Path | None = None,
+        gate4_source: Gate4SourceIdentity | None = None,
+        gate4_source_status: str = "unverified_source_snapshot_missing",
         geometry_report: GeometryReport | None = None,
         bl_phase2_stats=None,  # NativeBLPhase2Stats | None — beta76
     ) -> QualityReport:
@@ -957,18 +978,18 @@ class PipelineOrchestrator:
         if bl_phase2_stats is not None:
             metrics.native_bl_phase2 = bl_phase2_stats
 
-        # 지오메트리 충실도 계산 (원본 STL과 대각선 길이가 있을 때만)
-        geometry_fidelity = None
-        if preprocessed_path is not None and geometry_report is not None:
-            try:
-                diagonal = geometry_report.geometry.bounding_box.diagonal
-                geometry_fidelity = self._fidelity.compute(
-                    original_stl=preprocessed_path,
-                    case_dir=case_dir,
-                    diagonal=diagonal,
-                )
-            except Exception as exc:  # noqa: BLE001
-                log.warning("Geometry fidelity 계산 실패 (무시)", error=str(exc))
+        gate4_evidence = evaluate_gate4_fidelity_evidence(
+            source=gate4_source,
+            source_status=gate4_source_status,
+            case_dir=case_dir,
+            diagonal=(
+                geometry_report.geometry.bounding_box.diagonal
+                if geometry_report is not None
+                else None
+            ),
+            checker=self._fidelity,
+        )
+        geometry_fidelity = gate4_evidence.geometry_fidelity
 
         elapsed = time.perf_counter() - eval_start
 
@@ -982,6 +1003,7 @@ class PipelineOrchestrator:
             elapsed=elapsed,
             quality_level=quality_level,
         )
+        report.evaluation_summary.gate4_evidence = gate4_evidence
         # v0.4: 어느 checker 엔진이 실제 사용됐는지 + mesh_type 을 report 에 주입.
         try:
             engine_used = getattr(self._checker, "last_engine_used", None)

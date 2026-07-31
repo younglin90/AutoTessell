@@ -508,6 +508,18 @@ class TestPipelineWithMockedGenerator:
         assert result.quality_report is not None
         assert isinstance(result.quality_report, QualityReport)
 
+    def test_missing_output_fidelity_evidence_is_nonpromoting(self) -> None:
+        """Mock generator output has no polyMesh, so Gate-4 evidence is unverified."""
+        result = self._run()
+
+        assert result.quality_report is not None
+        evidence = result.quality_report.evaluation_summary.gate4_evidence
+        assert evidence is not None
+        assert evidence.status == "unverified_output_artifact_missing"
+        assert evidence.gate4_pass is False
+        # Legacy quality verdict stays separate from a Gate-4 promotion claim.
+        assert result.success is True
+
     def test_generator_log_stored(self) -> None:
         """generator_log가 PipelineResult에 저장된다."""
         result = self._run()

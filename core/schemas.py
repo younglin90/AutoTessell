@@ -468,6 +468,34 @@ class GeometryFidelity(BaseModel):
     n_self_intersect_pre: int | None = None
 
 
+class Gate4SourceIdentity(BaseModel):
+    """Exact caller-source snapshot identity for non-promoting Gate-4 evidence."""
+
+    original_path: str
+    snapshot_path: str
+    byte_count: int
+    sha256: str
+
+
+class Gate4OutputArtifactIdentity(BaseModel):
+    """Required OpenFOAM polyMesh artifact identity for Gate-4 evidence."""
+
+    poly_mesh_path: str
+    file_sha256: dict[str, str]
+    sha256: str
+
+
+class Gate4FidelityEvidence(BaseModel):
+    """Fail-closed substrate record; it never promotes a Gate verdict."""
+
+    status: str
+    source: Gate4SourceIdentity | None = None
+    output: Gate4OutputArtifactIdentity | None = None
+    metric_status: str
+    geometry_fidelity: GeometryFidelity | None = None
+    gate4_pass: bool = False
+
+
 class FailCriterion(BaseModel):
     criterion: str
     value: float
@@ -491,6 +519,7 @@ class EvaluationSummary(BaseModel):
     checkmesh: CheckMeshResult
     additional_metrics: AdditionalMetrics = Field(default_factory=AdditionalMetrics)
     geometry_fidelity: GeometryFidelity | None = None
+    gate4_evidence: Gate4FidelityEvidence | None = None
     hard_fails: list[FailCriterion] = Field(default_factory=list)
     soft_fails: list[FailCriterion] = Field(default_factory=list)
     recommendations: list[Recommendation] = Field(default_factory=list)
