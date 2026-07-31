@@ -4784,6 +4784,15 @@ def generate_native_tet(
                 surface_idx = None
                 n_surface = 0
                 for _pass_idx in range(max(1, _max_passes)):
+                    if _phase_a_observer is not None and _pass_idx == 0:
+                        _report_phase_a_provenance_checkpoint(
+                            _phase_a_observer,
+                            stage="sss_pass0_pre_quality",
+                            source_points=_input_source_vertices,
+                            source_faces=_input_source_faces,
+                            candidate_points=final_pts,
+                            candidate_tets=final_tets,
+                        )
                     _q_pre = _tsq(final_pts, final_tets)
                     _pre_min = float(_q_pre.min())
                     _pre_mean = float(_q_pre.mean())
@@ -4817,6 +4826,15 @@ def generate_native_tet(
                         np.add.at(nbr_sum, vk_flat[mask_lap], V[wk_flat[mask_lap]])
                         np.add.at(nbr_cnt, vk_flat[mask_lap], 1)
                         target_pts = nbr_sum / np.maximum(nbr_cnt[:, None], 1)
+                    if _phase_a_observer is not None and _pass_idx == 0:
+                        _report_phase_a_provenance_checkpoint(
+                            _phase_a_observer,
+                            stage="sss_pass0_post_target_construction",
+                            source_points=_input_source_vertices,
+                            source_faces=_input_source_faces,
+                            candidate_points=final_pts,
+                            candidate_tets=final_tets,
+                        )
                     if _phase_a_observer is not None and _pass_idx == 0:
                         _report_phase_a_provenance_checkpoint(
                             _phase_a_observer,
