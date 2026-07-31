@@ -2964,6 +2964,40 @@ provenance gate.
   Tri+Quad arrays; no triangular conversion or quad-dominant promotion.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 97 pre-merge checkpoint -- 2026-07-31
+
+### Explicit Python-only Tri+Quad dispatch L0
+
+- `030a15e5` adds an explicit Python-only dispatch request/result boundary for
+  the independent fixed-pair Tri+Quad product.  It is runtime-disconnected and
+  has no CLI, UI, pipeline, plugin, OpenFOAM, or default-route registration.
+- The request carries exact source vertices/triangles, canonical partial pair
+  plan, authoritative feature edges, authoritative patch IDs, authoritative
+  physical groups, and a fresh output target.  Dispatch materializes first;
+  it calls the writer only when the admitted product and both explicit product
+  and writer gates are enabled.
+- With both gates off no writer runs and no artifact exists.  With product-only
+  enablement the accepted product remains unwritten.  With both gates enabled,
+  the atomic artifact has separate triangle/quad/provenance arrays and a
+  manifest.  Bare/non-authoritative payloads reject before writing; a
+  preexisting target rejects without overwrite.
+- Every result remains `route_selected=false`, `ui_claimed=false`, and
+  `product_claimed=false`.  This is not a native-Tri, strict-Quad, or
+  `native_quad_dominant` claim, relabel, conversion, or default change.
+- Advisor runner `c1` passed at concurrency `2` in `4.41 s` for `15` focused
+  product/writer/dispatch tests; focused ruff, black, and local strict mypy
+  also passed.  Full strict mypy is `ERROR` / `UNVERIFIED`: `1011` baseline
+  errors across `119` imported files in `69.67 s`; it is not a pass claim.
+
+### Release state
+
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+  change is included.
+- Next action: define a public authoritative-source ingress and independent
+  route contract; do not infer authority or alter existing native-Tri,
+  strict-Quad, or default behavior.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
