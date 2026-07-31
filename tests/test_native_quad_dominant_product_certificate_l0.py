@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from core.preprocessor.native_quad.quad_dominant_product_certificate_l0 import (
     diagnose_quad_dominant_product_output_l0,
@@ -21,6 +22,14 @@ def _square() -> tuple[np.ndarray, np.ndarray]:
             dtype=np.float64,
         ),
         np.array(((0, 1, 2), (0, 2, 3)), dtype=np.int64),
+    )
+
+
+def _square_and_residual() -> tuple[np.ndarray, np.ndarray]:
+    vertices, triangles = _square()
+    return (
+        np.vstack((vertices, np.array(((3.0, 0.0, 0.0), (4.0, 0.0, 0.0), (3.0, 1.0, 0.0))))),
+        np.vstack((triangles, np.array(((4, 5, 6),), dtype=np.int64))),
     )
 
 
@@ -79,6 +88,70 @@ def test_actual_quad_dominant_output_rejects_mixed_until_source_certificate_exis
     assert certificate.source_certificate_complete is False
     assert certificate.status == "reject_quad_dominant_source_certificate_required"
     assert certificate.rejection_reason == "quad_dominant_source_certificate_required"
+
+
+def test_actual_output_records_exact_face_partition_without_product_promotion() -> None:
+    vertices, triangles = _square_and_residual()
+    result = native_quad_dominant_remesh(vertices, triangles)
+    certificates = tuple(
+        diagnose_quad_dominant_product_output_l0(
+            vertices,
+            triangles,
+            result,
+            requested_mode="tri_quad",
+        )
+        for _ in range(3)
+    )
+
+    certificate = certificates[0]
+    assert certificates == (certificate,) * 3
+    np.testing.assert_array_equal(result.vertices, vertices)
+    np.testing.assert_array_equal(
+        result.accepted_face_pairs,
+        np.array(((0, 1),), dtype=np.int64),
+    )
+    np.testing.assert_array_equal(
+        result.remaining_triangle_source_indices,
+        np.array((2,), dtype=np.int64),
+    )
+    np.testing.assert_array_equal(
+        result.triangles,
+        triangles[result.remaining_triangle_source_indices],
+    )
+    assert certificate.output_face_provenance_exact is True
+    assert certificate.accepted_face_pairs_hash is not None
+    assert certificate.remaining_triangle_source_indices_hash is not None
+    assert certificate.accepted is False
+    assert certificate.product_claimed is False
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("accepted_face_pairs", np.array(((1, 0),), dtype=np.int64)),
+        ("accepted_face_pairs", np.array(((0, 2),), dtype=np.int64)),
+        ("remaining_triangle_source_indices", np.array((0,), dtype=np.int64)),
+    ),
+)
+def test_malformed_actual_face_partition_remains_rejected_without_product_claim(
+    field: str,
+    value: np.ndarray,
+) -> None:
+    vertices, triangles = _square_and_residual()
+    result = native_quad_dominant_remesh(vertices, triangles)
+    setattr(result, field, value)
+
+    certificate = diagnose_quad_dominant_product_output_l0(
+        vertices,
+        triangles,
+        result,
+        requested_mode="tri_quad",
+    )
+
+    assert certificate.output_face_provenance_exact is False
+    assert certificate.accepted is False
+    assert certificate.product_claimed is False
+    assert certificate.status == "reject_quad_dominant_source_certificate_required"
 
 
 def test_moved_actual_output_fails_source_shape_before_any_product_claim() -> None:

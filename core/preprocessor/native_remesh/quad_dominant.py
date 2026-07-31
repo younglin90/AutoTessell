@@ -194,6 +194,8 @@ class QuadDominantResult(BaseModel):
     vertices: np.ndarray
     triangles: np.ndarray
     quads: np.ndarray
+    accepted_face_pairs: np.ndarray
+    remaining_triangle_source_indices: np.ndarray
     diagnostics: QuadDominantDiagnostics
 
 
@@ -882,6 +884,66 @@ def _native_quad_transaction(
     )
 
 
+def _output_face_provenance(
+    input_triangles: NDArray[np.int64],
+    accepted_pairs: NDArray[np.int64],
+    output_triangles: NDArray[np.int64],
+    output_quads: NDArray[np.int64],
+) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """Validate canonical source-face partition without rewriting output arrays."""
+    if (
+        accepted_pairs.dtype != np.dtype(np.int64)
+        or accepted_pairs.ndim != 2
+        or accepted_pairs.shape[1] != 2
+        or not accepted_pairs.flags.c_contiguous
+    ):
+        raise RuntimeError("quad-dominant accepted_face_pairs must be C-contiguous int64 (Q, 2)")
+    if (
+        output_triangles.dtype != np.dtype(np.int64)
+        or output_triangles.ndim != 2
+        or output_triangles.shape[1] != 3
+        or not output_triangles.flags.c_contiguous
+    ):
+        raise RuntimeError("quad-dominant output triangles must be C-contiguous int64 (T, 3)")
+    if (
+        output_quads.dtype != np.dtype(np.int64)
+        or output_quads.ndim != 2
+        or output_quads.shape[1] != 4
+        or not output_quads.flags.c_contiguous
+    ):
+        raise RuntimeError("quad-dominant output quads must be C-contiguous int64 (Q, 4)")
+    if len(accepted_pairs) != len(output_quads):
+        raise RuntimeError("quad-dominant accepted pair and quad counts differ")
+    if accepted_pairs.size and (
+        (accepted_pairs < 0).any()
+        or (accepted_pairs >= len(input_triangles)).any()
+        or (accepted_pairs[:, 0] >= accepted_pairs[:, 1]).any()
+    ):
+        raise RuntimeError("quad-dominant accepted_face_pairs are not canonical")
+    if len(accepted_pairs) > 1:
+        previous, current = accepted_pairs[:-1], accepted_pairs[1:]
+        if (
+            (current[:, 0] < previous[:, 0])
+            | ((current[:, 0] == previous[:, 0]) & (current[:, 1] <= previous[:, 1]))
+        ).any():
+            raise RuntimeError("quad-dominant accepted_face_pairs are not lexicographic")
+    if accepted_pairs.size and len(np.unique(accepted_pairs.reshape(-1))) != accepted_pairs.size:
+        raise RuntimeError("quad-dominant accepted_face_pairs consume a source face twice")
+    expected_quads, _ = _oriented_quads_for_pairs(input_triangles, accepted_pairs)
+    if not np.array_equal(output_quads, expected_quads):
+        raise RuntimeError("quad-dominant output quads do not match accepted_face_pairs")
+    consumed = np.zeros(len(input_triangles), dtype=bool)
+    if accepted_pairs.size:
+        consumed[accepted_pairs.reshape(-1)] = True
+    remaining_source_indices = np.flatnonzero(~consumed).astype(np.int64, copy=False)
+    if not np.array_equal(output_triangles, input_triangles[remaining_source_indices]):
+        raise RuntimeError("quad-dominant output triangles do not match source provenance")
+    return (
+        np.ascontiguousarray(accepted_pairs, dtype=np.int64),
+        np.ascontiguousarray(remaining_source_indices, dtype=np.int64),
+    )
+
+
 def native_quad_dominant_remesh(
     vertices: np.ndarray,
     triangles: np.ndarray,
@@ -921,6 +983,8 @@ def native_quad_dominant_remesh(
             vertices=output_vertices,
             triangles=np.empty((0, 3), dtype=np.int64),
             quads=np.empty((0, 4), dtype=np.int64),
+            accepted_face_pairs=np.empty((0, 2), dtype=np.int64),
+            remaining_triangle_source_indices=np.empty((0,), dtype=np.int64),
             diagnostics=diagnostics,
         )
 
@@ -950,9 +1014,17 @@ def native_quad_dominant_remesh(
         diagnostics.fallback_reason = (
             "no_valid_pair_accepted" if diagnostics.candidate_pairs else "no_merge_candidate"
         )
+    accepted_face_pairs, remaining_triangle_source_indices = _output_face_provenance(
+        input_triangles,
+        accepted_pairs,
+        output_triangles,
+        output_quads,
+    )
     return QuadDominantResult(
         vertices=output_vertices,
         triangles=output_triangles,
         quads=output_quads,
+        accepted_face_pairs=accepted_face_pairs,
+        remaining_triangle_source_indices=remaining_triangle_source_indices,
         diagnostics=diagnostics,
     )
