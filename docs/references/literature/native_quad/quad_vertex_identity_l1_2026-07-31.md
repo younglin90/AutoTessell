@@ -31,9 +31,9 @@ and C++ implementation are unchanged.
   `wjakob/instant-meshes`, BSD-3-Clause were inspected as design references.
   No code, dependency, generated output, or implementation detail was copied.
 
-The full paper below was inaccessible. Its official abstract was read; it was
-not present in the project-local literature repository. Full text requires an
-institutional subscription or purchase:
+The paper below was not present in the project-local literature repository.
+On 2026-07-31 its official SIAM page exposed free PDF access.  It remains a
+reference-only source until the user-provided archive copy is stored locally:
 
 - DOI `10.1137/1.9781611979138.18`, Yiming Zhu, Qiankun Nie, Siquan Sun, Siyu
   Fang, Na Lei, Zhongxuan Luo, Hang Si, and Xianfeng Gu, *Surface Quadrilateral

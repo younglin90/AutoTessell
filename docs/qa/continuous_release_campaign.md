@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `49`
+- cycle: `50`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `4da76b27e11092c1c22d2533a5a51f2af468889b`
+- last_verified_master: `542314e1ef4cc1d1da7db33001e92f397e48c281`
 - allowed_to_stop: `false`
-- next_action: `Continue Tet BETA2825 source transaction, surface-mode contract for distinct tri/quad/tri_quad products, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
+- next_action: `Continue runtime-disconnected C++23 tri topology audit, explicit tri/quad/tri_quad routing planning, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2442,3 +2442,45 @@ is deliberately secondary.
   parallel.  Keep the Poly cap-sector proposal deferred until a source-cell
   ownership policy exists.  Do not stop while a gate is `FAIL` or
   `UNVERIFIED`.
+
+## Cycle 50 checkpoint -- 2026-07-31
+
+### Integrated strictness infrastructure
+
+- `167bcd0e` merges a runtime-disconnected surface product certificate.  The
+  public semantic modes are `tri`, `quad`, and `tri_quad`.  `quad` rejects any
+  triangle or triangular handoff; legacy `native_quad_dominant` is always
+  `candidate_mixed`, even when its triangle remainder is empty.  Post-merge
+  contract plus native-quad tests pass `59/59`; routing, defaults, output,
+  UI, and `third_party/` remain unchanged.
+- `542314e1` wraps BETA2825 degenerate removal in an immutable-source
+  transaction.  Commit requires candidate component bijection, source-face
+  preservation, zero unowned source facets, and nonincreasing inversion.
+  Unsafe component-loss and winding-inversion candidates restore exact
+  pre-candidate objects.  Cube and isolated sphere `2k` candidates satisfy
+  the conditions; default sphere has no BETA candidate and no improvement is
+  claimed.  Post-merge focused tests pass `10/10` in `56.65 s`.
+- Tet bundle:
+  `/mnt/d/AutoTessell-cleanup-backup-20260730/research-bundles/tet45-degenerate-source-transaction-542314e1.bundle`,
+  SHA-256 `0f6deb8d68917c0e3021e5020cac145bccefa2143c71c301df588d8fe06aa8be`.
+  Surface-mode bundle:
+  `/mnt/d/AutoTessell-cleanup-backup-20260730/research-bundles/surface-mode-contract-167bcd0e.bundle`,
+  SHA-256 `d6c182c0dc4629f52fcc2e85502c17c4d53b980df9a90174e4c389dc0ddc7fdd`.
+  Both bundles verify; their merged worktrees and branches were removed.
+
+### Literature availability correction
+
+- Local repository still lacks the three historical quad PDFs.  As of this
+  cycle, SIAM exposes free PDF access for
+  `10.1137/1.9781611979138.18`; it is not an access blocker.  Full text for
+  `10.1002/nme.7644` and `10.1137/1.9781611978575.6` remains unavailable
+  without publisher, institutional, author, or purchase access.  No new
+  inaccessible DOI was discovered.
+
+### Next automatic action
+
+- Continue `TRI-SOURCE-TOPOLOGY-AUDIT-CPP23-1` as a report-only,
+  default-OFF `CORRECTNESS_KEEP` accelerator.  It cannot promote topology-
+  changing tri output.  Then add public routing only after independent
+  tri/quad/tri_quad product contracts and evaluator reports exist.  Gate 1--15
+  remain unmet; continue.
