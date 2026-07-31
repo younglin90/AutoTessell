@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `54`
+- cycle: `55`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `ee30ae7de42db72d4b521d1ad41c37679c917b10`
+- last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
-- next_action: `Continue source-certificate-bound tri/quad/tri_quad evaluator planning, authoritative CAD-to-front corpus expansion, Tet overlap-class policy analysis, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
+- next_action: `Continue source-certificate-bound tri/quad/tri_quad evaluator planning, authoritative CAD-to-front corpus expansion, Tet overlap remedy research, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2670,3 +2670,49 @@ gates retain their prior `FAIL`/`UNVERIFIED` state pending mechanical evidence.
   CAD-authoritative Hex corpus evidence, and keep Poly source-cap work deferred
   until explicit owner semantics are authorized.  Gate 1--15 remain unmet;
   continue.
+
+## Cycle 55 checkpoint -- 2026-07-31
+
+### Integrated build and authority evidence
+
+- `4d7b6a05` corrects the first-party native Hex build contract: the already
+  exposed `local_front_numeric_admission` ABI was omitted from the manifest.
+  The C++ implementation, strict no-convert argument contract, routing, and
+  output are unchanged.  A stale cached binary initially exposed the mismatch;
+  rebuilding the exact native target yields focused ABI tests `10 passed` and
+  native manifest `8/8 PASS`.  Bundle SHA-256:
+  `b3c86dc8a664274bcbf78e2b8d8151a908ea23e9ce06e63f539530231ed22bc3`.
+- `f938840f` adds Hex authority source-digest L3.  It streams input bytes in
+  fixed 1 MiB chunks, compares canonical SHA-256 declarations, and rejects
+  malformed metadata, missing/unreadable files, or byte mismatches before
+  sidecar/numeric/candidate work.  `Path.read_bytes` is forbidden by a runtime
+  test to prevent whole-file allocation.  Post-merge focused tests:
+  `26 passed`.  Bundle SHA-256:
+  `eeb6c79e7e871180013c27fa0be40f8956910c144ca64033921a7e3abbea6e5e`.
+- `30a77f16` records an explicit Tet overlap policy table without touching
+  runtime code.  Same-side overlap is unrelaxable; source/provenance debt
+  requires repair before ambiguity; only ambiguity without either debt is
+  eligible for a future independent calibration study, never runtime
+  relaxation.  Post-merge L1 policy tests: `6 passed` in `37.47 s`; strict
+  refusal and writer artifact `0` remain unchanged.  Bundle SHA-256:
+  `7525adf67dd5d4d48642d92817f29625fea085c553981be6c0f2705e58f7998a`.
+- All Cycle-55 merged worktrees and branches were removed after bundle evidence.
+  Poly remains the only protected DEFER worktree; `third_party/` remains
+  unchanged.
+
+### Cycle-55 gate re-evaluation
+
+Gate 2 gains only current native ABI/source-identity evidence, not a supported
+platform matrix.  All release gates remain unmet: Gate 1 is `FAIL` because the
+protected Poly worktree and tracked installer executable remain; Gate 4 is
+`UNVERIFIED`; Gate 5 is `FAIL`; Gate 6 remains `FAIL` and secondary.  No
+diagnostic or contract card relaxes an existing topology, shape, validity, or
+provenance gate.
+
+### Next automatic action
+
+- Continue source-certificate binding for separate `tri`, strict `quad`, and
+  `tri_quad` products; use Tet policy evidence only to select a safe remedy
+  hypothesis, never to suppress a same-side refusal.  Continue authoritative
+  Hex CAD corpus evidence and keep Poly source-cap work deferred pending owner
+  semantics.  Gate 1--15 remain unmet; continue.
