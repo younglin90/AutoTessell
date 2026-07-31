@@ -165,6 +165,32 @@ def test_exactly_two_runs_are_unverified_before_artifact_inspection(tmp_path: Pa
     assert report["cases"][0]["reason"] == "repeat_runs_required"
 
 
+def test_case_ids_and_run_artifacts_are_unique_across_the_manifest(tmp_path: Path) -> None:
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
+    _write_run(first)
+    _write_run(second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
+    manifest["cases"].append(json.loads(json.dumps(manifest["cases"][0])))
+
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report == {"status": "UNVERIFIED", "reason": "duplicate_case_id", "cases": ()}
+
+    manifest = _manifest(first, first, second, third)
+    duplicate_artifacts = json.loads(json.dumps(manifest["cases"][0]))
+    duplicate_artifacts["id"] = "native-tet-cube-copy"
+    manifest["cases"].append(duplicate_artifacts)
+
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report == {
+        "status": "UNVERIFIED",
+        "reason": "artifact_dir_reused_across_cases",
+        "cases": (),
+    }
+
+
 def test_polymesh_change_after_manifest_is_unverified(tmp_path: Path) -> None:
     first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
     _write_run(first)

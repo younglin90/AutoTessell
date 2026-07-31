@@ -327,6 +327,38 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
     }
 
 
+def _global_manifest_identity_reason(cases: list[object], allowed: dict[str, Path]) -> str | None:
+    seen_case_ids: set[str] = set()
+    seen_run_dirs: set[str] = set()
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        case_id = case.get("id")
+        if not isinstance(case_id, str) or not case_id:
+            continue
+        if case_id in seen_case_ids:
+            return "duplicate_case_id"
+        seen_case_ids.add(case_id)
+        runs = case.get("runs")
+        if not isinstance(runs, list):
+            continue
+        case_run_dirs: set[str] = set()
+        for run in runs:
+            if not isinstance(run, dict):
+                continue
+            artifact_dir = _manifest_artifact_dir(run.get("artifact_dir"), allowed)
+            if artifact_dir is None:
+                continue
+            key = str(artifact_dir)
+            if key in case_run_dirs:
+                continue
+            if key in seen_run_dirs:
+                return "artifact_dir_reused_across_cases"
+            case_run_dirs.add(key)
+        seen_run_dirs.update(case_run_dirs)
+    return None
+
+
 def verify_release_native_corpus(manifest: object, artifact_dirs: object) -> dict[str, object]:
     """Verify bounded evidence, always returning an ``UNVERIFIED`` release state."""
     allowed = _allowed_artifact_dirs(artifact_dirs)
@@ -338,6 +370,9 @@ def verify_release_native_corpus(manifest: object, artifact_dirs: object) -> dic
         or not manifest["cases"]
     ):
         return {"status": "UNVERIFIED", "reason": "invalid_manifest_or_artifact_dirs", "cases": ()}
+    global_identity_reason = _global_manifest_identity_reason(manifest["cases"], allowed)
+    if global_identity_reason is not None:
+        return {"status": "UNVERIFIED", "reason": global_identity_reason, "cases": ()}
     cases = tuple(_verify_case(case, allowed) for case in manifest["cases"])
     return {
         "status": "UNVERIFIED",
