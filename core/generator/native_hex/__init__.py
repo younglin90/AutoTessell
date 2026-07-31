@@ -27,5 +27,8 @@ from core.generator.native_hex.mesher import (
     NativeHexResult,
     generate_native_hex,
 )
+from core.generator.native_hex.output_source_binding_certificate_l0 import (
+    diagnose_hex_output_source_binding_l0,
+)
 
-__all__ = ["NativeHexResult", "generate_native_hex"]
+__all__ = ["NativeHexResult", "diagnose_hex_output_source_binding_l0", "generate_native_hex"]
