@@ -3110,6 +3110,36 @@ provenance gate.
   generator-neutral support evidence before relying on this Release profile.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 103 pre-merge checkpoint -- 2026-07-31
+
+### Gate-3 marker inventory ledger reconciliation
+
+- `ddf6fda5` reconciles exactly one stale ledger digest.  The scanned scope
+  still contains exactly `96` marker rows and exactly one deferred dynamic
+  marker, `tests/test_native_poly_facegeom.py:172`; marker rows, reasons,
+  scope patterns, and test marks were not changed.  The recorded digest is
+  now `394cd3f21ce0da94d17572070f87df9d6d117e2c7de6bba801f0b3a1c3836128`.
+- The prior bounded, no-mask runner at concurrency `2` is `ERROR` /
+  `UNVERIFIED` because it read the obsolete stale digest.  It is retained as
+  failure evidence and supplies no PASS claim.
+- After reconciliation, the final bounded runner at concurrency `2` passed:
+  governance evidence `5.49 s`, native-Tri contracts `7.33 s`, independent
+  Tri+Quad/strict-Quad surface-product contracts `5.45 s`, and GUI/parameter
+  phase `2.25 s`.  The single marker-inventory reconciliation runner also
+  passed in `4.71 s`.
+
+### Release state
+
+- Gate 3 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  The final
+  focused runner is not a full-suite result.  The complete suite, CI's
+  `-x`-masked execution, and dynamic-xfail E2E/OpenFOAM/STEP paths remain
+  `UNVERIFIED` and cannot be treated as release evidence.
+- No product, routing, default, topology, surface, provenance, or
+  `third_party/` behavior changed.
+- Next action: retain the reconciled marker inventory and obtain finite,
+  non-masking evidence for the remaining Gate-3 paths before any promotion.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
