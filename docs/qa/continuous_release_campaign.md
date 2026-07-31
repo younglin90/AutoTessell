@@ -3191,6 +3191,31 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 119 pre-merge checkpoint -- 2026-07-31
+
+### Bounded native self-intersection observation
+
+- `58617753` adds a bounded output-only SI observation.  The root focused
+  runner passed at concurrency `1` in `3.74 s`; this is implementation
+  evidence only, not a Gate result.
+- It runs only for a strict topology-valid, closed, all-boundary surface with
+  at most `5000` fan triangles, using the native exhaustive non-adjacent
+  triangle primitive.  Only then may it report
+  `measured_no_intersections` or `measured_intersections_present`.
+- Shared-vertex/shared-edge triangle pairs are excluded.  Touch and coplanar
+  semantics are exactly those of the native predicate.  An unavailable native
+  primitive, size limit, parse failure, or error remains `UNVERIFIED`.
+- The observation remains bound to the stable output artifact identity.  It
+  supplies no signed, integral, feature, patch, physical-group, provenance, or
+  Gate claim.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and all evidence
+  retains `gate4_pass=false`.  Gates 1--15 remain unmet.  No routing, default,
+  UI, mesh, provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 118 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Tet sphere actual Gate-4 rerun after durable binding
