@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "module": "native_surface_product",
+  "shipping": false,
+  "runtime": "report_only_default_off",
+  "public_symbols": [
+    "evaluate_surface_product"
+  ],
+  "sources": [
+    "auto_tessell_core/native_surface_product_bind.cpp"
+  ]
+}

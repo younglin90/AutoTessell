@@ -18,6 +18,8 @@ option(BUILD_NATIVE_SURFACE_PADDING "Build native planar surface padding kernel"
 option(BUILD_NATIVE_HEX_QUALITY "Build native hex quality kernel" ON)
 option(BUILD_NATIVE_TET_PREDICATES "Build native exact tetrahedral predicate kernel" ON)
 option(BUILD_NATIVE_TET_QOPT "Build native tetrahedral quality-optimizer kernel" ON)
+option(BUILD_NATIVE_SURFACE_PRODUCT
+  "Build report-only native surface product evaluator" OFF)
 option(AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE
   "Install only the first-party native extension wheel profile" OFF)
 
@@ -177,6 +179,16 @@ endif()
 if(BUILD_NATIVE_TET_QOPT)
   pybind11_add_module(native_tet_qopt native_tet_qopt_bind.cpp)
   autotessell_configure_first_party_native(native_tet_qopt)
+endif()
+
+# ── report-only native surface product evaluator ───────────────────────────
+# This target is deliberately default-OFF and is not part of the distributable
+# first-party extension inventory.  It validates immutable topology arrays and
+# reports a product class only; it does not route, create, repair, or write mesh
+# data.
+if(BUILD_NATIVE_SURFACE_PRODUCT)
+  pybind11_add_module(native_surface_product native_surface_product_bind.cpp)
+  autotessell_configure_first_party_native(native_surface_product)
 endif()
 
 # ── robusthex module (optional) ──────────────────────────────────────────────
