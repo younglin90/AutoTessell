@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 183 checkpoint -- 2026-08-01
+
+### Clang20 native Tet-QOpt array-shape correction
+
+- Cycle 182 incremental full clang build is `ERROR` / `UNVERIFIED` at three
+  native Tet-QOpt scalar-brace allocations.  Cycle 183 changes only those
+  allocations to explicit pybind shape containers, preserving dtype, value,
+  and one-dimensional shape semantics.
+- Fresh c1 clang20 Release Makefiles target-only `native_tet_qopt` validation
+  passed in `12.537127274 s`:
+  `/tmp/autotessell-c183-native-tet-qopt-runner-evidence.json`.
+
+### Release state
+
+- Full build and Gate 2 remain `UNVERIFIED`; no topology, routing, or default
+  product claim is made.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 181 checkpoint -- 2026-07-31
 
 ### Clang20 native Snap array-shape correction
