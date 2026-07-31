@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `44`
+- cycle: `48`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `e5a2e4aa845ddf3cd4ef5fd1f38fe4b340ef00f0`
+- last_verified_master: `217615cfd84db82323137b8d35cb5bbafe0544ea`
 - allowed_to_stop: `false`
-- next_action: `Continue Tet same-side-overlap avoidance, Poly dual face-loop/seam repair, and Hex authoritative CAD-front contract diagnostics in parallel. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
+- next_action: `Continue Tet initial-overlap diagnosis, Tri source-certificate preflight, and Poly cap-sector policy feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2317,3 +2317,70 @@ scope. Future MIT-core boundary follows
   accepted evidence, then rerun the Poly L3 census and start the next Tri/Quad
   validity card.  Do not stop or claim release readiness while any gate is
   `FAIL` or `UNVERIFIED`.
+
+## Cycle 48 checkpoint -- 2026-07-31
+
+### Integrated contract and fail-closed evidence
+
+- `f35534ab` adds a separate authoritative STEP provenance payload while the
+  legacy `(V,F)` stream remains byte/order exact.  On the T-junction, BRep face
+  coverage is `3,392/3,392`; applied orientation and canonical seams remove
+  `843` same-direction conflicts.  Missing physical-group authority remains
+  unknown rather than inferred.
+- `844bea90` preserves explicit XDE layer, display-color, and assembly identity
+  metadata.  Layers are authoritative grouping metadata only:
+  `physical_group_authority=false`; colors and absent face names never become
+  boundary-condition semantics.  Runtime XDE fixtures pass `14` checks.
+- `c1270dda` adds negative XDE fixtures and closes a real fail-open: conflicting
+  explicit layers for one BRep face now raise before payload publication.  The
+  post-merge reader suite passes `19` with one unrelated skip.
+- `2dc38585` fixes the native Tri route's current honest contract with a
+  24-call fail-closed corpus.  Four fixtures, BL0/BL1, and three repetitions
+  preserve source/output bytes and feature inventory on rejection.  This does
+  not certify topology-changing Tri edits.
+- `8d5aa334` rolls back the JJ3 Tet smoothing candidate whenever sidedness debt
+  increases.  Cylinder reaches zero same-side faces with exact source evidence;
+  cube and sphere stay artifact-free refusals when invalid.
+- `217615cf` extends the same nonincrease transaction to both accepted CVT
+  passes.  Unsafe cube CVT candidates return exact pre-CVT arrays and stop
+  before later mutators; the retained cube state is still invalid and Gate 5
+  remains failed.  Post-merge focused validation passes `7`.
+
+### Rejected and deferred research
+
+- Poly source-cap seam and boundary-separator prerequisites are retained on an
+  unmerged DEFER stack.  They remove observed T-junction and separator
+  self-intersection defects, but do not resolve the full pipeline timeout.
+- Closed-ring fan materialization was killed because invalid star subtets rise
+  `878 -> 1,065`.  No triangulation heuristic was merged.
+- The true Poly high-skew defect is source-cap center cells.  A minimum sector
+  partition requires at least `14` new cells/cut surfaces and changes ownership
+  of `64` source-adjacent caps.  That needs an explicit policy for cell/patch
+  semantics; it is not automatically implemented.
+
+### Cycle-48 gate re-evaluation
+
+| Gate | Status | Cycle-48 evidence / next evidence |
+|---|---|---|
+| 1 Repository | FAIL | `master` is clean at checkpoint; active research worktrees and tracked installer executable remain. |
+| 2 Build | UNVERIFIED | Native manifest verifies eight modules on GCC 13.3/C++23; supported matrix remains. |
+| 3 Automated tests | FAIL | Poly L3 still has a failure, two timeouts, and a skip-bearing module; full suite remains. |
+| 4 Shape preservation | UNVERIFIED | STEP/Tri rejection contracts preserve inputs; topology-changing Tri and complete engine corpus remain. |
+| 5 Mesh validity | FAIL | Tet now refuses unsafe JJ3/CVT outputs; successful zero-overlap cube/sphere path remains absent. |
+| 6 Cell count | FAIL | Still deliberately secondary. |
+| 7 Boundary layer | UNVERIFIED | BL0 accounting is explicit; authoritative CAD-to-front and positive-layer corpus remain. |
+| 8 Quality | UNVERIFIED | Poly cap-cell skew and all-hex core/interface remain unresolved. |
+| 9 Reproducibility | FAIL | Card-local hashes pass; independent wheel/P4C evidence remains. |
+| 10 Robustness | UNVERIFIED | XDE and topology fail-closed cases expanded; adverse corpus incomplete. |
+| 11 Performance | UNVERIFIED | Card budgets pass; all-engine benchmark budgets remain. |
+| 12 Packaging | FAIL | Windows wheel/installer/UI/install/uninstall matrix remains. |
+| 13 License/provenance | UNVERIFIED | New provenance is recorded; global inventory/notices/source-offer proof remains. |
+| 14 Documentation/operations | UNVERIFIED | Ledger current; release/troubleshooting/rollback operations incomplete. |
+| 15 Release candidate | UNVERIFIED | Depends on Gates 1--14. |
+
+### Next automatic action
+
+- Do not stop.  Continue Tet initial-overlap root cause, Tri certificate
+  preflight, and the policy-bounded Poly feasibility queue.  Merge only
+  independently reviewed cards, clean their worktrees, and keep target-cell
+  work behind shape, topology, validity, provenance, and boundary layers.
