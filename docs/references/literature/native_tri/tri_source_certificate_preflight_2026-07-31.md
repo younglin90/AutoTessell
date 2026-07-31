@@ -35,7 +35,10 @@ Declared feature ownership is valid only when every declared pair is a
 canonical undirected edge of the immutable source mesh.  A non-source
 diagonal is rejected rather than retained as detached metadata.  Reordering a
 valid declaration leaves its evidence hash unchanged; changing its ownership
-set changes the hash.
+set changes the hash.  The diagnostic exposes both the canonical declaration
+as `declared_feature_edges` and its dedicated
+`declared_feature_edges_sha256`; `None` (not supplied), `()` (explicitly
+empty), and a canonical nonempty declaration remain distinct report states.
 
 ## Cylinder adverse result
 

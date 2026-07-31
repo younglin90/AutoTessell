@@ -226,6 +226,8 @@ class NativeTriSourceCertificateDiagnostic:
     source_vertices_hash: str | None
     source_faces_hash: str | None
     source_payload_hash: str | None
+    declared_feature_edges: tuple[tuple[int, int], ...] | None
+    declared_feature_edges_sha256: str | None
     candidate_vertices_hash: str | None
     candidate_faces_hash: str | None
     source_closed_oriented_manifold: bool
@@ -400,15 +402,28 @@ def diagnose_native_tri_source_certificate(
         source_feature_edges,
         source_faces=source_f,
     )
+    canonical_declared_features = (
+        None
+        if source_feature_edges is None
+        else tuple(sorted(declared_features)) if feature_declaration_valid else None
+    )
+    declared_feature_edges_sha256 = (
+        sha256(
+            json.dumps(
+                canonical_declared_features,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        if feature_declaration_valid
+        else None
+    )
     payload_hash = (
         sha256(
             json.dumps(
                 {
                     "faces": source_f.tolist(),
                     "patch_ids": patch_ids,
-                    "declared_feature_edges": (
-                        None if source_feature_edges is None else sorted(declared_features)
-                    ),
+                    "declared_feature_edges": canonical_declared_features,
                 },
                 sort_keys=True,
                 separators=(",", ":"),
@@ -527,6 +542,8 @@ def diagnose_native_tri_source_certificate(
         source_vertices_hash=source_vertices_hash,
         source_faces_hash=source_faces_hash,
         source_payload_hash=payload_hash,
+        declared_feature_edges=canonical_declared_features,
+        declared_feature_edges_sha256=declared_feature_edges_sha256,
         candidate_vertices_hash=candidate_vertices_hash,
         candidate_faces_hash=candidate_faces_hash,
         source_closed_oriented_manifold=source_audit.closed_oriented_manifold,

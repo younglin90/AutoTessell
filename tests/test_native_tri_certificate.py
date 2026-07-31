@@ -287,6 +287,8 @@ def test_source_certificate_rejects_declared_feature_diagonal_not_in_source_mesh
 
     assert report.accepted is False
     assert report.source_payload_hash is None
+    assert report.declared_feature_edges is None
+    assert report.declared_feature_edges_sha256 is None
     assert report.feature_ownership_explicit is False
     assert "source_feature_ownership_invalid" in report.rejection_reasons
 
@@ -301,6 +303,7 @@ def test_source_certificate_feature_ownership_changes_evidence_hash_deterministi
         candidate_faces=faces.copy(),
         face_provenance=_clone_provenance(len(faces)),
     )
+    missing_features = diagnose_native_tri_source_certificate(**common)
     no_features = diagnose_native_tri_source_certificate(
         **common,
         source_feature_edges=(),
@@ -314,6 +317,20 @@ def test_source_certificate_feature_ownership_changes_evidence_hash_deterministi
         source_feature_edges=tuple(reversed(all_source_edges)),
     )
 
+    assert missing_features.declared_feature_edges is None
+    assert no_features.declared_feature_edges == ()
+    assert all_edges_first.declared_feature_edges == all_source_edges
+    assert all_edges_second.declared_feature_edges == all_source_edges
+    assert (
+        missing_features.declared_feature_edges_sha256 != no_features.declared_feature_edges_sha256
+    )
+    assert (
+        no_features.declared_feature_edges_sha256 != all_edges_first.declared_feature_edges_sha256
+    )
+    assert (
+        all_edges_first.declared_feature_edges_sha256
+        == all_edges_second.declared_feature_edges_sha256
+    )
     assert no_features.source_payload_hash != all_edges_first.source_payload_hash
     assert all_edges_first.source_payload_hash == all_edges_second.source_payload_hash
     assert all_edges_first.feature_ownership_explicit is True
