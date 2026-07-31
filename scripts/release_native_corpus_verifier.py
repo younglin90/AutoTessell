@@ -126,13 +126,21 @@ def _unverified_gate4_fields(value: object) -> tuple[str, ...] | None:
     return tuple(fields)
 
 
-def _native_checker_negative_volumes(value: object) -> int | None:
-    if not isinstance(value, dict):
+def _quality_report_evidence(value: object) -> tuple[int, tuple[str, ...]] | None:
+    """Extract checker and Gate-4 evidence from one exact quality report."""
+    if not isinstance(value, dict) or not isinstance(value.get("evaluation_summary"), dict):
         return None
-    negative_volumes = value.get("negative_volumes")
+    summary = value["evaluation_summary"]
+    checkmesh = summary.get("checkmesh")
+    if not isinstance(checkmesh, dict):
+        return None
+    negative_volumes = checkmesh.get("negative_volumes")
     if isinstance(negative_volumes, bool) or not isinstance(negative_volumes, int):
         return None
-    return negative_volumes
+    unverified_fields = _unverified_gate4_fields(summary.get("gate4_evidence"))
+    if unverified_fields is None:
+        return None
+    return negative_volumes, unverified_fields
 
 
 def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
@@ -173,20 +181,23 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
                 "status": "UNVERIFIED",
                 "reason": "polymesh_identity_mismatch",
             }
-        checker_path = _safe_file(artifact_dir, run.get("native_checker_report"))
-        gate4_path = _safe_file(artifact_dir, run.get("gate4_evidence"))
-        if checker_path is None or gate4_path is None:
-            return {"id": case["id"], "status": "UNVERIFIED", "reason": "missing_required_report"}
+        quality_report_path = _safe_file(artifact_dir, run.get("quality_report"))
+        if quality_report_path is None:
+            return {"id": case["id"], "status": "UNVERIFIED", "reason": "missing_quality_report"}
         try:
-            checker = json.loads(checker_path.read_text(encoding="utf-8"))
-            gate4 = json.loads(gate4_path.read_text(encoding="utf-8"))
+            quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-            return {"id": case["id"], "status": "UNVERIFIED", "reason": "malformed_required_report"}
-        if _native_checker_negative_volumes(checker) != 0:
+            return {"id": case["id"], "status": "UNVERIFIED", "reason": "malformed_quality_report"}
+        quality_evidence = _quality_report_evidence(quality_report)
+        if quality_evidence is None:
+            return {
+                "id": case["id"],
+                "status": "UNVERIFIED",
+                "reason": "invalid_quality_report_schema",
+            }
+        negative_volumes, unverified_fields = quality_evidence
+        if negative_volumes != 0:
             return {"id": case["id"], "status": "UNVERIFIED", "reason": "negative_volumes_not_zero"}
-        unverified_fields = _unverified_gate4_fields(gate4)
-        if unverified_fields is None:
-            return {"id": case["id"], "status": "UNVERIFIED", "reason": "invalid_gate4_evidence"}
         observed.append(
             {
                 "artifact_dir": str(artifact_dir),
