@@ -3191,6 +3191,27 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 194 checkpoint -- 2026-08-01
+
+### Gate-4 deterministic signed-side observation
+
+- Initial focused c1 runner was `ERROR`/`UNVERIFIED` at `5.395198952 s`:
+  the first separated-tetra fixture produced a fixed-ray coplanar ambiguity,
+  and the zero-distance assertion still expected the retired unavailable
+  status.  Both conditions correctly stayed unverified; no metric was
+  promoted.
+- Fully admissible closed, orientation-consistent, bounded-native-SI-clean
+  surfaces may emit signed means only when every sampled side decision is
+  finite under the fixed `+X` symbolic half-open ray.  Zero distance,
+  coplanar, edge, vertex, and any ambiguous contact remain `UNVERIFIED`.
+- Corrected focused c1 runner passed in `4.775712771 s`:
+  `/tmp/autotessell-c194-gate4-signed-side-runner-evidence.json`.
+
+### Release state
+
+- Gate 4 and release remain `UNVERIFIED`; no claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 193 checkpoint -- 2026-08-01
 
 ### Gate-4 integral admissibility diagnostics
