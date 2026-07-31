@@ -282,9 +282,12 @@ py::tuple local_cavity_quality_vectors(
         max_cavity_size = std::max(max_cavity_size, static_cast<long long>(cavity.size()));
     }
 
-    py::array_t<long long> offsets_array({static_cast<py::ssize_t>(offsets.size())});
-    py::array_t<long long> tets_out({static_cast<py::ssize_t>(flat_tets.size())});
-    py::array_t<double> quality_out({static_cast<py::ssize_t>(flat_quality.size())});
+    py::array_t<long long> offsets_array(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(offsets.size())});
+    py::array_t<long long> tets_out(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(flat_tets.size())});
+    py::array_t<double> quality_out(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(flat_quality.size())});
     auto offsets_view = offsets_array.mutable_unchecked<1>();
     auto tets_view = tets_out.mutable_unchecked<1>();
     auto quality_view = quality_out.mutable_unchecked<1>();
