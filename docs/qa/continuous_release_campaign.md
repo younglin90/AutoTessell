@@ -4,7 +4,7 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `83`
+- cycle: `84`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
@@ -2827,6 +2827,24 @@ provenance gate.
 ### Release state
 
 - Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 84 pre-merge checkpoint -- 2026-07-31
+
+### Poly cleanup proof
+
+- `codex/poly-cycle-cleanup-verify` at
+  `a367cbd9d1ad26dd2084cf2c136319764bdc2cc5` is clean and an ancestor of
+  `master`; `master-only=18`, `branch-only=0`.  It has no unique research
+  evidence, so its worktree and branch are eligible only for normal
+  `git worktree remove` and `git branch -d` cleanup, never force removal.
+- Protected `codex/native-poly-cycle41-solid-volume-timeout-1` remains
+  retained and untouched.
+
+### Release state
+
+- Gate 1 remains `FAIL` because protected research state and the tracked
+  installer remain.  No gate changes to `PASS`; Gates 1--15 remain unmet.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 83 pre-merge checkpoint -- 2026-07-31
