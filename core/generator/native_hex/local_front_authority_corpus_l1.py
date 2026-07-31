@@ -13,7 +13,10 @@ or called here.  This is report-only ``CORRECTNESS_KEEP`` infrastructure.
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
+from numbers import Integral
 from typing import Literal
 
 import numpy as np
@@ -33,9 +36,7 @@ CorpusAuthorityKind = Literal[
     "unknown",
     "synthetic",
 ]
-_CORPUS_AUTHORITY_KINDS = frozenset(
-    {"checked_in_fixture", "cad_brep", "unknown", "synthetic"}
-)
+_CORPUS_AUTHORITY_KINDS = frozenset({"checked_in_fixture", "cad_brep", "unknown", "synthetic"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +52,37 @@ class LocalFrontCorpusSidecarL1:
     manifest: AuthoritativeSourceFeatureManifest | None
     physical_groups_authoritative: bool
     cad_provenance: CadEntityProvenance | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LocalFrontCorpusAuthorityMetadataL2:
+    """One declared corpus row before sidecar or numeric evidence is read.
+
+    ``authority_key`` identifies the sole metadata owner for a corpus input.
+    ``manifest_order`` gives its explicit presentation order.  The L2 audit
+    rejects ties in either field rather than letting caller iteration order
+    select an arbitrary authority declaration.
+    """
+
+    authority_key: str
+    manifest_order: int
+    source_path: str
+
+
+@dataclass(frozen=True, slots=True)
+class LocalFrontAuthorityManifestAuditL2:
+    """Read-only corpus-metadata result before any sidecar/preflight call."""
+
+    status: str
+    metadata_count: int
+    canonical_authority_keys: tuple[str, ...]
+    duplicate_authority_keys: tuple[str, ...]
+    duplicate_manifest_orders: tuple[int, ...]
+    sidecar_invoked: bool
+    numeric_preflight_invoked: bool
+    candidate_constructed: bool
+    production_mesh_changed: bool
+    artifact_delta: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +105,69 @@ class LocalFrontAuthorityCorpusAuditL1:
     candidate_constructed: bool
     production_mesh_changed: bool
     artifact_delta: int
+
+
+def audit_local_front_authority_manifest_l2(
+    metadata: Sequence[LocalFrontCorpusAuthorityMetadataL2],
+) -> LocalFrontAuthorityManifestAuditL2:
+    """Fail closed on non-unique corpus authority before any mesh evidence.
+
+    This is intentionally narrower than :func:`audit_local_front_authority_corpus_l1`:
+    it neither reads source bytes nor accepts a sidecar.  The caller must first
+    establish that every authority key and explicit manifest order has one,
+    deterministic owner.  Rows are canonically sorted by the declared order,
+    so harmless caller iteration reordering cannot decide authority.
+    """
+    rows = tuple(metadata)
+    invalid = any(
+        not isinstance(row, LocalFrontCorpusAuthorityMetadataL2)
+        or not isinstance(row.authority_key, str)
+        or not isinstance(row.source_path, str)
+        or not isinstance(row.manifest_order, Integral)
+        or isinstance(row.manifest_order, bool)
+        or not row.authority_key.strip()
+        or not row.source_path.strip()
+        or row.manifest_order < 0
+        for row in rows
+    )
+    if invalid or not rows:
+        return LocalFrontAuthorityManifestAuditL2(
+            "reject_invalid_authority_corpus_metadata",
+            len(rows),
+            (),
+            (),
+            (),
+            False,
+            False,
+            False,
+            False,
+            0,
+        )
+    key_counts = Counter(row.authority_key for row in rows)
+    order_counts = Counter(row.manifest_order for row in rows)
+    duplicate_keys = tuple(sorted(key for key, count in key_counts.items() if count > 1))
+    duplicate_orders = tuple(sorted(order for order, count in order_counts.items() if count > 1))
+    canonical_keys = tuple(
+        row.authority_key for row in sorted(rows, key=lambda row: row.manifest_order)
+    )
+    if duplicate_keys:
+        status = "reject_duplicate_authority_key"
+    elif duplicate_orders:
+        status = "reject_manifest_order_ambiguity"
+    else:
+        status = "pass_unambiguous_authority_corpus_metadata"
+    return LocalFrontAuthorityManifestAuditL2(
+        status,
+        len(rows),
+        canonical_keys,
+        duplicate_keys,
+        duplicate_orders,
+        False,
+        False,
+        False,
+        False,
+        0,
+    )
 
 
 def _cad_brep_is_complete(provenance: CadEntityProvenance | None) -> bool:
@@ -157,9 +252,7 @@ def audit_local_front_authority_corpus_l1(
             sidecar_audit=None,
             preflight=None,
         )
-    if sidecar.authority_kind == "cad_brep" and not _cad_brep_is_complete(
-        sidecar.cad_provenance
-    ):
+    if sidecar.authority_kind == "cad_brep" and not _cad_brep_is_complete(sidecar.cad_provenance):
         return _report(
             status="reject_incomplete_cad_brep_authority",
             sidecar=sidecar,

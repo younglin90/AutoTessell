@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 
 import numpy as np
 import pytest
@@ -11,8 +13,10 @@ import pytest
 from core.analyzer.readers import read_stl
 from core.analyzer.readers.step import load_cad_native_with_provenance
 from core.generator.native_hex.local_front_authority_corpus_l1 import (
+    LocalFrontCorpusAuthorityMetadataL2,
     LocalFrontCorpusSidecarL1,
     audit_local_front_authority_corpus_l1,
+    audit_local_front_authority_manifest_l2,
 )
 from core.generator.native_hex.source_feature_sidecar_l1 import (
     AuthoritativeSourceFeatureManifest,
@@ -255,3 +259,116 @@ def test_l0_unrecognized_authority_kind_rejects_valid_cube_before_sidecar_or_pre
     assert not report.preflight_invoked and not report.preflight_admitted
     assert not report.candidate_constructed and not report.production_mesh_changed
     assert report.artifact_delta == 0
+
+
+def _canonical_authority_metadata_l2() -> tuple[LocalFrontCorpusAuthorityMetadataL2, ...]:
+    rows = (
+        ("fixture:cube", 0, _ROOT / "tests" / "benchmarks" / "cube.stl"),
+        ("fixture:cylinder", 1, _ROOT / "tests" / "benchmarks" / "cylinder.stl"),
+        ("fixture:sphere", 2, _ROOT / "tests" / "benchmarks" / "sphere.stl"),
+    )
+    assert all(path.is_file() for _, _, path in rows)
+    return tuple(
+        LocalFrontCorpusAuthorityMetadataL2(key, order, str(path)) for key, order, path in rows
+    )
+
+
+def _assert_no_mesh_path(report: object) -> None:
+    assert getattr(report, "sidecar_invoked") is False
+    assert getattr(report, "numeric_preflight_invoked") is False
+    assert getattr(report, "candidate_constructed") is False
+    assert getattr(report, "production_mesh_changed") is False
+    assert getattr(report, "artifact_delta") == 0
+
+
+def test_l2_canonical_authority_manifest_is_order_independent_before_sidecar_or_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.generator.native_hex.local_front_authority_corpus_l1 as authority
+
+    monkeypatch.setattr(authority, "audit_authoritative_source_feature_sidecar_l1", _forbidden)
+    monkeypatch.setattr(authority, "audit_local_front_admission_l0", _forbidden)
+    rows = _canonical_authority_metadata_l2()
+    reports = tuple(
+        audit_local_front_authority_manifest_l2(order)
+        for order in (rows, tuple(reversed(rows)), rows)
+    )
+
+    assert reports == (reports[0],) * 3
+    report = reports[0]
+    assert report.status == "pass_unambiguous_authority_corpus_metadata"
+    assert report.metadata_count == 3
+    assert report.canonical_authority_keys == (
+        "fixture:cube",
+        "fixture:cylinder",
+        "fixture:sphere",
+    )
+    assert not report.duplicate_authority_keys and not report.duplicate_manifest_orders
+    _assert_no_mesh_path(report)
+
+
+def test_l2_duplicate_authority_key_rejects_canonical_rows_before_sidecar_or_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.generator.native_hex.local_front_authority_corpus_l1 as authority
+
+    monkeypatch.setattr(authority, "audit_authoritative_source_feature_sidecar_l1", _forbidden)
+    monkeypatch.setattr(authority, "audit_local_front_admission_l0", _forbidden)
+    cube, cylinder, sphere = _canonical_authority_metadata_l2()
+    report = audit_local_front_authority_manifest_l2(
+        (cube, replace(cylinder, authority_key=cube.authority_key), sphere)
+    )
+
+    assert report.status == "reject_duplicate_authority_key"
+    assert report.duplicate_authority_keys == ("fixture:cube",)
+    assert report.duplicate_manifest_orders == ()
+    _assert_no_mesh_path(report)
+
+
+def test_l2_manifest_order_tie_rejects_canonical_rows_before_sidecar_or_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.generator.native_hex.local_front_authority_corpus_l1 as authority
+
+    monkeypatch.setattr(authority, "audit_authoritative_source_feature_sidecar_l1", _forbidden)
+    monkeypatch.setattr(authority, "audit_local_front_admission_l0", _forbidden)
+    cube, cylinder, sphere = _canonical_authority_metadata_l2()
+    report = audit_local_front_authority_manifest_l2(
+        (cube, cylinder, replace(sphere, manifest_order=cylinder.manifest_order))
+    )
+
+    assert report.status == "reject_manifest_order_ambiguity"
+    assert report.duplicate_authority_keys == ()
+    assert report.duplicate_manifest_orders == (1,)
+    _assert_no_mesh_path(report)
+
+
+@pytest.mark.parametrize(
+    "invalid_row",
+    (
+        LocalFrontCorpusAuthorityMetadataL2(cast(str, 1), 0, "tests/benchmarks/cube.stl"),
+        LocalFrontCorpusAuthorityMetadataL2("fixture:cube", 0, cast(str, 1)),
+        LocalFrontCorpusAuthorityMetadataL2(
+            "fixture:cube", cast(int, "1"), "tests/benchmarks/cube.stl"
+        ),
+        LocalFrontCorpusAuthorityMetadataL2(
+            "fixture:cube", cast(int, True), "tests/benchmarks/cube.stl"
+        ),
+    ),
+)
+def test_l2_runtime_invalid_metadata_rejects_before_sidecar_or_preflight(
+    invalid_row: LocalFrontCorpusAuthorityMetadataL2,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.generator.native_hex.local_front_authority_corpus_l1 as authority
+
+    monkeypatch.setattr(authority, "audit_authoritative_source_feature_sidecar_l1", _forbidden)
+    monkeypatch.setattr(authority, "audit_local_front_admission_l0", _forbidden)
+    report = audit_local_front_authority_manifest_l2((invalid_row,))
+
+    assert report.status == "reject_invalid_authority_corpus_metadata"
+    assert report.metadata_count == 1
+    assert report.canonical_authority_keys == ()
+    assert report.duplicate_authority_keys == ()
+    assert report.duplicate_manifest_orders == ()
+    _assert_no_mesh_path(report)
