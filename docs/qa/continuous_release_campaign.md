@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 133 pre-merge checkpoint -- 2026-07-31
+
+### Actual Gate-4 inventory shape hardening
+
+- `556510e0` accepts exactly one Gate-4 inventory form: current
+  `actual_surface_metrics.unverified_fields`, or mutually exclusive legacy
+  top-level fields.  Each requires `gate4_pass=false` and a nonempty unique
+  inventory; missing, mixed, or malformed forms are `UNVERIFIED`.
+- Root focused runner passed at concurrency `1` in `5.01 s`.  C132 actual
+  native-Tet manifest/artifact rerun remains pending.
+
+### Release state
+
+- Release evidence always remains `UNVERIFIED`; no Gate is promoted to `PASS`.
+  Gates 1--15 remain unmet.  No routing, default, UI, mesh, provenance, or
+  `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 131 pre-merge checkpoint -- 2026-07-31
 
 ### Unified quality-report release evidence
