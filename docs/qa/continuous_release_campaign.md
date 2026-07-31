@@ -3033,6 +3033,39 @@ provenance gate.
   existing product defaults.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 99 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tri actual-product authority audit
+
+- No code change.  The current explicit native-Tri L2 route copies source
+  vertices and faces, returns `accepted=false`, and records
+  `source_contract_unavailable` (or unsupported boundary layers).  Equal
+  source/output hashes and identity provenance prove only that fail-closed
+  clone, not an independent native-Tri product.
+- The L0 candidate certificate accepts only byte-exact source vertices/faces
+  and identity one-source-face provenance.  It therefore rejects every
+  topology-changing candidate.  The actual-output diagnostic remains
+  `accepted=false`, `mesher_success_allowed=false`, and
+  `product_claimed=false` even for the exact clone.
+- The L1 source diagnostic can record optional raw patch IDs and feature edges
+  for clone evidence, but it has no authoritative patch/feature wrappers, no
+  physical-group authority, no output patch/group payload, and no public route
+  ingress.  There is no real operator transaction, whole-triangle envelope,
+  or split/collapse provenance contract for an edited TRI result.
+- Consequently no native-Tri writer or dispatch was added: emitting the
+  current clone as an actual product would be a false no-op/topology-change
+  claim.  No strict-Quad or Tri+Quad product is reused.
+
+### Release state
+
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+  change is included.
+- Native-Tri product next action: require a real operator transaction with
+  authoritative source patch/feature/physical evidence, exact edited-face
+  provenance, and whole-triangle envelope proof before any writer.  Campaign
+  next action: clean native Release build evidence.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
