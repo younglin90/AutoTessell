@@ -5,6 +5,9 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from click.testing import CliRunner
+
+from cli.main import run
 from core.preprocessor.native_remesh.surface_mode_contract import (
     SurfaceProductClassification,
     SurfaceProductMode,
@@ -31,7 +34,7 @@ def _engine_equal_literals(path: Path) -> set[str]:
     }
 
 
-def test_surface_product_registry_is_distinct_but_pipeline_routes_are_incomplete() -> None:
+def test_surface_product_registry_and_pipeline_route_identities_are_distinct() -> None:
     assert tuple(SurfaceProductMode) == (
         SurfaceProductMode.TRI,
         SurfaceProductMode.QUAD,
@@ -39,7 +42,8 @@ def test_surface_product_registry_is_distinct_but_pipeline_routes_are_incomplete
     )
 
     routes = _engine_equal_literals(_PIPELINE)
-    assert {"native_tri", "native_quad_dominant"} <= routes
+    assert {"native_tri", "native_strict_quad", "native_tri_quad"} <= routes
+    assert "native_quad_dominant" in routes
     assert "native_quad_strict" not in routes
     assert "native_tri_quad_mixed" not in routes
 
@@ -51,6 +55,14 @@ def test_gui_has_no_three_way_native_surface_product_selector() -> None:
     assert '"native_cvt"' in source
     assert '"native_quad_strict"' not in source
     assert '"native_tri_quad_mixed"' not in source
+
+
+def test_cli_exposes_three_explicit_surface_product_route_identities() -> None:
+    result = CliRunner().invoke(run, ["--help"])
+
+    assert result.exit_code == 0
+    for identity in ("native_tri", "native_strict_quad", "native_tri_quad"):
+        assert identity in result.output
 
 
 def test_quad_dominant_candidate_never_certifies_as_strict_quad() -> None:
@@ -66,3 +78,21 @@ def test_quad_dominant_candidate_never_certifies_as_strict_quad() -> None:
     assert strict.classification is SurfaceProductClassification.CANDIDATE_MIXED
     assert strict.accepted is False
     assert strict.rejection_reason == "representation_not_strict_quad"
+
+
+def test_existing_representation_aliases_are_unchanged() -> None:
+    aliases = {
+        "native_tri_only": SurfaceProductMode.TRI,
+        "native_quad_strict": SurfaceProductMode.QUAD,
+        "native_tri_quad_mixed": SurfaceProductMode.TRI_QUAD,
+    }
+
+    for alias, expected_mode in aliases.items():
+        certificate = certify_surface_product_mode(
+            alias,
+            triangle_count=0 if expected_mode is not SurfaceProductMode.TRI else 1,
+            quad_count=0 if expected_mode is SurfaceProductMode.TRI else 1,
+            separate_tri_quad_representation=expected_mode is SurfaceProductMode.TRI_QUAD,
+            triangular_handoff=False,
+        )
+        assert certificate.requested_mode is expected_mode

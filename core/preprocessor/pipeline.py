@@ -452,11 +452,25 @@ class Preprocessor:
         engine = remesh_engine.lower()
         if engine == "native_face_remesh":
             return self._l2_remesh_native_face(mesh, target_faces)
+        if engine == "native_tri":
+            return self._l2_remesh_native_tri(mesh, target_faces)
+        if engine == "native_strict_quad":
+            return self._l2_remesh_surface_product_deferred(
+                mesh,
+                target_faces,
+                route_identity="native_strict_quad",
+                requested_surface_product="strict_quad",
+            )
+        if engine == "native_tri_quad":
+            return self._l2_remesh_surface_product_deferred(
+                mesh,
+                target_faces,
+                route_identity="native_tri_quad",
+                requested_surface_product="tri_quad",
+            )
         if engine == "native_quad_dominant":
             return self._l2_remesh_native_quad_dominant(mesh, target_faces)
         if prefer_native:
-            if engine == "native_tri":
-                return self._l2_remesh_native_tri(mesh, target_faces)
             return self._l2_remesh_native(mesh, target_faces)
         # legacy 경로 — pyACVD/pymeshlab/vorpalite 체인
         return self._remesher.remesh_l2(
@@ -743,6 +757,59 @@ class Preprocessor:
         )
         return remeshed, passed, step_record
 
+    def _l2_remesh_surface_product_deferred(
+        self,
+        mesh: trimesh.Trimesh,
+        target_faces: int | None,
+        *,
+        route_identity: str,
+        requested_surface_product: str,
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
+        """Return an unchanged mesh until a source-product certificate exists.
+
+        Strict-quad and mixed TRI+QUAD are intentionally distinct requests.
+        Neither may borrow the ``native_quad_dominant`` triangular handoff or
+        infer source ownership from geometry while its product certificate is
+        unavailable.
+        """
+        import numpy as np  # noqa: PLC0415
+        import trimesh as _tm  # noqa: PLC0415
+
+        source_vertices = np.asarray(mesh.vertices, dtype=np.float64)
+        source_faces = np.asarray(mesh.faces, dtype=np.int64)
+        unchanged_mesh = _tm.Trimesh(
+            vertices=source_vertices.copy(),
+            faces=source_faces.copy(),
+            process=False,
+        )
+        reason = "source_product_certificate_required"
+        step_record = {
+            "step": "l2_remesh",
+            "method": f"{route_identity}_deferred",
+            "params": {
+                "route": route_identity,
+                "requested_surface_product": requested_surface_product,
+                "product_certificate": "required",
+                "rejection_reason": reason,
+                "source_geometry_preserved": True,
+                "source_topology_preserved": True,
+                "triangular_handoff": False,
+                **_target_face_metrics(target_faces, int(len(source_faces))),
+                "target_faces_actual_semantics": "source_triangle_faces",
+            },
+            "input_faces": int(len(source_faces)),
+            "output_faces": int(len(source_faces)),
+            "time_seconds": 0.0,
+            "gate_passed": False,
+        }
+        log.warning(
+            "native_surface_product_deferred",
+            route=route_identity,
+            requested_surface_product=requested_surface_product,
+            reason=reason,
+        )
+        return unchanged_mesh, False, step_record
+
     def _l2_remesh_native_tri(
         self,
         mesh: trimesh.Trimesh,
@@ -770,6 +837,8 @@ class Preprocessor:
             "step": "l2_remesh",
             "method": "native_tri_fail_closed",
             "params": {
+                "route": "native_tri",
+                "requested_surface_product": "tri",
                 "reason": route.reason,
                 "target_faces_requested": route.target_faces_requested,
                 "target_faces_actual": route.target_faces_actual,

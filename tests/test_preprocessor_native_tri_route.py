@@ -106,6 +106,63 @@ def test_native_tri_pipeline_route_is_explicit_fail_closed() -> None:
     np.testing.assert_array_equal(output.faces, mesh.faces)
 
 
+def test_native_tri_route_is_explicit_without_prefer_native() -> None:
+    mesh = trimesh.load(str(_BENCHMARKS / "cube.stl"), force="mesh")
+    output, passed, record = Preprocessor()._l2_remesh(
+        mesh,
+        target_faces=50,
+        remesh_engine="native_tri",
+        prefer_native=False,
+    )
+
+    assert passed is False
+    assert record["method"] == "native_tri_fail_closed"
+    assert record["params"]["route"] == "native_tri"
+    assert record["params"]["requested_surface_product"] == "tri"
+    np.testing.assert_array_equal(output.vertices, mesh.vertices)
+    np.testing.assert_array_equal(output.faces, mesh.faces)
+
+
+@pytest.mark.parametrize(
+    ("engine", "product"),
+    (("native_strict_quad", "strict_quad"), ("native_tri_quad", "tri_quad")),
+)
+def test_surface_product_routes_defer_without_certificate(
+    engine: str,
+    product: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mesh = trimesh.load(str(_BENCHMARKS / "cube.stl"), force="mesh")
+    preprocessor = Preprocessor()
+
+    def unexpected_candidate(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("strict or mixed request must not use native_quad_dominant")
+
+    monkeypatch.setattr(
+        preprocessor,
+        "_l2_remesh_native_quad_dominant",
+        unexpected_candidate,
+    )
+    output, passed, record = preprocessor._l2_remesh(
+        mesh,
+        target_faces=50,
+        remesh_engine=engine,
+        prefer_native=False,
+    )
+
+    assert passed is False
+    assert record["method"] == f"{engine}_deferred"
+    assert record["params"]["route"] == engine
+    assert record["params"]["requested_surface_product"] == product
+    assert record["params"]["product_certificate"] == "required"
+    assert record["params"]["rejection_reason"] == "source_product_certificate_required"
+    assert record["params"]["source_geometry_preserved"] is True
+    assert record["params"]["source_topology_preserved"] is True
+    assert record["params"]["triangular_handoff"] is False
+    np.testing.assert_array_equal(output.vertices, mesh.vertices)
+    np.testing.assert_array_equal(output.faces, mesh.faces)
+
+
 def test_default_native_l2_does_not_select_the_opt_in_tri_route(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

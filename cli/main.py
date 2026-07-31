@@ -688,8 +688,11 @@ def evaluate(
               type=click.Choice(["auto", "pymeshfix", "trimesh", "none"]),
               help="L1 표면 수리 라이브러리")
 @click.option("--remesh-engine", default="auto", show_default=True,
-              type=click.Choice(["auto", "quadwild", "vorpalite", "pyacvd", "pymeshlab", "none"]),
-              help="L2 표면 리메쉬 라이브러리 (vorpalite=geogram, 최고 품질)")
+              type=click.Choice([
+                  "auto", "quadwild", "vorpalite", "pyacvd", "pymeshlab", "none",
+                  "native_tri", "native_strict_quad", "native_tri_quad",
+              ]),
+              help="L2 표면 리메쉬 엔진 (native strict/mixed는 certificate 전 fail-closed)")
 @click.option("--volume-engine", default="auto", show_default=True,
               type=click.Choice([
                   "auto", "tetwild", "netgen", "snappy", "cfmesh",

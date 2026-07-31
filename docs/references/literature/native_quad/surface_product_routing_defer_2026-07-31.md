@@ -2,8 +2,9 @@
 
 ## Card state
 
-`DEFER / CORRECTNESS_KEEP`.  Test and documentation only.  No routing, UI,
-product, threshold, acceptance, or mesh-output change.
+`PARTIALLY_UNBLOCKED / CORRECTNESS_KEEP`.  Explicit CLI/pipeline route
+identities now exist, but strict QUAD and TRI+QUAD remain fail-closed until
+their source-product certificates exist.  GUI selection remains deferred.
 
 ## Product registry versus user route
 
@@ -11,12 +12,15 @@ product, threshold, acceptance, or mesh-output change.
 `tri_quad`.  This is a report-only representation contract, not an exposed
 surface-mesher selection.
 
-The actual L2 pipeline recognizes `native_tri` and `native_quad_dominant`, but
-has no `native_quad_strict` route and no separate `native_tri_quad_mixed`
-route.  The desktop L2 selector exposes `native_isotropic`, `native_cvt`, and
-`disabled`; it exposes none of those three product identities.  Therefore the
-product identities are not three distinct user-selectable surface mesher
-routes.
+The CLI and L2 pipeline expose distinct `native_tri`, `native_strict_quad`,
+and `native_tri_quad` identities.  `native_tri` uses its existing explicit
+fail-closed source contract.  Strict QUAD and TRI+QUAD return the input
+unchanged with `source_product_certificate_required`; neither route borrows
+`native_quad_dominant`.
+
+The desktop L2 selector still exposes `native_isotropic`, `native_cvt`, and
+`disabled`; GUI exposure remains deferred rather than silently aliasing a
+different product.
 
 ## Strict-quad safety result
 
