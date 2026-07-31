@@ -16,7 +16,10 @@ import pytest
 
 from core.analyzer.readers import read_stl
 from core.generator.native_tet.mesher import generate_native_tet
-from core.generator.native_tet.rescue_gate import audit_tet_boundary
+from core.generator.native_tet.rescue_gate import (
+    audit_internal_face_sidedness,
+    audit_tet_boundary,
+)
 
 _CUBE = Path(__file__).resolve().parent / "benchmarks" / "cube.stl"
 _SPHERE = Path(__file__).resolve().parent / "benchmarks" / "sphere.stl"
@@ -129,6 +132,21 @@ def test_cube_10000_l0_trace_refuses_residual_internal_overlap(tmp_path: Path, m
     assert final_audit.n_ambiguous_internal_faces == 128
     assert final_audit.n_degenerate_tets == 32
     assert final_audit.n_duplicate_tets == 0
+    # L1 observation only: the new categories conserve the pre-existing
+    # strict ambiguity debt and do not change the failed result or writer
+    # refusal.  Repeated audits of the frozen returned arrays are identical.
+    sidedness_audits = tuple(
+        audit_internal_face_sidedness(result.tet_points, result.tets)
+        for _ in range(3)
+    )
+    assert len(set(sidedness_audits)) == 1
+    sidedness = sidedness_audits[0]
+    assert sidedness.n_ambiguous_internal_faces == 128
+    assert sidedness.n_ambiguous_internal_faces == (
+        sidedness.n_predicate_zero_internal_faces
+        + sidedness.n_floor_only_same_side_internal_faces
+        + sidedness.n_floor_only_opposite_side_internal_faces
+    )
     report = transaction["report"]
     assert isinstance(report, dict)
     assert report == {
@@ -250,6 +268,17 @@ def test_degenerate_candidate_keeps_immutable_source_certificate(
     )
 
     assert result.success is False
+    sidedness_audits = tuple(
+        audit_internal_face_sidedness(result.tet_points, result.tets)
+        for _ in range(3)
+    )
+    assert len(set(sidedness_audits)) == 1
+    sidedness = sidedness_audits[0]
+    assert sidedness.n_ambiguous_internal_faces == (
+        sidedness.n_predicate_zero_internal_faces
+        + sidedness.n_floor_only_same_side_internal_faces
+        + sidedness.n_floor_only_opposite_side_internal_faces
+    )
     assert len(observed) == 1
     trace = observed[0]
     report = trace["report"]
