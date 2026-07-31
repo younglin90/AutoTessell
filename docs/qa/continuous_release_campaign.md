@@ -3191,6 +3191,34 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 145 pre-merge checkpoint -- 2026-07-31
+
+### Independent Tri+Quad authoritative cube offline transaction
+
+- The independent default-off Tri+Quad offline transaction now has a focused
+  authoritative cube result: `12` source triangles become `10` retained
+  triangles plus `1` quad.  Product and writer gates are enabled only inside
+  the test; this is `CANDIDATE_MIXED`, not strict-Quad, native-Tri, or a
+  quad-dominant relabel.
+- The transaction retains exact source vertices and triangles, sorted
+  authoritative feature edges, one component, Euler characteristic `2`, patch
+  IDs, authoritative physical groups, and a complete partition of triangle
+  ordinals and quad source-pair provenance.  Its own six-file atomic artifact
+  has five separate arrays plus manifest; readback verifies source, payload,
+  provenance, and content digests.
+- Validation runner concurrency `1` passed: dispatch `4.124 s`, product
+  `3.926 s`, writer `3.986 s`; evidence
+  `/tmp/autotessell-c145-tri-quad-evidence.json`.  This is offline focused
+  contract evidence only; route/UI/product claims remain false.
+
+### Release state
+
+- No Tri+Quad product or release claim is made.  Real imported CAD/STL
+  authority, surface-only volume/negative-element evidence, multi-fixture
+  matrix, and released-route evidence remain `UNVERIFIED`.  Gates 1--15
+  remain unmet.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 144 pre-merge checkpoint -- 2026-07-31
 
 ### Strict-Quad authoritative cube offline transaction
