@@ -4427,6 +4427,8 @@ def generate_native_tet(
             except Exception as exc:
                 log.warning("native_tet_nnn1_failed", reason=str(exc)[:200])
         # NNN2b — Steiner circumcenter insertion (TetWild §3.3, envelope-validated)
+        if _phase_a_observer is not None:
+            _report_phase_a_provenance_checkpoint(_phase_a_observer, stage="post_nnn1_dry_run", source_points=_input_source_vertices, source_faces=_input_source_faces, candidate_points=final_pts, candidate_tets=final_tets)
         if os.environ.get("AUTO_TESSELL_NNN2_INSERT", "1") != "0":
             try:
                 from core.generator.native_tet.quality import tet_shape_quality
@@ -4507,6 +4509,8 @@ def generate_native_tet(
                 log.warning("native_tet_nnn2_failed", reason=str(exc)[:200])
 
         # NNN3 — Steiner circumcenter insertion cycle 2 (TetWild §3.3)
+        if _phase_a_observer is not None:
+            _report_phase_a_provenance_checkpoint(_phase_a_observer, stage="post_nnn2_insert", source_points=_input_source_vertices, source_faces=_input_source_faces, candidate_points=final_pts, candidate_tets=final_tets)
         if os.environ.get("AUTO_TESSELL_NNN3_INSERT", "1") != "0":
             try:
                 from core.generator.native_tet.quality import tet_shape_quality
@@ -4585,6 +4589,8 @@ def generate_native_tet(
                 log.warning("native_tet_nnn3_skipped", reason=str(exc)[:120])
 
         # NNN4 — post-Steiner interior AMIPS smoothing (Klingner 2008 §3.5)
+        if _phase_a_observer is not None:
+            _report_phase_a_provenance_checkpoint(_phase_a_observer, stage="post_nnn3_insert", source_points=_input_source_vertices, source_faces=_input_source_faces, candidate_points=final_pts, candidate_tets=final_tets)
         if os.environ.get("AUTO_TESSELL_NNN4_AMIPS", "1") != "0":
             try:
                 from core.generator.native_tet.amips import smooth_amips_analytic
@@ -4624,6 +4630,8 @@ def generate_native_tet(
                 log.warning("native_tet_nnn4_skipped", reason=str(exc)[:120])
 
         # RRR2 — worst-percentile targeted AMIPS smoothing (Klingner 2008 §3.5)
+        if _phase_a_observer is not None:
+            _report_phase_a_provenance_checkpoint(_phase_a_observer, stage="post_nnn4_amips", source_points=_input_source_vertices, source_faces=_input_source_faces, candidate_points=final_pts, candidate_tets=final_tets)
         if os.environ.get("AUTO_TESSELL_RRR2_TARGETED", "1") != "0":
             try:
                 from core.generator.native_tet.quality import _RRR1_QUALITY_HISTOGRAM, tet_shape_quality
@@ -4751,6 +4759,8 @@ def generate_native_tet(
                 log.warning("native_tet_rrr2_skipped", reason=str(exc)[:120])
 
         # P3-card2 (beta2234) — SSS revival: envelope-bounded surface vertex
+        if _phase_a_observer is not None:
+            _report_phase_a_provenance_checkpoint(_phase_a_observer, stage="post_rrr2_targeted_amips", source_points=_input_source_vertices, source_faces=_input_source_faces, candidate_points=final_pts, candidate_tets=final_tets)
         # relocation (fTetWild §3.5).
         # 동기: small mesh 의 surface vertex 비율 90%+ 이라 RRR2 의 free
         # interior pool (7-32) 부족. surface vertex 도 envelope ε 안에서
@@ -4838,6 +4848,8 @@ def generate_native_tet(
                 log.warning("native_tet_p3_sss_revival_skipped", reason=str(exc)[:120])
 
         # C1.3 / beta2363 — Volumetric Lloyd CVT 3D (interior vertex relaxation).
+        if _phase_a_observer is not None:
+            _report_phase_a_provenance_checkpoint(_phase_a_observer, stage="post_sss_revival", source_points=_input_source_vertices, source_faces=_input_source_faces, candidate_points=final_pts, candidate_tets=final_tets)
         # SSS_REVIVAL (surface) 와 보완적: 내부 vertex 의 1-ring tet centroid
         # 평균. monotone guard 표준. env AUTO_TESSELL_CVT3D_OFF=1 로 비활성.
         if os.environ.get("AUTO_TESSELL_CVT3D_OFF", "0") != "1":
