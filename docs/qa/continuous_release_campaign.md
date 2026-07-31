@@ -3191,6 +3191,36 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 110 pre-merge checkpoint -- 2026-07-31
+
+### Gate-4 immutable actual-metric binding
+
+- `9d381a60` binds the controlled C109 surface observations to an exact `S0`
+  snapshot and only to an identity-stable polyMesh that passes the strict
+  combinatorial topology audit.  It triangulates every validated boundary
+  polygon; it does not use the legacy name-based geometry-patch heuristic.
+- Production uses deterministic `10000` samples in each direction with exact
+  BVH point-to-triangle queries.  The immutable snapshot and required five-file
+  output artifact are rehashed after measurement.  Missing identity, invalid
+  topology/triangulation, changed artifact, or invalid metric input remains
+  explicit `UNVERIFIED`.
+- The root bounded runners passed at concurrency `1`: exact metric layer `6`
+  tests in `3.78 s`, and substrate binding `7` tests in `3.73 s`.  These are
+  focused implementation checks, not a Gate-4 matrix or release result.
+- Self-intersection, signed distance, volume/centroid, authoritative feature
+  identity, patch, physical-group, and source-to-output provenance remain
+  `UNVERIFIED`.  The attached actual record and enclosing evidence retain
+  `gate4_pass=false`.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15
+  remain unmet.  No routing, default, UI, mesh-generation, topology-repair,
+  provenance, or `third_party/` behavior changed.
+- Next action: add the missing authoritative contracts and actual-output matrix
+  evidence.  Missing, timeout, error, or invalid evidence stays `UNVERIFIED`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 109 pre-merge checkpoint -- 2026-07-31
 
 ### Controlled Gate-4 bidirectional surface observations
