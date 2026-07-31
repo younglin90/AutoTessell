@@ -2846,6 +2846,36 @@ provenance gate.
   bounded local `2↔3`/`3↔2` strict connectivity transaction only.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 93 pre-merge checkpoint -- 2026-07-31
+
+### Tet same-side local 2↔3 transaction feasibility
+
+- Formal runner `c1` passed at concurrency `1` in `0.722 s` with timeout
+  `60 s`; durable evidence is `/tmp/cycle93_evidence.json`.
+- The exact two-tet same-side fixture was passed directly to
+  `flow3._face23_candidate`.  It rejected with `orientation`; this is the
+  required convex-bipyramid / signed-volume tiling guard, not a tolerance
+  relaxation.  The opposite-side control returned `ok` and a `(3, 4)`
+  candidate.
+- Therefore a direct `2→3` flip of the offending same-side face is not a
+  legal repair.  This does not claim a bounded neighboring-face sequence is
+  impossible.
+- Current blockers: sidedness audit exposes aggregate counts only (no
+  deterministic same-side witness selector); `flip_edges_32` scans rather
+  than exposes a targetable `3→2` candidate; and the generic boundary check
+  compares boundary keys/area only, not source-component/facet provenance.
+
+### Release state
+
+- No code, default, strict-topology, or Gate change.  Gates 1--15 remain
+  unmet.
+- Next action: design one bounded source-locked neighboring-face sequence;
+  after every speculative candidate require source component bijection,
+  source faces preserved, unowned faces `0`, inversion `0`, non-increasing
+  ambiguity, and strictly reduced same-side debt, otherwise exact rollback.
+  No topology or predicate relaxation.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
