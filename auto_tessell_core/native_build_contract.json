@@ -54,10 +54,12 @@
         "prepare_quad_pairs",
         "quad_dominant_transaction",
         "select_quad_pairs",
+        "strict_quad_pair_preflight",
         "triangle_flip_candidate_mask",
         "triangle_intersections_interval",
         "triangle_intersections_segment",
         "triangle_quality_batch",
+        "triangle_surface_topology_audit",
         "validate_triangle_surface_and_build_edge_faces"
       ],
       "sources": [
