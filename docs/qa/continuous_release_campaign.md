@@ -3191,6 +3191,34 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 144 pre-merge checkpoint -- 2026-07-31
+
+### Strict-Quad authoritative cube offline transaction
+
+- Default-off strict-Quad offline dispatch now has a focused authoritative cube
+  transaction: `12` source triangles become `6` strict quads.  Product and
+  writer gates are enabled only inside the test; no default, route, UI, or
+  release-product selection changes.
+- The transaction preserves exact source vertices and triangles, boundary and
+  feature edges, one component, Euler characteristic `2`, patch IDs,
+  authoritative physical groups, and complete ordered source-pair provenance.
+  Materialized arrays are immutable.  The replayed artifact contains exactly
+  `vertices.npy`, `quads.npy`, `quad_source_pairs.npy`, and `manifest.json`;
+  readback verifies source, payload, provenance, and content digests.
+- Validation runner concurrency `1` passed: dispatch `6.418 s`, transaction
+  `4.430 s`, writer `4.447 s`; evidence
+  `/tmp/autotessell-c144-strict-quad-evidence.json`.  This is offline focused
+  contract evidence only; `route_selected=false`, `ui_claimed=false`, and
+  `product_claimed=false`.
+
+### Release state
+
+- No strict-Quad release or Gate claim is made.  Real imported CAD/STL
+  authority, volume/negative-element metrics unavailable to this surface
+  product, multi-fixture/matrix evidence, and released-route evidence remain
+  `UNVERIFIED`.  Gates 1--15 remain unmet.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 143 pre-merge checkpoint -- 2026-07-31
 
 ### Pipeline retry-fixture regression repair evidence
