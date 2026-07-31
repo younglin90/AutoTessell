@@ -3191,6 +3191,29 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 156 pre-merge checkpoint -- 2026-07-31
+
+### Release-native quality-report byte identity
+
+- `ed2ffcb0` binds every corpus run's `quality_report` before JSON parsing:
+  its manifest must supply a canonical SHA-256 and the exact file bytes must
+  match.  Missing, malformed, or mismatched hashes fail closed as
+  `UNVERIFIED`; the observed row records the verified report hash.
+- The bounded validation runner passed at concurrency `1` in `5.401 s`.
+  Evidence: `/tmp/autotessell-c156-release-native-quality-report-identity-evidence.json`.
+  This verifies evidence binding only; the corpus script remains deliberately
+  nonzero and cannot emit a release `PASS`.
+- Existing C148 native-Tet and C149 native-Hex manifests lack the new
+  `quality_report_sha256` rows.  They remain incomplete `UNVERIFIED` evidence
+  until regenerated against the exact retained reports.
+
+### Release state
+
+- No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
+  product, route, default, artifact production, or `third_party/` behavior
+  changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 155 pre-merge checkpoint -- 2026-07-31
 
 ### Static first-party native Release-profile lock
