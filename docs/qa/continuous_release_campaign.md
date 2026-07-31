@@ -2937,6 +2937,33 @@ provenance gate.
   source bindings.  No triangular conversion or quad-dominant promotion.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 96 pre-merge checkpoint -- 2026-07-31
+
+### Tri+Quad atomic artifact writer L0
+
+- `a85ba923` adds a dedicated default-OFF writer for an already admitted
+  fixed-pair Tri+Quad product.  It accepts no pipeline handoff and neither
+  calls another surface producer nor triangulates quads.
+- A same-parent mode-`0700` staging directory holds separate immutable
+  `vertices`, `triangles`, `quads`, triangle-source-index, and quad-source-
+  pair arrays.  The canonical manifest binds source hashes, provenance,
+  authoritative payloads, per-file digests, and a content hash.
+- Files and staging directory are synced; exact readback verifies manifest,
+  payloads, dtypes, shapes, file hashes, and array bytes before atomic
+  publication.  Disabled, non-admitted, preexisting, symlink, write-failure,
+  and readback-failure paths publish no artifact and remove only owned staging.
+- Advisor runner `c1` passed at concurrency `1` in `4.34 s` with `4` focused
+  tests.
+
+### Release state
+
+- No pipeline, UI, OpenFOAM, default route, product claim, or Gate change.
+  Gates 1--15 remain unmet and no Gate is `PASS`.
+- Next action: independent product dispatch and a user-facing artifact
+  contract, explicitly requested and never default-on.  Preserve the separate
+  Tri+Quad arrays; no triangular conversion or quad-dominant promotion.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
