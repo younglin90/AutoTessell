@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 181 checkpoint -- 2026-07-31
+
+### Clang20 native Snap array-shape correction
+
+- Cycle 180 full clang evidence remains `UNVERIFIED` after identifying six
+  native-Snap scalar-brace warnings.  Cycle 181 changes only those allocations
+  to explicit pybind shape containers, preserving dtype, value, and
+  one-dimensional shape semantics.
+- Fresh c1 clang20 Release Makefiles target-only `native_snap` validation
+  passed in `11.205692689 s`:
+  `/tmp/autotessell-c181-native-snap-runner-evidence.json`.
+
+### Release state
+
+- Full build and Gate 2 remain `UNVERIFIED`; no topology, route, or default
+  product claim is made.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 179 checkpoint -- 2026-07-31
 
 ### Clang20 native Tet-predicate array-shape correction
