@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 142 pre-merge checkpoint -- 2026-07-31
+
+### Pipeline automated-test blocker observation
+
+- CI workflow test execution retains a `-x`/display skip mask.  Bounded
+  `pytest tests/test_pipeline.py -q` at concurrency `1` returned `ERROR` in
+  `65.16 s`; runner retains only stdout hash, so its specific failure is not
+  identified here.
+- Existing known baseline retry tests remain the only recorded context.  No
+  test weakening or speculative failure claim was made.
+
+### Release state
+
+- Gate 3 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
+  remain unmet.  No routing, default, UI, mesh, provenance, or `third_party/`
+  behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 141 pre-merge checkpoint -- 2026-07-31
 
 ### No-mask native automated-test shards
