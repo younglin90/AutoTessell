@@ -3191,6 +3191,22 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 176 pre-merge checkpoint -- 2026-07-31
+
+### Tet same-side broad current rerun
+
+- Fresh broad 14-test Tet same-side and mutation runner used concurrency `1`,
+  completed within its bounded `90 s` limit, and passed in `60.952943423 s`:
+  `/tmp/autotessell-c176-tet-same-side-broad-rerun-evidence.json`.
+- This retains the existing strict-topology, source-exactness, inversion-`0`,
+  and same-side-debt scope.  The prior Cycle-171 `60.073 s` timeout remains
+  historical `UNVERIFIED` evidence.
+
+### Release state
+
+- No Gate or release claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 175 pre-merge checkpoint -- 2026-07-31
 
 ### Native release Makefile fresh-build timeout
