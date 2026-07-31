@@ -3191,6 +3191,21 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 174 pre-merge checkpoint -- 2026-07-31
+
+### Native Tri strict-source ingress current validation
+
+- The current native-Tri strict-source ingress runner used concurrency `1` and
+  passed in `4.295011146 s`:
+  `/tmp/autotessell-c174-native-tri-source-current-runner-evidence.json`.
+  Source identity is exact and any mismatch fails closed.
+- No route, default, release, or product claim changed.
+
+### Release state
+
+- No Gate or release claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 173 pre-merge checkpoint -- 2026-07-31
 
 ### TRI+QUAD independent current validation
