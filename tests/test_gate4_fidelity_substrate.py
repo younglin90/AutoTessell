@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+
 from core.evaluator.gate4_fidelity_substrate import (
     capture_immutable_source,
     evaluate_gate4_fidelity_evidence,
@@ -140,6 +142,42 @@ def test_legacy_metric_remains_nonpromoting(tmp_path: Path) -> None:
     assert evidence.status == "unverified_metric_incomplete"
     assert evidence.metric_status == "legacy_partial"
     assert evidence.geometry_fidelity is not None
+    assert evidence.gate4_pass is False
+
+
+def test_bound_evidence_attaches_canonical_topology_and_completeness(
+    tmp_path: Path,
+) -> None:
+    from core.generator.polymesh_writer import write_generic_polymesh
+
+    source_path = tmp_path / "source.stl"
+    source_path.write_bytes(b"source")
+    source = capture_immutable_source(source_path, tmp_path / "snapshots")
+    points = np.asarray(
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+        dtype=np.float64,
+    )
+    faces = [[[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]]]
+    case_dir = tmp_path / "case"
+    write_generic_polymesh(points, faces, case_dir)
+
+    evidence = evaluate_gate4_fidelity_evidence(
+        source=source,
+        source_status="unverified_source_snapshot_missing",
+        case_dir=case_dir,
+        diagonal=1.0,
+        checker=_LegacyMetricChecker(),  # type: ignore[arg-type]
+    )
+
+    assert evidence.status == "unverified_metric_incomplete"
+    assert evidence.output is not None
+    assert evidence.surface_topology is not None
+    assert evidence.surface_topology.artifact is not None
+    assert evidence.surface_topology.artifact.sha256 == evidence.output.sha256
+    assert evidence.surface_topology.topology_valid
+    assert evidence.metric_completeness is not None
+    assert evidence.metric_completeness.output == evidence.output
+    assert evidence.metric_completeness.gate4_pass is False
     assert evidence.gate4_pass is False
 
 
