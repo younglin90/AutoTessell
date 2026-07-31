@@ -20,7 +20,8 @@
         "generic_side_metrics",
         "hex_face_nonorthogonality",
         "hex_quality_primitives",
-        "local_front_backtrack_steps"
+        "local_front_backtrack_steps",
+        "local_front_numeric_admission"
       ],
       "sources": [
         "auto_tessell_core/native_hex_quality_bind.cpp",
