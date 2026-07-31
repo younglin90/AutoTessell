@@ -4,7 +4,7 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `87`
+- cycle: `88`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
@@ -2823,6 +2823,25 @@ provenance gate.
 - Strict topology is unchanged.  Target cells remain secondary.  No
   `third_party/` modification is included.
 - Ruff is `UNVERIFIED`: `109` pre-existing `mesher.py` violations.
+
+### Release state
+
+- Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 88 pre-merge checkpoint -- 2026-07-31
+
+### Hex output boundary to B-Rep ordinal L0
+
+- `536cd92e` adds a default-OFF, report-only source-triangle identity binding.
+  It revalidates source snapshot/payload first, then requires exact boundary
+  geometry, orientation, and B-Rep ordinal identity.
+- Physical groups remain unknown.  Every report remains `accepted=false`; it
+  creates no candidate, mesh output, route, or product claim.
+- Actual Hex quad/new-vertex B-Rep binding remains `DEFER`: stable output IDs
+  and an authoritative CAD surface witness are absent.  Advisor validation
+  runner: `PASS`, concurrency `1`, `4.27 s`, three suites.
+- Routing, defaults, C++, and `third_party/` remain unchanged.
 
 ### Release state
 
