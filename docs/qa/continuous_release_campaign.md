@@ -3191,6 +3191,38 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 150 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tri strict planar-flip source-lock ingress
+
+- `e8694912` admits the isolated planar-flip candidate only from an exact
+  test-side authority request: SHA-256-bound STL bytes, SHA-256-bound
+  `read_stl` vertices and faces, typed patch IDs and feature edges, and an
+  authoritative physical-group mapping.  It does not establish CAD/STL
+  production authority.
+- The product accepts the immutable source object only.  Forged object,
+  source-byte, reader-array, authority, patch-pair, physical-group, feature,
+  or provenance mismatch rejects fail-closed.  The operation remains confined
+  to exactly its two shared-edge source faces; source boundary, topology,
+  source vertices, and every residual-face provenance/bytes are rechecked.
+- Default remains off and the bounded test-only candidate remains runtime
+  disconnected: no production route, artifact, UI, or release/product claim
+  was added.
+- Bounded validation runner: `PASS`, concurrency `1`, `4.441 s`, one focused
+  source/product suite.  Evidence:
+  `/tmp/autotessell-c150-native-tri-source-ingress-evidence.json`.  This is
+  implementation evidence only, not a Gate or release PASS.
+
+### Release state
+
+- No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing,
+  default, mesh-generation, topology relaxation, provenance authority claim,
+  or `third_party/` behavior changed.
+- Next action: preserve this offline source lock; obtain independently
+  authoritative source/feature/physical-group evidence before considering any
+  production ingress.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 149 pre-merge checkpoint -- 2026-07-31
 
 ### Actual strict native-Hex cube third-run corpus observation
