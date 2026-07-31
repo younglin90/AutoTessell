@@ -3191,6 +3191,40 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 107 pre-merge checkpoint -- 2026-07-31
+
+### Bounded native-Poly cube actual-output probe
+
+- A single bounded native-Poly cube pipeline run passed its focused runner at
+  concurrency `1` in `33.39 s`.  The generator evidence records
+  `route="poly_harness"` and `fallback_reason=null`; no cross-tier or
+  harness-to-Voronoi fallback is claimed.
+- Native checking reported `15` cells and `0` negative volumes.  The immutable
+  `S0` snapshot SHA-256 is
+  `e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81`;
+  the stable five-file polyMesh aggregate SHA-256 is
+  `c8d5d926bb37d55701290d8d3a009830d04581c1a2c0a27c5c006b441a5e53e7`.
+- The output-only topology audit is structurally valid: components `1`,
+  boundary loops `0`, Euler characteristic `2`, genus `0`, open/non-manifold
+  edges `0`, non-manifold vertices `0`, duplicate faces `0`, and orientation
+  mismatches `0`.  Self-intersection is still
+  `unverified_not_checked`.
+- The legacy metric is present but incomplete.  Signed and directed distance,
+  normal percentile/flip, feature, volume/centroid, source-to-output topology,
+  patch, physical-group, and provenance fields remain absent.  The resulting
+  Gate-4 evidence is `unverified_metric_incomplete` with `gate4_pass=false`.
+
+### Release state
+
+- The pipeline quality verdict for this draft probe does not promote Gate 4.
+  Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15
+  remain unmet.  No code, routing, default, mesh, topology-repair,
+  provenance, or `third_party/` behavior changed.
+- Next action: implement the missing authoritative comparisons and rerun a
+  bounded immutable-`S0` actual-output matrix.  Missing, timeout, error, or
+  invalid evidence remains `UNVERIFIED`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 106 pre-merge checkpoint -- 2026-07-31
 
 ### Gate-4 topology and metric-completeness evidence binding
