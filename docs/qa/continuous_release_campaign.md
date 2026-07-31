@@ -3191,6 +3191,25 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 139 pre-merge checkpoint -- 2026-07-31
+
+### Native-Poly face-geometry dynamic-skip retest
+
+- Genuine strict fixture attempt
+  `AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION=1 pytest
+  tests/test_native_poly_facegeom.py -q -rs` reached the bounded runner limit:
+  concurrency `1`, `90.36 s`, `TERM`, `UNVERIFIED`.
+- The required native-Tet primal success was not established.  No mock, skip,
+  xfail, invariant weakening, marker inventory update, or routing change was
+  made; the sole dynamic skip remains.
+
+### Release state
+
+- Gate 3 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
+  remain unmet.  No default, UI, mesh, provenance, or `third_party/` behavior
+  changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 137 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Poly cube third bounded reproducibility run
