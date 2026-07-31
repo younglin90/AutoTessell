@@ -155,8 +155,8 @@ py::tuple closest_triangle_candidates(
     const py::ssize_t triangle_count = triangle_a.shape(0);
     const py::ssize_t candidate_count = candidates.shape(1);
     py::array_t<double> best_points({point_count, py::ssize_t{3}});
-    py::array_t<double> best_squared_distances({point_count});
-    py::array_t<bool> valid({point_count});
+    py::array_t<double> best_squared_distances(py::array::ShapeContainer{point_count});
+    py::array_t<bool> valid(py::array::ShapeContainer{point_count});
 
     const auto point_view = points.unchecked<2>();
     const auto first_view = triangle_a.unchecked<2>();
@@ -257,9 +257,9 @@ py::tuple closest_segment_candidates(
     const py::ssize_t segment_count = segment_a.shape(0);
     const py::ssize_t candidate_count = candidates.shape(1);
     py::array_t<double> best_points({point_count, py::ssize_t{3}});
-    py::array_t<double> best_distances({point_count});
-    py::array_t<long long> best_segments({point_count});
-    py::array_t<bool> valid({point_count});
+    py::array_t<double> best_distances(py::array::ShapeContainer{point_count});
+    py::array_t<long long> best_segments(py::array::ShapeContainer{point_count});
+    py::array_t<bool> valid(py::array::ShapeContainer{point_count});
 
     const auto point_view = points.unchecked<2>();
     const auto first_view = segment_a.unchecked<2>();
@@ -467,7 +467,7 @@ py::tuple extract_feature_edges(
     }
     const auto segment_count = static_cast<py::ssize_t>(feature_edges.size());
     py::array_t<double> segments({segment_count, py::ssize_t {2}, py::ssize_t {3}});
-    py::array_t<double> weights({segment_count});
+    py::array_t<double> weights(py::array::ShapeContainer{segment_count});
     auto segment_output = segments.mutable_unchecked<3>();
     auto weight_output = weights.mutable_unchecked<1>();
     for (py::ssize_t segment = 0; segment < segment_count; ++segment) {
