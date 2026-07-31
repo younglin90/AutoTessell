@@ -3829,6 +3829,407 @@ py::dict quad_dominant_transaction(
     return result;
 }
 
+struct StrictQuadPairAuditEdge {
+    long long first;
+    long long second;
+    size_t face;
+    signed char direction;
+};
+
+struct StrictQuadPairTopology {
+    bool manifold = false;
+    size_t edge_count = 0U;
+    size_t component_count = 0U;
+    std::vector<std::array<long long, 3>> boundary_edges;
+    std::vector<std::array<long long, 2>> edge_keys;
+};
+
+[[nodiscard]] bool strict_quad_pair_audit_edge_less(
+    const StrictQuadPairAuditEdge& left,
+    const StrictQuadPairAuditEdge& right) noexcept
+{
+    if (left.first != right.first) {
+        return left.first < right.first;
+    }
+    if (left.second != right.second) {
+        return left.second < right.second;
+    }
+    return left.face < right.face;
+}
+
+template <size_t Corners, typename FaceAt>
+[[nodiscard]] StrictQuadPairTopology strict_quad_pair_audit_topology(
+    const size_t face_count,
+    FaceAt&& face_at)
+{
+    std::vector<StrictQuadPairAuditEdge> edges;
+    edges.reserve(face_count * Corners);
+    std::vector<size_t> parents(face_count);
+    std::iota(parents.begin(), parents.end(), 0U);
+    for (size_t face = 0U; face < face_count; ++face) {
+        for (size_t local = 0U; local < Corners; ++local) {
+            const long long start = face_at(face, local);
+            const long long end = face_at(face, (local + 1U) % Corners);
+            const long long first = std::min(start, end);
+            const long long second = std::max(start, end);
+            edges.push_back(StrictQuadPairAuditEdge{
+                first,
+                second,
+                face,
+                static_cast<signed char>(start == first ? 1 : -1),
+            });
+        }
+    }
+    std::sort(edges.begin(), edges.end(), strict_quad_pair_audit_edge_less);
+    StrictQuadPairTopology result;
+    result.manifold = true;
+    for (size_t first = 0U; first < edges.size();) {
+        size_t last = first + 1U;
+        while (last < edges.size() && edges[last].first == edges[first].first
+               && edges[last].second == edges[first].second) {
+            ++last;
+        }
+        result.edge_keys.push_back({edges[first].first, edges[first].second});
+        ++result.edge_count;
+        if (last - first > 2U
+            || (last - first == 2U
+                && edges[first].direction == edges[first + 1U].direction)) {
+            result.manifold = false;
+        }
+        if (last - first == 1U) {
+            result.boundary_edges.push_back({
+                edges[first].first,
+                edges[first].second,
+                static_cast<long long>(edges[first].direction),
+            });
+        } else if (last - first == 2U) {
+            triangle_topology_audit_union(
+                parents, edges[first].face, edges[first + 1U].face);
+        }
+        first = last;
+    }
+    for (size_t face = 0U; face < face_count; ++face) {
+        if (triangle_topology_audit_find(parents, face) == face) {
+            ++result.component_count;
+        }
+    }
+    return result;
+}
+
+py::dict strict_quad_pair_preflight(
+    const py::array& source_vertices_input,
+    const py::array& candidate_vertices_input,
+    const py::array& source_triangles_input,
+    const py::array& candidate_triangles_input,
+    const py::array& quads_input,
+    const py::array& pair_provenance_input,
+    const py::array& feature_edges_input)
+{
+    const auto require_points = [](const py::array& values, const char* name) {
+        if (!values.dtype().is(py::dtype::of<double>())
+            || (values.flags() & py::array::c_style) == 0
+            || values.ndim() != 2 || values.shape(1) != 3) {
+            throw std::invalid_argument(
+                std::string(name)
+                + " must be a C-contiguous float64 array with shape (N, 3)");
+        }
+    };
+    const auto require_indices = [](const py::array& values,
+                                    const py::ssize_t columns,
+                                    const char* name) {
+        if (!values.dtype().is(py::dtype::of<long long>())
+            || (values.flags() & py::array::c_style) == 0
+            || values.ndim() != 2 || values.shape(1) != columns) {
+            throw std::invalid_argument(
+                std::string(name)
+                + " must be a C-contiguous int64 array with shape (N, "
+                + std::to_string(columns) + ")");
+        }
+    };
+    require_points(source_vertices_input, "source_vertices");
+    require_points(candidate_vertices_input, "candidate_vertices");
+    require_indices(source_triangles_input, 3, "source_triangles");
+    require_indices(candidate_triangles_input, 3, "candidate_triangles");
+    require_indices(quads_input, 4, "quads");
+    require_indices(pair_provenance_input, 2, "pair_provenance");
+    require_indices(feature_edges_input, 2, "feature_edges");
+
+    const auto source_vertices =
+        py::reinterpret_borrow<py::array_t<double>>(source_vertices_input)
+            .unchecked<2>();
+    const auto candidate_vertices =
+        py::reinterpret_borrow<py::array_t<double>>(candidate_vertices_input)
+            .unchecked<2>();
+    const auto source_triangles =
+        py::reinterpret_borrow<py::array_t<long long>>(source_triangles_input)
+            .unchecked<2>();
+    const auto candidate_triangles =
+        py::reinterpret_borrow<py::array_t<long long>>(candidate_triangles_input)
+            .unchecked<2>();
+    const auto quads = py::reinterpret_borrow<py::array_t<long long>>(quads_input)
+        .unchecked<2>();
+    const auto pairs =
+        py::reinterpret_borrow<py::array_t<long long>>(pair_provenance_input)
+            .unchecked<2>();
+    const auto feature_edges =
+        py::reinterpret_borrow<py::array_t<long long>>(feature_edges_input)
+            .unchecked<2>();
+    const size_t source_vertex_count =
+        static_cast<size_t>(source_vertices.shape(0));
+    const size_t source_face_count =
+        static_cast<size_t>(source_triangles.shape(0));
+    const size_t quad_count = static_cast<size_t>(quads.shape(0));
+
+    bool coordinates_finite = true;
+    bool vertices_exact = source_vertices.shape(0) == candidate_vertices.shape(0);
+    for (size_t vertex = 0U; vertex < source_vertex_count; ++vertex) {
+        for (size_t axis = 0U; axis < 3U; ++axis) {
+            const double source = source_vertices(
+                static_cast<py::ssize_t>(vertex), static_cast<py::ssize_t>(axis));
+            if (!std::isfinite(source)) {
+                coordinates_finite = false;
+            }
+            if (vertices_exact && std::bit_cast<std::uint64_t>(source)
+                != std::bit_cast<std::uint64_t>(candidate_vertices(
+                    static_cast<py::ssize_t>(vertex),
+                    static_cast<py::ssize_t>(axis)))) {
+                vertices_exact = false;
+            }
+        }
+    }
+    for (py::ssize_t vertex = 0; vertex < candidate_vertices.shape(0); ++vertex) {
+        for (py::ssize_t axis = 0; axis < 3; ++axis) {
+            if (!std::isfinite(candidate_vertices(vertex, axis))) {
+                coordinates_finite = false;
+            }
+        }
+    }
+
+    bool source_indices_valid = source_face_count > 0U;
+    bool quad_indices_valid = quad_count > 0U;
+    bool quads_degree_four = quad_count > 0U;
+    bool source_triangles_non_degenerate = source_indices_valid;
+    for (size_t face = 0U; face < source_face_count; ++face) {
+        std::array<long long, 3> triangle{};
+        for (size_t local = 0U; local < triangle.size(); ++local) {
+            triangle[local] = source_triangles(
+                static_cast<py::ssize_t>(face), static_cast<py::ssize_t>(local));
+            if (triangle[local] < 0
+                || triangle[local] >= static_cast<long long>(source_vertex_count)) {
+                source_indices_valid = false;
+            }
+        }
+        std::sort(triangle.begin(), triangle.end());
+        if (std::adjacent_find(triangle.begin(), triangle.end()) != triangle.end()) {
+            source_indices_valid = false;
+        }
+        if (source_indices_valid) {
+            const Point3 first{
+                source_vertices(source_triangles(static_cast<py::ssize_t>(face), 0), 0),
+                source_vertices(source_triangles(static_cast<py::ssize_t>(face), 0), 1),
+                source_vertices(source_triangles(static_cast<py::ssize_t>(face), 0), 2),
+            };
+            const Point3 second{
+                source_vertices(source_triangles(static_cast<py::ssize_t>(face), 1), 0),
+                source_vertices(source_triangles(static_cast<py::ssize_t>(face), 1), 1),
+                source_vertices(source_triangles(static_cast<py::ssize_t>(face), 1), 2),
+            };
+            const Point3 third{
+                source_vertices(source_triangles(static_cast<py::ssize_t>(face), 2), 0),
+                source_vertices(source_triangles(static_cast<py::ssize_t>(face), 2), 1),
+                source_vertices(source_triangles(static_cast<py::ssize_t>(face), 2), 2),
+            };
+            const Point3 ab{second[0] - first[0], second[1] - first[1], second[2] - first[2]};
+            const Point3 ac{third[0] - first[0], third[1] - first[1], third[2] - first[2]};
+            const Point3 cross{
+                ab[1] * ac[2] - ab[2] * ac[1],
+                ab[2] * ac[0] - ab[0] * ac[2],
+                ab[0] * ac[1] - ab[1] * ac[0],
+            };
+            const double twice_area = std::sqrt(
+                cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]);
+            if (!std::isfinite(twice_area)
+                || twice_area <= std::numeric_limits<double>::min()) {
+                source_triangles_non_degenerate = false;
+            }
+        }
+    }
+    for (size_t face = 0U; face < quad_count; ++face) {
+        std::array<long long, 4> quad{};
+        for (size_t local = 0U; local < quad.size(); ++local) {
+            quad[local] = quads(
+                static_cast<py::ssize_t>(face), static_cast<py::ssize_t>(local));
+            if (quad[local] < 0
+                || quad[local] >= static_cast<long long>(source_vertex_count)) {
+                quad_indices_valid = false;
+            }
+        }
+        std::sort(quad.begin(), quad.end());
+        if (std::adjacent_find(quad.begin(), quad.end()) != quad.end()) {
+            quads_degree_four = false;
+        }
+    }
+
+    bool provenance_complete = pairs.shape(0) == quads.shape(0)
+        && source_face_count == quad_count * 2U;
+    std::vector<unsigned char> source_consumed(source_face_count, 0U);
+    bool pair_ordered = true;
+    for (size_t pair_index = 0U; pair_index < quad_count; ++pair_index) {
+        const long long first = pairs(static_cast<py::ssize_t>(pair_index), 0);
+        const long long second = pairs(static_cast<py::ssize_t>(pair_index), 1);
+        if (first < 0 || second < 0 || first >= static_cast<long long>(source_face_count)
+            || second >= static_cast<long long>(source_face_count) || first >= second) {
+            provenance_complete = false;
+            continue;
+        }
+        if (pair_index > 0U) {
+            const long long previous_first = pairs(
+                static_cast<py::ssize_t>(pair_index - 1U), 0);
+            const long long previous_second = pairs(
+                static_cast<py::ssize_t>(pair_index - 1U), 1);
+            if (first < previous_first
+                || (first == previous_first && second <= previous_second)) {
+                pair_ordered = false;
+            }
+        }
+        if (source_consumed[static_cast<size_t>(first)] != 0U
+            || source_consumed[static_cast<size_t>(second)] != 0U) {
+            provenance_complete = false;
+        }
+        source_consumed[static_cast<size_t>(first)] = 1U;
+        source_consumed[static_cast<size_t>(second)] = 1U;
+    }
+    if (!std::all_of(source_consumed.begin(), source_consumed.end(),
+                     [](const unsigned char value) { return value != 0U; })) {
+        provenance_complete = false;
+    }
+
+    bool pair_quads_exact = true;
+    bool pairs_coplanar = true;
+    if (!source_indices_valid || !quad_indices_valid || !provenance_complete) {
+        pair_quads_exact = false;
+        pairs_coplanar = false;
+    } else {
+        for (size_t pair_index = 0U; pair_index < quad_count; ++pair_index) {
+            std::array<long long, 3> first{};
+            std::array<long long, 3> second{};
+            for (size_t local = 0U; local < 3U; ++local) {
+                first[local] = source_triangles(
+                    pairs(static_cast<py::ssize_t>(pair_index), 0),
+                    static_cast<py::ssize_t>(local));
+                second[local] = source_triangles(
+                    pairs(static_cast<py::ssize_t>(pair_index), 1),
+                    static_cast<py::ssize_t>(local));
+            }
+            const auto expected = oriented_quad(first, second);
+            if (!expected.has_value()) {
+                pair_quads_exact = false;
+                continue;
+            }
+            for (size_t local = 0U; local < 4U; ++local) {
+                if ((*expected)[local] != quads(
+                        static_cast<py::ssize_t>(pair_index),
+                        static_cast<py::ssize_t>(local))) {
+                    pair_quads_exact = false;
+                }
+            }
+            const Point3 first_point{
+                source_vertices((*expected)[0], 0), source_vertices((*expected)[0], 1), source_vertices((*expected)[0], 2)};
+            const Point3 second_point{
+                source_vertices((*expected)[1], 0), source_vertices((*expected)[1], 1), source_vertices((*expected)[1], 2)};
+            const Point3 third_point{
+                source_vertices((*expected)[2], 0), source_vertices((*expected)[2], 1), source_vertices((*expected)[2], 2)};
+            const Point3 fourth_point{
+                source_vertices((*expected)[3], 0), source_vertices((*expected)[3], 1), source_vertices((*expected)[3], 2)};
+            const Point3 ab{second_point[0] - first_point[0], second_point[1] - first_point[1], second_point[2] - first_point[2]};
+            const Point3 ac{third_point[0] - first_point[0], third_point[1] - first_point[1], third_point[2] - first_point[2]};
+            const Point3 ad{fourth_point[0] - first_point[0], fourth_point[1] - first_point[1], fourth_point[2] - first_point[2]};
+            const Point3 cross{
+                ab[1] * ac[2] - ab[2] * ac[1],
+                ab[2] * ac[0] - ab[0] * ac[2],
+                ab[0] * ac[1] - ab[1] * ac[0],
+            };
+            if (cross[0] * ad[0] + cross[1] * ad[1] + cross[2] * ad[2] != 0.0) {
+                pairs_coplanar = false;
+            }
+        }
+    }
+
+    StrictQuadPairTopology source_topology;
+    StrictQuadPairTopology quad_topology;
+    if (source_indices_valid && quad_indices_valid) {
+        source_topology = strict_quad_pair_audit_topology<3>(
+            source_face_count,
+            [&](const size_t face, const size_t local) {
+                return source_triangles(
+                    static_cast<py::ssize_t>(face), static_cast<py::ssize_t>(local));
+            });
+        quad_topology = strict_quad_pair_audit_topology<4>(
+            quad_count,
+            [&](const size_t face, const size_t local) {
+                return quads(
+                    static_cast<py::ssize_t>(face), static_cast<py::ssize_t>(local));
+            });
+    }
+    const bool boundary_equal = source_topology.boundary_edges
+        == quad_topology.boundary_edges;
+    const long long source_euler = static_cast<long long>(source_vertex_count)
+        - static_cast<long long>(source_topology.edge_count)
+        + static_cast<long long>(source_face_count);
+    const long long quad_euler = static_cast<long long>(source_vertex_count)
+        - static_cast<long long>(quad_topology.edge_count)
+        + static_cast<long long>(quad_count);
+    bool features_preserved = true;
+    for (py::ssize_t feature = 0; feature < feature_edges.shape(0); ++feature) {
+        long long first = feature_edges(feature, 0);
+        long long second = feature_edges(feature, 1);
+        if (first < 0 || second < 0 || first >= static_cast<long long>(source_vertex_count)
+            || second >= static_cast<long long>(source_vertex_count) || first == second) {
+            features_preserved = false;
+            continue;
+        }
+        if (second < first) {
+            std::swap(first, second);
+        }
+        const std::array<long long, 2> edge{first, second};
+        if (!std::binary_search(
+                source_topology.edge_keys.begin(), source_topology.edge_keys.end(), edge)
+            || !std::binary_search(
+                quad_topology.edge_keys.begin(), quad_topology.edge_keys.end(), edge)) {
+            features_preserved = false;
+        }
+    }
+    const bool candidate_triangles_empty = candidate_triangles.shape(0) == 0;
+    const bool topology_preserved = source_topology.manifold
+        && quad_topology.manifold && boundary_equal
+        && source_topology.component_count == quad_topology.component_count
+        && source_euler == quad_euler;
+    const bool valid = coordinates_finite && vertices_exact && source_indices_valid
+        && quad_indices_valid && quads_degree_four && quad_count > 0U
+        && source_triangles_non_degenerate
+        && candidate_triangles_empty && provenance_complete && pair_ordered
+        && pair_quads_exact && pairs_coplanar && features_preserved && topology_preserved;
+    py::dict result;
+    result["valid"] = valid;
+    result["coordinates_finite"] = coordinates_finite;
+    result["vertices_exact"] = vertices_exact;
+    result["source_triangles_non_degenerate"] = source_triangles_non_degenerate;
+    result["candidate_triangles_empty"] = candidate_triangles_empty;
+    result["quads_degree_four"] = quads_degree_four;
+    result["provenance_complete"] = provenance_complete && pair_ordered;
+    result["pair_quads_exact"] = pair_quads_exact;
+    result["pairs_coplanar"] = pairs_coplanar;
+    result["source_manifold"] = source_topology.manifold;
+    result["quad_manifold"] = quad_topology.manifold;
+    result["boundary_equal"] = boundary_equal;
+    result["features_preserved"] = features_preserved;
+    result["source_component_count"] = source_topology.component_count;
+    result["quad_component_count"] = quad_topology.component_count;
+    result["source_euler_characteristic"] = source_euler;
+    result["quad_euler_characteristic"] = quad_euler;
+    return result;
+}
+
 [[nodiscard]] double dot(const Point3& left, const Point3& right) noexcept
 {
     return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
@@ -4423,6 +4824,14 @@ PYBIND11_MODULE(native_metrics, m)
           py::arg("minimum_scaled_jacobian"),
           py::arg("maximum_aspect_ratio"),
           py::arg("maximum_warpage"));
+    m.def("strict_quad_pair_preflight", &strict_quad_pair_preflight,
+          py::arg("source_vertices").noconvert(),
+          py::arg("candidate_vertices").noconvert(),
+          py::arg("source_triangles").noconvert(),
+          py::arg("candidate_triangles").noconvert(),
+          py::arg("quads").noconvert(),
+          py::arg("pair_provenance").noconvert(),
+          py::arg("feature_edges").noconvert());
     m.def("estimate_triangle_curvature_sizing",
           &estimate_triangle_curvature_sizing,
           py::arg("vertices"), py::arg("triangles"), py::arg("epsilon"),
