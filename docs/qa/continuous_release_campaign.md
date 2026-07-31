@@ -3191,6 +3191,32 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 148 pre-merge checkpoint -- 2026-07-31
+
+### Actual native-Tet cube three-run corpus observation
+
+- The explicit three-run corpus manifest binds source
+  `e930...fbc81`; all three native-Tet cube `polyMesh` artifacts have aggregate
+  identity `cb2f...f23f` and each quality report records
+  `negative_volumes=0`.  The verifier case is
+  `measured_evidence_release_incomplete`.
+- Each run retains exactly these seven Gate-4 unverified fields:
+  `distance.signed_mean`, `topology.self_intersections`,
+  `features.authoritative_ids`, `features.critical_missing`,
+  `patches.compared`, `physical_groups.authoritative_mapping`, and
+  `provenance.source_to_output`.
+- Corpus evidence is
+  `/tmp/autotessell-c148-tet-cube-corpus-evidence.json`; validation-runner
+  evidence is `/tmp/autotessell-c148-tet-cube-corpus-runner-evidence.json`.
+  The runner is expected `ERROR`/`UNVERIFIED`: the verifier CLI exits `1` by
+  design whenever release evidence remains incomplete.
+
+### Release state
+
+- This is one actual serial Tet-cube observation, not a Gate-4, Gate-9, or
+  release `PASS`.  Gates 1--15 remain unmet.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 147 pre-merge checkpoint -- 2026-07-31
 
 ### Three-run release-corpus evidence contract
