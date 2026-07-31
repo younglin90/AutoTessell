@@ -31,7 +31,7 @@ def tmp_case_dir():
 
 def test_native_hex_sphere_produces_only_hexahedra(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-hex fixture precondition")
     m = read_stl(SPHERE_STL)
     res = generate_native_hex(
         m.vertices,
@@ -50,7 +50,7 @@ def test_native_hex_sphere_produces_only_hexahedra(tmp_case_dir: Path) -> None:
 def test_native_hex_perfect_aspect_ratio(tmp_case_dir: Path) -> None:
     """uniform grid 이므로 aspect ratio = 1, skewness 매우 낮음."""
     if not CUBE_STL.exists():
-        pytest.skip()
+        pytest.skip("cube.stl missing: deterministic native-hex fixture precondition")
     m = read_stl(CUBE_STL)
     res = generate_native_hex(m.vertices, m.faces, tmp_case_dir, seed_density=6)
     assert res.success
@@ -68,7 +68,7 @@ def test_native_hex_perfect_aspect_ratio(tmp_case_dir: Path) -> None:
 def test_native_hex_adaptive_snap_uses_fine_cell_cap(tmp_case_dir: Path) -> None:
     """Adaptive octree snap cap must use fine-cell edge, not coarse edge."""
     if not CUBE_STL.exists():
-        pytest.skip()
+        pytest.skip("cube.stl missing: deterministic native-hex fixture precondition")
     m = read_stl(CUBE_STL)
     res = generate_native_hex(
         m.vertices,
@@ -128,7 +128,7 @@ def test_native_hex_bl_final_cell_estimator_counts_boundary_facets() -> None:
 
 def test_native_hex_polymesh_files_exist(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-hex fixture precondition")
     m = read_stl(SPHERE_STL)
     res = generate_native_hex(m.vertices, m.faces, tmp_case_dir, seed_density=8)
     assert res.success
@@ -139,7 +139,7 @@ def test_native_hex_polymesh_files_exist(tmp_case_dir: Path) -> None:
 
 def test_native_hex_denser_grid_more_cells(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-hex fixture precondition")
     m = read_stl(SPHERE_STL)
     r1 = generate_native_hex(
         m.vertices,
@@ -166,7 +166,7 @@ def test_native_hex_target_cells_tracks_implicit_cube_budget(tmp_case_dir: Path)
     Boundary-layer zero is explicit here: no layer budget may be reserved.
     """
     if not CUBE_STL.exists():
-        pytest.skip()
+        pytest.skip("cube.stl missing: deterministic native-hex fixture precondition")
     mesh = read_stl(CUBE_STL)
     targets = (128, 256, 1000, 2000)
     actual: list[int] = []
@@ -193,7 +193,7 @@ def test_native_hex_target_cells_tracks_implicit_cube_budget(tmp_case_dir: Path)
 def test_native_hex_explicit_zero_bl_keeps_cell_budget_unreserved(tmp_case_dir: Path) -> None:
     """Explicit BL=0 must match no-BL target-cell budget exactly."""
     if not CUBE_STL.exists():
-        pytest.skip()
+        pytest.skip("cube.stl missing: deterministic native-hex fixture precondition")
     mesh = read_stl(CUBE_STL)
     common = {
         "target_cells": 1000,
@@ -220,7 +220,7 @@ def test_native_hex_explicit_zero_bl_keeps_cell_budget_unreserved(tmp_case_dir: 
 def test_native_hex_cube_zero_post_layers_preserves_polymesh_bytes(tmp_case_dir: Path) -> None:
     """Representative native cube keeps exact mesh/provenance bytes for BL=0."""
     if not CUBE_STL.exists():
-        pytest.skip()
+        pytest.skip("cube.stl missing: deterministic native-hex fixture precondition")
     from core.generator.tier_layers_post import LayersPostGenerator
 
     mesh = read_stl(CUBE_STL)
