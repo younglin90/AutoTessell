@@ -167,7 +167,7 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
         return {"id": case["id"], "status": "UNVERIFIED", "reason": "source_snapshot_hash_mismatch"}
 
     runs = case.get("runs")
-    if not isinstance(runs, list) or len(runs) < 2:
+    if not isinstance(runs, list) or len(runs) < 3:
         return {"id": case["id"], "status": "UNVERIFIED", "reason": "repeat_runs_required"}
     observed: list[dict[str, object]] = []
     used_dirs: set[str] = set()

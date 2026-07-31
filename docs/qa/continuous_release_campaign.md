@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 147 pre-merge checkpoint -- 2026-07-31
+
+### Three-run release-corpus evidence contract
+
+- The first-party native release-corpus verifier now requires three unique
+  runs.  A manifest with `0`, `1`, or `2` runs fails closed as
+  `repeat_runs_required`; duplicate artifacts, identity changes, negative
+  volumes, and malformed Gate-4 inventory checks remain strict.
+- Validation runner concurrency `1` passed in `3.958 s`; evidence
+  `/tmp/autotessell-c147-release-corpus-evidence.json`.  This strengthens the
+  Gate-9 evidence contract only, not an actual native corpus observation.
+
+### Release state
+
+- Verifier output remains `UNVERIFIED` and its CLI remains nonzero by design.
+  No actual corpus or release `PASS` is claimed; Gates 1--15 remain unmet.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 146 pre-merge checkpoint -- 2026-07-31
 
 ### Bounded no-mask native shard evidence
