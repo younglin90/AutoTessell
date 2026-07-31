@@ -3191,6 +3191,29 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 159 pre-merge checkpoint -- 2026-07-31
+
+### Release-native product-contract binding
+
+- `9f618ed6` requires every corpus case to declare exactly four typed native
+  product fields: `tier_evaluated`, `mesh_type`, `checker_engine_used`, and
+  `quality_level`.  After the report's exact SHA-256 passes, each parsed
+  report summary must match that declaration; the observed row records the
+  contract.
+- Missing, malformed, or mismatched declarations return `UNVERIFIED`.
+  Bounded validation runner: `PASS`, concurrency `1`, `4.956 s`.  This is a
+  fail-closed evidence-binding guard only; the verifier cannot emit a release
+  `PASS`.  Evidence:
+  `/tmp/autotessell-c159-release-native-product-contract-evidence.json`.
+- C157 native-Tet and C158 native-Hex manifests require contract rebind before
+  this new check can consume them.
+
+### Release state
+
+- No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
+  product, route, default, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 158 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Hex cube quality-report rebind
