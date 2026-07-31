@@ -1712,11 +1712,13 @@ def tet_to_poly_dual(
     bedge_pid: dict[tuple[int, int], int] = {
         e: _add_point(0.5 * (V[e[0]] + V[e[1]])) for e in boundary_edges_set
     }
-    boundary_vertex_pid: dict[int, int] = {}
-    if classification_active:
-        boundary_vertex_pid = {
-            v: _add_point(V[v]) for v in np.flatnonzero(is_boundary_vert).tolist()
-        }
+    # Source boundary vertices are part of the barycentric surface dual even
+    # when no explicit patch classifier is supplied.  Register them before
+    # hull assembly so a vertex lying strictly inside a coplanar cap (for
+    # example a cylinder end-cap centre) cannot be discarded by ConvexHull.
+    boundary_vertex_pid: dict[int, int] = {
+        v: _add_point(V[v]) for v in np.flatnonzero(is_boundary_vert).tolist()
+    }
 
     source_labels: list[tuple[str, str]] = []
     source_label_ids: dict[tuple[str, str], int] = {}
@@ -1936,7 +1938,6 @@ def tet_to_poly_dual(
     )
 
     cell_face_lists: list[list[list[int]]] = []
-    cell_face_is_cap: list[list[bool]] = []
     cell_face_labels: list[list[tuple[str, str] | None]] = []
     cell_centroid_list: list[np.ndarray] = []
     n_fan_split_cells = 0
@@ -1952,7 +1953,6 @@ def tet_to_poly_dual(
             ].tolist()
             for face in range(face_begin, face_end)
         ]
-        caps = assembly_face_is_cap[face_begin:face_end].astype(bool).tolist()
         labels = [
             source_labels[label_id] if label_id >= 0 else None
             for label_id in assembly_face_label_ids[face_begin:face_end].tolist()
@@ -1963,7 +1963,6 @@ def tet_to_poly_dual(
         if fan_split:
             n_fan_split_cells += 1
         cell_face_lists.append(faces)
-        cell_face_is_cap.append(caps)
         cell_face_labels.append(labels)
         cell_centroid_list.append(staged_centroids[staged_cell])
 
@@ -2125,97 +2124,49 @@ def tet_to_poly_dual(
         b_i_own.append(own)
         b_i_nbr.append(nbr)
 
-    # 3c) on-plane cap 필터: is_cap 은 surface 점을 하나라도 포함하면 true 이므로
-    # 내부를 향한 hull face 까지 새어들어온다. 진짜 cap 은 "모든 정점이 한 입력
-    # 평면 위" 인 face 뿐 — off-plane face 는 위 boundary-edge/edge-ring 이 이미
-    # 내부를 닫으므로 버린다.
+    # 3c) Preserve the source planes for the before/after surface-area audit.
+    # Boundary caps themselves are reconstructed from exact source-triangle
+    # provenance below, rather than inferred from hull coplanarity.
     surface_planes = _surface_planes(V, boundary_faces)
-    surface_plane_normals = np.asarray(
-        [normal for normal, _ in surface_planes],
-        dtype=np.float64,
-    )
-    surface_plane_offsets = np.asarray(
-        [offset for _, offset in surface_planes],
-        dtype=np.float64,
-    )
-
-    def _is_on_plane(face: list[int], tol: float = 1e-6) -> bool:
-        p = dual_points[np.asarray(face, dtype=int)]
-        if not len(surface_plane_normals):
-            return False
-        signed_distances = p @ surface_plane_normals.T + surface_plane_offsets
-        return bool(np.any(np.all(np.abs(signed_distances) < tol, axis=0)))
 
     b_b_faces: list[list[int]] = []
     b_b_own: list[int] = []
     b_b_labels: list[tuple[str, str]] = []
-    if classification_active:
-        # Garimella-style entity classification: one boundary cap per
-        # classified primal boundary face and incident primal vertex.  The
-        # four points are already part of the unmodified dual point set, so
-        # this only refines the surface subcomplex and never moves geometry.
-        #
-        # Iterate boundary faces directly (rather than per-vertex) so each
-        # cap resolves to the cell of the specific fan component that owns
-        # the triangle's tet -- a non-manifold vertex has >1 cell and the
-        # wrong choice here is exactly what corrupted the flip reference in
-        # the pre-fix code (GAP: non-manifold-fan dual cell).
-        for tri in boundary_faces:
-            owning_tet = boundary_face_tet[tri]
-            for v_in in (int(v) for v in tri):
-                ci = cell_of_tet_vert.get((v_in, owning_tet))
-                if ci is None:
-                    continue
-                others = [int(v) for v in tri if int(v) != v_in]
-                if len(others) != 2:
-                    continue
-                edge_a = (min(v_in, others[0]), max(v_in, others[0]))
-                edge_b = (min(v_in, others[1]), max(v_in, others[1]))
-                raw_face = [
-                    boundary_vertex_pid[v_in],
-                    bedge_pid[edge_a],
-                    bface_pid[tri],
-                    bedge_pid[edge_b],
-                ]
-                face: list[int] = []
-                for pid in raw_face:
-                    if not face or face[-1] != pid:
-                        face.append(pid)
-                if len(face) >= 3:
-                    b_b_faces.append(face)
-                    b_b_own.append(ci)
+    # One barycentric cap per primal boundary triangle and incident primal
+    # vertex.  This geometry/provenance construction is independent of patch
+    # classification.  Reusing ConvexHull caps on the unclassified path used
+    # to omit collinear edge midpoints and coplanar interior source vertices,
+    # leaving T-junctions between caps and boundary-edge separating faces.
+    #
+    # Iterate boundary faces directly (rather than per-vertex) so each cap
+    # resolves to the cell of the specific fan component that owns the
+    # triangle's tet.  A non-manifold vertex can have more than one cell.
+    for tri in boundary_faces:
+        owning_tet = boundary_face_tet[tri]
+        for v_in in (int(v) for v in tri):
+            ci = cell_of_tet_vert.get((v_in, owning_tet))
+            if ci is None:
+                continue
+            others = [int(v) for v in tri if int(v) != v_in]
+            if len(others) != 2:
+                continue
+            edge_a = (min(v_in, others[0]), max(v_in, others[0]))
+            edge_b = (min(v_in, others[1]), max(v_in, others[1]))
+            raw_face = [
+                boundary_vertex_pid[v_in],
+                bedge_pid[edge_a],
+                bface_pid[tri],
+                bedge_pid[edge_b],
+            ]
+            face: list[int] = []
+            for pid in raw_face:
+                if not face or face[-1] != pid:
+                    face.append(pid)
+            if len(face) >= 3:
+                b_b_faces.append(face)
+                b_b_own.append(ci)
+                if classification_active:
                     b_b_labels.append(source_entity_labels[tri])
-    else:
-        cap_faces: list[list[int]] = []
-        cap_owners: list[int] = []
-        for ci in range(len(cell_face_lists)):
-            for f, is_cap in zip(cell_face_lists[ci], cell_face_is_cap[ci]):
-                if is_cap:
-                    cap_faces.append(list(f))
-                    cap_owners.append(ci)
-        if (
-            native_face_geometry is not None
-            and hasattr(native_face_geometry, "face_plane_geometry")
-            and cap_faces
-        ):
-            _, _, cap_on_plane = native_face_geometry.face_plane_geometry(
-                dual_points,
-                cap_faces,
-                surface_plane_normals.reshape(-1, 3),
-                surface_plane_offsets,
-                1e-6,
-            )
-            for face, owner, is_on_plane in zip(
-                cap_faces, cap_owners, np.asarray(cap_on_plane, dtype=bool)
-            ):
-                if bool(is_on_plane):
-                    b_b_faces.append(face)
-                    b_b_own.append(owner)
-        else:
-            for face, owner in zip(cap_faces, cap_owners):
-                if _is_on_plane(face):
-                    b_b_faces.append(face)
-                    b_b_own.append(owner)
 
     a_i_faces = _orient_faces_outward(a_i_faces, a_i_own)
     a_b_faces = _orient_faces_outward(a_b_faces, a_b_own)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+from collections import Counter
 from pathlib import Path
 
 import numpy as np
@@ -184,6 +185,104 @@ def test_tet_to_poly_dual_preserves_a_valid_integer_tet_input(
     assert (result.n_cells, result.n_points, result.n_faces) == (4, 15, 18)
     assert np.array_equal(vertices, vertices_before)
     assert np.array_equal(tetrahedra, tetrahedra_before)
+
+
+def test_tet_to_poly_dual_unclassified_caps_close_source_triangle_seams(
+    tmp_case_dir: Path,
+) -> None:
+    """Unclassified path keeps complete source-triangle cap provenance.
+
+    Vertex 4 lies inside the planar base of this tetrahedralized pyramid.
+    ConvexHull therefore omits it and collinear boundary-edge midpoints from
+    its cap loops.  Source-triangle barycentric quads must retain those points
+    so every dual cell is a closed shell with exact source-cap membership.
+    """
+    vertices = np.array(
+        [
+            [-1.0, -1.0, 0.0],
+            [1.0, -1.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [-1.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    tetrahedra = np.array(
+        [[4, 0, 1, 5], [4, 1, 2, 5], [4, 2, 3, 5], [4, 3, 0, 5]],
+        dtype=np.int64,
+    )
+    boundary_triangles = (
+        (0, 1, 4),
+        (1, 2, 4),
+        (2, 3, 4),
+        (0, 3, 4),
+        (0, 1, 5),
+        (1, 2, 5),
+        (2, 3, 5),
+        (0, 3, 5),
+    )
+
+    case_dir = tmp_case_dir / "unclassified_source_caps"
+    result = tet_to_poly_dual(vertices, tetrahedra, case_dir)
+    assert result.success, result.message
+
+    poly_dir = case_dir / "constant" / "polyMesh"
+    points = np.asarray(parse_foam_points(poly_dir / "points"), dtype=np.float64)
+    faces = [list(face) for face in parse_foam_faces(poly_dir / "faces")]
+    owner = np.asarray(parse_foam_labels(poly_dir / "owner"), dtype=np.int64)
+    neighbour = np.asarray(parse_foam_labels(poly_dir / "neighbour"), dtype=np.int64)
+    n_internal = len(neighbour)
+
+    point_id_by_coordinate = {
+        tuple(np.round(point * 1.0e9).astype(np.int64)): point_id
+        for point_id, point in enumerate(points)
+    }
+
+    def point_id(point: np.ndarray) -> int:
+        return point_id_by_coordinate[tuple(np.round(point * 1.0e9).astype(np.int64))]
+
+    expected_caps: set[tuple[int, ...]] = set()
+    for triangle in boundary_triangles:
+        triangle_vertices = vertices[np.asarray(triangle, dtype=np.int64)]
+        face_centroid = triangle_vertices.mean(axis=0)
+        for source_vertex in triangle:
+            others = [vertex for vertex in triangle if vertex != source_vertex]
+            expected_caps.add(
+                tuple(
+                    sorted(
+                        (
+                            point_id(vertices[source_vertex]),
+                            point_id(0.5 * (vertices[source_vertex] + vertices[others[0]])),
+                            point_id(face_centroid),
+                            point_id(0.5 * (vertices[source_vertex] + vertices[others[1]])),
+                        )
+                    )
+                )
+            )
+
+    actual_caps = {tuple(sorted(face)) for face in faces[n_internal:]}
+    assert actual_caps == expected_caps
+    assert len(actual_caps) == 3 * len(boundary_triangles)
+    assert any(np.array_equal(point, vertices[4]) for point in points)
+
+    cell_faces: list[list[list[int]]] = [[] for _ in range(result.n_cells)]
+    for face_id, face in enumerate(faces):
+        cell_faces[int(owner[face_id])].append(face)
+        if face_id < n_internal:
+            cell_faces[int(neighbour[face_id])].append(list(reversed(face)))
+
+    for cell_id, loops in enumerate(cell_faces):
+        edge_incidence = Counter(
+            tuple(sorted((first, second)))
+            for face in loops
+            for first, second in zip(face, face[1:] + face[:1], strict=True)
+        )
+        assert edge_incidence
+        assert set(edge_incidence.values()) == {2}, (cell_id, edge_incidence)
+
+    boundary = parse_foam_boundary(poly_dir / "boundary")
+    assert [(entry["name"], entry["type"]) for entry in boundary] == [("defaultWall", "wall")]
 
 
 @pytest.mark.parametrize(
