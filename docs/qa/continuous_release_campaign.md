@@ -2906,6 +2906,37 @@ provenance gate.
   same-side contracts; no relaxation.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 95 pre-merge checkpoint -- 2026-07-31
+
+### Independent fixed-pair Tri+Quad transaction L0
+
+- `c41c9299` adds an independent fixed-pair mixed-surface transaction;
+  `13c65e36` requires authoritative source patch payloads before any
+  materialization.  This is not a `native_quad_dominant` relabel or a
+  triangular handoff.
+- The explicit pair plan must be nonempty and non-total.  The transaction
+  derives at least one quad and at least one residual triangle from immutable
+  source triangles, then retains separate read-only arrays, source ordinals /
+  pairs, and derived patch and physical-group payloads plus hashes.
+- Authoritative patch IDs, physical groups, and feature edges are required.
+  No-op/full-pair plans, malformed or cross-payload pairs, feature removal,
+  source nonmanifold topology, and source-contract failures reject
+  fail-closed.  The enabled result remains `unwritten` and
+  `product_claimed=false`; no dedicated writer exists yet.
+- First focused runner (`c1`) is `ERROR` / `UNVERIFIED` in `5.91 s` because a
+  rejection preflight constructor field was missing.  It supplies no pass.
+  Final advisor runner passed at concurrency `1` in `4.03 s` with `10`
+  focused tests.  Local final `c5` also passed in `4.19 s`.
+
+### Release state
+
+- Default remains OFF.  No pipeline, UI, writer, routing, `third_party/`, or
+  Gate change; Gates 1--15 remain unmet and no Gate is `PASS`.
+- Next action: a dedicated Tri+Quad writer transaction and its explicit route
+  only after a writer artifact contract preserves the separate arrays and all
+  source bindings.  No triangular conversion or quad-dominant promotion.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
