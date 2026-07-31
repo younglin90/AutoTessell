@@ -24,6 +24,49 @@ struct LocalFrontResult {
     bool converged = false;
 };
 
+struct LocalFrontAdmissionNumericResult {
+    bool source_rows_complete = false;
+    bool clearance_sufficient = false;
+    std::size_t source_face_count = 0;
+    std::size_t quad_count = 0;
+};
+
+[[nodiscard]] inline LocalFrontAdmissionNumericResult
+audit_local_front_numeric_admission(
+    std::span<const Label> source_face_ids,
+    std::size_t source_face_count,
+    double requested_step,
+    double minimum_clearance)
+{
+    LocalFrontAdmissionNumericResult result;
+    result.source_face_count = source_face_count;
+    result.quad_count = source_face_ids.size();
+    if (source_face_count == 0U
+        || source_face_count > std::numeric_limits<std::size_t>::max() / 3U
+        || source_face_ids.size() != 3U * source_face_count
+        || !std::isfinite(requested_step) || requested_step <= 0.0
+        || !std::isfinite(minimum_clearance) || minimum_clearance <= 0.0) {
+        return result;
+    }
+    std::vector<std::uint8_t> counts(source_face_count, std::uint8_t{0});
+    for (const Label source_face : source_face_ids) {
+        if (source_face < 0
+            || static_cast<std::size_t>(source_face) >= source_face_count) {
+            return result;
+        }
+        auto& count = counts[static_cast<std::size_t>(source_face)];
+        if (count == 3U) {
+            return result;
+        }
+        ++count;
+    }
+    result.source_rows_complete = std::all_of(
+        counts.begin(), counts.end(),
+        [](std::uint8_t count) { return count == 3U; });
+    result.clearance_sufficient = minimum_clearance >= requested_step;
+    return result;
+}
+
 inline constexpr std::array<std::array<int, 4>, 5> five_tet_fan{{
     {{0, 1, 3, 4}},
     {{1, 2, 3, 6}},
