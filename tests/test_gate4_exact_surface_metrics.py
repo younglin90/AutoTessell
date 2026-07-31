@@ -150,10 +150,60 @@ def test_clean_closed_native_audit_enables_oriented_integrals_only(monkeypatch) 
     assert record.centroid_shift_rel == 0.0
     assert "integral.volume_error_pct" in record.available_fields
     assert "integral.volume_error_pct" not in record.unverified_fields
-    assert record.signed_status == "unverified_exact_signed_sample_predicate_unavailable"
+    assert record.signed_status == "unverified_fixed_ray_side_ambiguous_or_zero_distance"
     assert record.signed_mean_source_to_output is None
     assert record.source_sha256 == "a" * 64
     assert record.output_sha256 == "b" * 64
+    assert record.gate4_pass is False
+
+
+def test_clean_admissible_separated_surfaces_measure_signed_means(monkeypatch) -> None:
+    class _NativeMetrics:
+        @staticmethod
+        def aabb_overlap_pairs(*_args):
+            return np.empty((0, 2), dtype=np.int64)
+
+        @staticmethod
+        def triangle_intersections_segment(*_args):
+            return 0, np.empty((0, 2), dtype=np.int64)
+
+    monkeypatch.setattr(
+        "core.utils.native_extensions.load_native_metrics", lambda: _NativeMetrics()
+    )
+    separated = _TETRA_POINTS + np.asarray([3.0, 2.0, 1.0])
+    record = measure_gate4_exact_surface_metrics(
+        _TETRA_POINTS, _TETRA_FACES, separated, _TETRA_FACES, sample_count=64
+    )
+
+    assert record.signed_status == "measured_fixed_ray_half_open_all_samples_unambiguous"
+    assert record.signed_mean_source_to_output is not None
+    assert record.signed_mean_output_to_source is not None
+    assert "distance.signed_mean" in record.available_fields
+    assert "distance.signed_mean" not in record.unverified_fields
+    assert record.gate4_pass is False
+
+
+def test_zero_distance_keeps_signed_mean_unverified(monkeypatch) -> None:
+    class _NativeMetrics:
+        @staticmethod
+        def aabb_overlap_pairs(*_args):
+            return np.empty((0, 2), dtype=np.int64)
+
+        @staticmethod
+        def triangle_intersections_segment(*_args):
+            return 0, np.empty((0, 2), dtype=np.int64)
+
+    monkeypatch.setattr(
+        "core.utils.native_extensions.load_native_metrics", lambda: _NativeMetrics()
+    )
+    record = measure_gate4_exact_surface_metrics(
+        _TETRA_POINTS, _TETRA_FACES, _TETRA_POINTS, _TETRA_FACES, sample_count=64
+    )
+
+    assert record.signed_status == "unverified_fixed_ray_side_ambiguous_or_zero_distance"
+    assert record.signed_mean_source_to_output is None
+    assert record.signed_mean_output_to_source is None
+    assert "distance.signed_mean" in record.unverified_fields
     assert record.gate4_pass is False
 
 
