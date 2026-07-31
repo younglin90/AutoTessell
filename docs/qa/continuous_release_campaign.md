@@ -3191,6 +3191,23 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 179 checkpoint -- 2026-07-31
+
+### Clang20 native Tet-predicate array-shape correction
+
+- Seven identified scalar-brace allocations at lines `342`, `403`, `568`, and
+  `2065`--`2068` now use explicit pybind shape containers.  Array dtype,
+  value, and one-dimensional shape semantics are unchanged.
+- Fresh c1 clang20 Release Makefiles target-only `native_tet_predicates`
+  validation passed in `20.546960059 s`:
+  `/tmp/autotessell-c179-native-tet-predicates-runner-evidence.json`.
+
+### Release state
+
+- Full build and Gate 2 remain `UNVERIFIED`; this is not a topology, route, or
+  default-product claim.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 178 checkpoint -- 2026-07-31
 
 ### Clang20 native boundary-layer array-shape correction
