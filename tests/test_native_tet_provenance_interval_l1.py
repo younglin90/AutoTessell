@@ -165,8 +165,11 @@ def test_sphere_provenance_interval_l1(tmp_path: Path) -> None:
     for payload in payloads:
         records = payload["records"]
         assert payload["immutable"] is True
-        assert payload["result"]["success"] is False
-        assert payload["result"]["writer"] is False
+        assert payload["result"] == {
+            "success": True,
+            "n_cells": 2227,
+            "writer": True,
+        }
         pre_quality = next(
             item for item in records if item["stage"] == "sss_pass0_pre_quality"
         )

@@ -916,6 +916,7 @@ def generate_native_tet(
     _smooth_then_drop_sidedness_transaction: dict[str, int | bool] | None = None
     _degenerate_removal_source_transaction: dict[str, int | bool] | None = None
     _sss_relocation_source_transaction: dict[str, int | bool] | None = None
+    _same_side_retriangulation_transaction: dict[str, int | bool | str] | None = None
     try:
         from scipy.spatial import Delaunay
     except Exception as exc:
@@ -6901,6 +6902,83 @@ def generate_native_tet(
         log.warning(
             "native_tet_source_prefix_roundoff_restore_unverified",
             reason=str(_source_prefix_restore_exc)[:160],
+        )
+
+    # Rebuild connectivity only over unchanged coordinates when a previous
+    # local mutation leaves overlapping same-side internal faces.  Admission
+    # requires exact source ownership plus a strict debt decrease; every
+    # other result keeps the original arrays byte-for-byte.
+    if os.environ.get("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION", "1") != "0":
+        try:
+            from core.generator.native_tet.same_side_retriangulation import (
+                retriangulate_if_strictly_safer,
+            )
+
+            _same_side_repair = retriangulate_if_strictly_safer(
+                _input_source_vertices,
+                _input_source_faces,
+                np.asarray(final_pts, dtype=np.float64),
+                np.asarray(final_tets, dtype=np.int64),
+            )
+            _same_side_retriangulation_transaction = {
+                "accepted": bool(_same_side_repair.accepted),
+                "reason": _same_side_repair.reason,
+                "before_n_cells": int(final_tets.shape[0]),
+                "candidate_n_cells": int(_same_side_repair.tets.shape[0]),
+                "before_same_side_internal_faces": int(
+                    _same_side_repair.before_same_side_internal_faces
+                ),
+                "candidate_same_side_internal_faces": int(
+                    _same_side_repair.candidate_same_side_internal_faces
+                ),
+                "before_ambiguous_internal_faces": int(
+                    _same_side_repair.before_ambiguous_internal_faces
+                ),
+                "candidate_ambiguous_internal_faces": int(
+                    _same_side_repair.candidate_ambiguous_internal_faces
+                ),
+                "before_inverted_tets": int(_same_side_repair.before_inverted_tets),
+                "candidate_inverted_tets": int(
+                    _same_side_repair.candidate_inverted_tets
+                ),
+                "source_component_bijective": bool(
+                    _same_side_repair.source_component_bijective
+                ),
+                "source_faces_preserved": bool(
+                    _same_side_repair.source_faces_preserved
+                ),
+                "candidate_unowned_faces": int(
+                    _same_side_repair.candidate_unowned_faces
+                ),
+                "exact_rollback": bool(_same_side_repair.exact_rollback),
+            }
+            if _same_side_repair.accepted:
+                final_pts = _same_side_repair.points
+                final_tets = _same_side_repair.tets
+                n_cells = int(final_tets.shape[0])
+                n_points = int(final_pts.shape[0])
+                debug_info["n_final_tets"] = n_cells
+                debug_info["n_final_points"] = n_points
+            log.info(
+                "native_tet_same_side_retriangulation",
+                **_same_side_retriangulation_transaction,
+            )
+        except Exception as _same_side_repair_exc:
+            _same_side_retriangulation_transaction = {
+                "accepted": False,
+                "reason": (
+                    f"{type(_same_side_repair_exc).__name__}: "
+                    f"{_same_side_repair_exc}"
+                ),
+                "exact_rollback": True,
+            }
+            log.warning(
+                "native_tet_same_side_retriangulation_unverified",
+                reason=str(_same_side_repair_exc)[:160],
+            )
+    if _same_side_retriangulation_transaction is not None:
+        debug_info["same_side_retriangulation_transaction"] = (
+            _same_side_retriangulation_transaction
         )
 
     # Source-aware strict topology contract.  Local closed-manifold validity
