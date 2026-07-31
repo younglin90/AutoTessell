@@ -250,3 +250,38 @@ def test_cmake_evidence_declares_the_release_install_matrix() -> None:
         '--build-robusthex "${BUILD_ROBUSTHEX}"',
     ):
         assert flag in cmake
+
+
+def test_first_party_release_profile_is_statically_complete_and_adapter_free() -> None:
+    cmake = CMAKE.read_text(encoding="utf-8")
+    targets = [
+        "native_metrics",
+        "native_bl",
+        "native_polymesh",
+        "native_snap",
+        "native_surface_padding",
+        "native_hex_quality",
+        "native_tet_predicates",
+        "native_tet_qopt",
+    ]
+    profile_start = cmake.index("if(AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE)\n")
+    profile_end = cmake.index("# ── Paths", profile_start)
+    profile = cmake[profile_start:profile_end]
+    helper_start = cmake.index("function(autotessell_configure_first_party_native target_name)")
+    helper_end = cmake.index("endfunction()", helper_start)
+    helper = cmake[helper_start:helper_end]
+    configured = re.findall(
+        r"^\s*autotessell_configure_first_party_native\((native_[a-z0-9_]+)\)",
+        cmake,
+        flags=re.MULTILINE,
+    )
+
+    for adapter in ("BUILD_CFMESH", "BUILD_CINOLIB_HEX", "BUILD_FTETWILD", "BUILD_ROBUSTHEX"):
+        assert f'set({adapter} OFF CACHE BOOL "" FORCE)' in profile
+    assert [target for target in configured if target in targets] == targets
+    assert "target_compile_features(${target_name} PRIVATE cxx_std_23)" in helper
+    assert "CXX_EXTENSIONS OFF" in helper
+    assert "/WX" in helper
+    assert "-Werror" in helper
+    assert "add_custom_target(native_build_evidence ALL" in cmake
+    assert "DEPENDS\n      ${_AUTOTESSELL_FIRST_PARTY_NATIVE_TARGETS}" in cmake
