@@ -485,6 +485,37 @@ class Gate4OutputArtifactIdentity(BaseModel):
     sha256: str
 
 
+class Gate4SurfaceTopologyEvidence(BaseModel):
+    """Fail-closed combinatorial output-surface evidence for Gate 4."""
+
+    status: str
+    artifact: Gate4OutputArtifactIdentity | None = None
+    topology_valid: bool
+    self_intersection_status: str
+    boundary_face_count: int | None = None
+    component_count: int | None = None
+    boundary_loop_count: int | None = None
+    euler_characteristic: int | None = None
+    genus: int | None = None
+    open_edge_count: int | None = None
+    nonmanifold_edge_count: int | None = None
+    nonmanifold_vertex_count: int | None = None
+    duplicate_face_count: int | None = None
+    orientation_mismatch_count: int | None = None
+    malformed_reason: str | None = None
+
+
+class Gate4MetricCompletenessEvidence(BaseModel):
+    """Fail-closed inventory of unavailable Gate-4 metric fields."""
+
+    status: str
+    source: Gate4SourceIdentity | None = None
+    output: Gate4OutputArtifactIdentity | None = None
+    available_fields: tuple[str, ...]
+    missing_fields: tuple[str, ...]
+    gate4_pass: bool = False
+
+
 class Gate4FidelityEvidence(BaseModel):
     """Fail-closed substrate record; it never promotes a Gate verdict."""
 
@@ -493,6 +524,8 @@ class Gate4FidelityEvidence(BaseModel):
     output: Gate4OutputArtifactIdentity | None = None
     metric_status: str
     geometry_fidelity: GeometryFidelity | None = None
+    surface_topology: Gate4SurfaceTopologyEvidence | None = None
+    metric_completeness: Gate4MetricCompletenessEvidence | None = None
     gate4_pass: bool = False
 
 

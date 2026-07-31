@@ -7,14 +7,13 @@ does not promote Gate 4 or infer source/patch authority.
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections import Counter, defaultdict, deque
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 
+from core.evaluator.gate4_fidelity_substrate import inspect_gate4_output_artifact
+from core.schemas import Gate4OutputArtifactIdentity, Gate4SurfaceTopologyEvidence
 from core.utils.polymesh_reader import (
     parse_foam_boundary,
     parse_foam_faces,
@@ -22,58 +21,8 @@ from core.utils.polymesh_reader import (
     parse_foam_points_array,
 )
 
-_REQUIRED_FILES = ("points", "faces", "owner", "neighbour", "boundary")
-
-
-@dataclass(frozen=True)
-class PolyMeshArtifactIdentity:
-    """Exact identity of the mandatory non-symlink polyMesh files."""
-
-    poly_mesh_path: str
-    file_sha256: tuple[tuple[str, str], ...]
-    sha256: str
-
-
-@dataclass(frozen=True)
-class Gate4SurfaceTopologyAudit:
-    """Combinatorial output-surface report; never a Gate-4 verdict."""
-
-    status: str
-    artifact: PolyMeshArtifactIdentity | None
-    topology_valid: bool
-    self_intersection_status: str
-    boundary_face_count: int | None = None
-    component_count: int | None = None
-    boundary_loop_count: int | None = None
-    euler_characteristic: int | None = None
-    genus: int | None = None
-    open_edge_count: int | None = None
-    nonmanifold_edge_count: int | None = None
-    nonmanifold_vertex_count: int | None = None
-    duplicate_face_count: int | None = None
-    orientation_mismatch_count: int | None = None
-    malformed_reason: str | None = None
-
-
-def _artifact_identity(case_dir: Path) -> PolyMeshArtifactIdentity | None:
-    poly_mesh = case_dir / "constant" / "polyMesh"
-    if not poly_mesh.is_dir() or poly_mesh.is_symlink():
-        return None
-
-    file_hashes: list[tuple[str, str]] = []
-    for name in _REQUIRED_FILES:
-        path = poly_mesh / name
-        if not path.is_file() or path.is_symlink():
-            return None
-        file_hashes.append((name, hashlib.sha256(path.read_bytes()).hexdigest()))
-    aggregate = hashlib.sha256(
-        json.dumps(file_hashes, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-    return PolyMeshArtifactIdentity(
-        poly_mesh_path=str(poly_mesh.resolve()),
-        file_sha256=tuple(file_hashes),
-        sha256=aggregate,
-    )
+PolyMeshArtifactIdentity = Gate4OutputArtifactIdentity
+Gate4SurfaceTopologyAudit = Gate4SurfaceTopologyEvidence
 
 
 def _canonical_cycle(face: list[int]) -> tuple[int, ...]:
@@ -88,7 +37,7 @@ def _canonical_cycle(face: list[int]) -> tuple[int, ...]:
 
 
 def _malformed(
-    artifact: PolyMeshArtifactIdentity,
+    artifact: Gate4OutputArtifactIdentity,
     reason: str,
 ) -> Gate4SurfaceTopologyAudit:
     return Gate4SurfaceTopologyAudit(
@@ -218,9 +167,9 @@ def _boundary_loop_count(open_edges: list[tuple[int, int]]) -> int | None:
     return loops
 
 
-def audit_polymesh_surface(case_dir: Path) -> Gate4SurfaceTopologyAudit:
+def audit_polymesh_surface(case_dir: Path) -> Gate4SurfaceTopologyEvidence:
     """Audit one explicit polyMesh boundary surface without a Gate verdict."""
-    artifact = _artifact_identity(case_dir)
+    artifact = inspect_gate4_output_artifact(case_dir)
     if artifact is None:
         return Gate4SurfaceTopologyAudit(
             status="unverified_output_artifact_missing_or_unsafe",

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 
 from core.schemas import (
+    Gate4MetricCompletenessEvidence,
     Gate4OutputArtifactIdentity,
     Gate4SourceIdentity,
     GeometryFidelity,
@@ -47,18 +47,7 @@ REQUIRED_GATE4_FIELDS = (
 )
 
 
-@dataclass(frozen=True)
-class Gate4MetricCompletenessReport:
-    """Non-promoting record of what legacy geometry fidelity does not prove."""
-
-    status: str
-    source: Gate4SourceIdentity | None
-    output: Gate4OutputArtifactIdentity | None
-    available_fields: tuple[str, ...]
-    missing_fields: tuple[str, ...]
-    gate4_pass: bool
-
-
+Gate4MetricCompletenessReport = Gate4MetricCompletenessEvidence
 def _canonical_sha256(value: object) -> bool:
     return bool(
         isinstance(value, str)
@@ -97,7 +86,7 @@ def report_gate4_metric_completeness(
     legacy_metric: GeometryFidelity | None,
     source: Gate4SourceIdentity | None,
     output: Gate4OutputArtifactIdentity | None,
-) -> Gate4MetricCompletenessReport:
+) -> Gate4MetricCompletenessEvidence:
     """Inventory available legacy observations without inventing Gate-4 fields."""
     missing: list[str] = []
     if not _valid_source_identity(source):
