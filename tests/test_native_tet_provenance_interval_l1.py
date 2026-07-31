@@ -38,8 +38,7 @@ _STAGES = (
     "sss_pass0_post_target_construction",
     "pre_sss_pass0_relocate",
     "post_sss_pass0_relocate_pre_accept",
-    "post_sss_revival_pass_0",
-    "post_sss_revival_pass_1",
+    "post_sss_revival_pass_0_rejected",
     "post_sss_revival",
     "pre_cvt3d",
 )
