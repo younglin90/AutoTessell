@@ -52,3 +52,40 @@ def test_sphere_retriangulation_strictly_reduces_same_side_debt(
         transaction.candidate_same_side_internal_faces
         < transaction.before_same_side_internal_faces
     )
+
+
+def test_sphere_opt_in_transaction_reaches_strict_writer_path(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """The opt-in repair is admitted only when its strict output is writable."""
+    monkeypatch.setenv("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION", "1")
+    mesh = read_stl(_SPHERE)
+    case_dir = tmp_path / "sphere"
+
+    result = generate_native_tet(
+        np.ascontiguousarray(mesh.vertices, dtype=np.float64),
+        np.ascontiguousarray(mesh.faces, dtype=np.int64),
+        case_dir,
+        target_cells=2000,
+        enable_bsp_insertion=False,
+        enable_edge_recovery=False,
+        enable_phase_b=False,
+        enable_phase_c=False,
+    )
+
+    transaction = result.debug_info["same_side_retriangulation_transaction"]
+    assert transaction["accepted"] is True
+    assert transaction["source_component_bijective"] is True
+    assert transaction["source_faces_preserved"] is True
+    assert transaction["candidate_unowned_faces"] == 0
+    assert transaction["candidate_inverted_tets"] == 0
+    assert (
+        transaction["candidate_same_side_internal_faces"]
+        < transaction["before_same_side_internal_faces"]
+    )
+    strict = result.debug_info["strict_source_topology"]
+    assert strict["valid"] is True
+    assert strict["n_inverted_tets"] == 0
+    assert result.success is True
+    assert (case_dir / "constant" / "polyMesh").is_dir()

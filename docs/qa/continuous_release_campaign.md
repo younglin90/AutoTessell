@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `88`
+- cycle: `89`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
-- next_action: `Continue source-certificate-bound tri/quad/tri_quad evaluator planning, authoritative CAD-to-front corpus expansion, Tet overlap remedy research, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
+- next_action: `Run the same-side Tet transaction across a representative strict corpus before any release claim; keep source, topology, validity, provenance, and boundary layers ahead of target cells.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2827,6 +2827,25 @@ provenance gate.
 ### Release state
 
 - Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 89 pre-merge checkpoint -- 2026-07-31
+
+### Tet same-side transaction integration
+
+- `0889ea07` adds the actual opt-in sphere-path regression.  With
+  `AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION=1`, the transaction is accepted,
+  strict topology is valid, source components are bijective, source faces are
+  preserved, unowned faces and inverted tets are `0`, and same-side debt is
+  strictly reduced before `polyMesh` is written.
+- Advisor validation runner: `PASS`, concurrency `1`, `29.03 s`.  Default
+  behavior remains unchanged.
+
+### Release state
+
+- This representative sphere result is not a Gate `PASS` or release claim.
+  Gates 1--15 remain unmet; next action is representative strict-corpus
+  validation.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 88 pre-merge checkpoint -- 2026-07-31
