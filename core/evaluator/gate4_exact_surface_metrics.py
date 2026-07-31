@@ -380,6 +380,12 @@ def measure_gate4_exact_surface_metrics(
         normal_status = "measured_closed_orientation_consistent"
         available.extend(("normals.p95_deg", "normals.p99_deg", "normals.flipped"))
 
+    if (
+        source_si_status == "measured_no_intersections"
+        and output_si_status == "measured_no_intersections"
+    ):
+        available.append("topology.self_intersections")
+
     integral_status = "unverified_validated_closed_surfaces_required"
     source_volume: float | None = None
     output_volume: float | None = None

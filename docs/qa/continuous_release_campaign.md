@@ -3191,6 +3191,22 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 192 checkpoint -- 2026-08-01
+
+### Gate-4 bounded native self-intersection availability
+
+- `topology.self_intersections` is now available only when both closed,
+  orientation-consistent surfaces complete bounded native AABB and exact
+  segment audits with no intersections.  Triangle-cap, predicate/error,
+  invalid-surface, and detected-intersection states remain `UNVERIFIED`.
+- Focused c1 validation passed in `6.344693702 s`:
+  `/tmp/autotessell-c192-gate4-si-runner-evidence.json`.
+
+### Release state
+
+- No Gate-4 or release claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 189 checkpoint -- 2026-08-01
 
 ### Clang20 native Metrics array-shape correction
