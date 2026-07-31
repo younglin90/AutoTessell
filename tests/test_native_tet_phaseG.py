@@ -77,7 +77,7 @@ def test_native_tet_on_bench_stls(tmp_path, stl_name) -> None:
 
     stl = Path(__file__).parent / "stl" / stl_name
     if not stl.exists():
-        pytest.skip(f"{stl_name} 없음")
+        pytest.skip("native-tet benchmark STL missing: deterministic fixture precondition")
 
     res = _try_generate(tmp_path / stl_name, stl)
     # crash 만 아니면 OK — 성공률은 별개 벤치에서 추적.

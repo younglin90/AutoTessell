@@ -156,7 +156,7 @@ def test_closed_cell_volume_on_unit_cube():
 def cube_primal():
     """One tet primal + one agglomeration, shared by every real-shape test."""
     if not CUBE.exists():
-        pytest.skip(f"fixture missing: {CUBE}")
+        pytest.skip("cube.stl missing: deterministic native-poly facegeom fixture precondition")
     from core.analyzer.readers.stl import read_stl
     from core.generator.native_poly.agglomeration_experiment import vertex_star_agglomerate
     from core.generator.native_tet import generate_native_tet
