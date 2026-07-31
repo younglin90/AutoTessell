@@ -34,6 +34,8 @@ _STAGES = (
     "post_nnn3_insert",
     "post_nnn4_amips",
     "post_rrr2_targeted_amips",
+    "sss_pass0_pre_quality",
+    "sss_pass0_post_target_construction",
     "pre_sss_pass0_relocate",
     "post_sss_pass0_relocate_pre_accept",
     "post_sss_revival_pass_0",
@@ -166,10 +168,20 @@ def test_sphere_provenance_interval_l1(tmp_path: Path) -> None:
         assert payload["immutable"] is True
         assert payload["result"]["success"] is False
         assert payload["result"]["writer"] is False
-        strict_invalid = next(
+        pre_quality = next(
+            item for item in records if item["stage"] == "sss_pass0_pre_quality"
+        )
+        post_target = next(
+            item
+            for item in records
+            if item["stage"] == "sss_pass0_post_target_construction"
+        )
+        pre_relocation = next(
             item for item in records if item["stage"] == "pre_sss_pass0_relocate"
         )
-        assert strict_invalid["strict"] == {"inverted": 350, "same_side": 116}
+        assert pre_quality["strict"] == {"inverted": 350, "same_side": 116}
+        assert post_target["strict"] == {"inverted": 350, "same_side": 116}
+        assert pre_relocation["strict"] == {"inverted": 350, "same_side": 116}
         assert tuple(item["stage"] for item in records) == _STAGES
         assert payload["first_failed"] == "post_sss_pass0_relocate_pre_accept"
         first_failed_index = next(
