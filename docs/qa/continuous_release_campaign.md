@@ -3191,6 +3191,32 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 155 pre-merge checkpoint -- 2026-07-31
+
+### Static first-party native Release-profile lock
+
+- `7fbdefc1` statically locks the CMake first-party release profile used by
+  the clean C154 Unix-Makefiles row.  The install profile must force cfMesh,
+  cinolib, fTetWild, and RobustHex `OFF`; exactly the shipped eight native
+  targets must use the first-party helper.
+- The helper contract requires C++23, `CXX_EXTENSIONS OFF`, and platform
+  `Werror`; `native_build_evidence` must depend on the exact first-party
+  target variable.  This is a static drift guard only: no CMake production,
+  runtime, route, default, or `third_party/` behavior changed.
+- Bounded validation runner: `PASS`, concurrency `1`, `5.304 s`, focused
+  static build-evidence/inventory suites.  Evidence:
+  `/tmp/autotessell-c155-native-release-static-contract-evidence.json`.
+- File-wide ruff still reports the pre-existing three E501 rows in
+  `tests/test_native_build_evidence.py`; they were not changed or masked.
+
+### Release state
+
+- C154 remains the only clean actual Linux/GNU Unix-Makefiles Release row.
+  Gate 2 remains `UNVERIFIED`: supported generator, operating-system,
+  compiler, and configuration-matrix evidence is still absent.  No Gate is
+  promoted to `PASS`; Gates 1--15 remain unmet.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 154 pre-merge checkpoint -- 2026-07-31
 
 ### Clean first-party native Release build, Unix Makefiles
