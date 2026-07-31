@@ -339,7 +339,7 @@ py::array_t<int> evaluate_signs(
     ensure_exact_predicates_initialized();
     const auto input = points.unchecked<3>();
     const auto count = input.shape(0);
-    py::array_t<int> result({count});
+    py::array_t<int> result(py::array::ShapeContainer{count});
     auto output = result.mutable_unchecked<1>();
 
     for (py::ssize_t index = 0; index < count; ++index) {
@@ -400,7 +400,7 @@ py::array_t<int> power_insphere_signs_exact(
     const auto input_points = points.unchecked<3>();
     const auto input_weights = weights.unchecked<2>();
     const auto count = input_points.shape(0);
-    py::array_t<int> result({count});
+    py::array_t<int> result(py::array::ShapeContainer{count});
     auto output = result.mutable_unchecked<1>();
 
     for (py::ssize_t index = 0; index < count; ++index) {
@@ -565,7 +565,7 @@ py::array_t<bool> tet_boundary_vertex_mask(
         }
     }
 
-    py::array_t<bool> result({vertex_count});
+    py::array_t<bool> result(py::array::ShapeContainer{vertex_count});
     py::buffer_info result_info = result.request();
     auto* const boundary_mask = static_cast<bool*>(result_info.ptr);
     {
@@ -2062,10 +2062,10 @@ py::tuple tet_quality_metrics(
         }
     }
 
-    py::array_t<double> shape_quality({count});
-    py::array_t<double> aspect_ratio({count});
-    py::array_t<double> min_dihedral_deg({count});
-    py::array_t<double> volume6({count});
+    py::array_t<double> shape_quality(py::array::ShapeContainer{count});
+    py::array_t<double> aspect_ratio(py::array::ShapeContainer{count});
+    py::array_t<double> min_dihedral_deg(py::array::ShapeContainer{count});
+    py::array_t<double> volume6(py::array::ShapeContainer{count});
     auto quality_out = shape_quality.mutable_unchecked<1>();
     auto aspect_out = aspect_ratio.mutable_unchecked<1>();
     auto dihedral_out = min_dihedral_deg.mutable_unchecked<1>();
