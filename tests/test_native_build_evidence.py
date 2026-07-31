@@ -80,6 +80,45 @@ def test_symbolic_linked_extension_binary_is_refused(
         subject.find_binary(build_dir, "native_metrics")
 
 
+def test_install_evidence_requires_regular_staged_metadata(
+    tmp_path: Path,
+) -> None:
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    manifest_target = tmp_path / subject.MANIFEST_FILENAME
+    manifest_target.write_text("{}", encoding="utf-8")
+    (stage / subject.MANIFEST_FILENAME).symlink_to(manifest_target)
+    (stage / subject.WHEEL_CONTRACT_FILENAME).write_text("{}", encoding="utf-8")
+
+    with pytest.raises(subject.EvidenceError, match="native install metadata must be a regular file"):
+        subject.verify_install_evidence(source_root=tmp_path, stage_root=stage)
+
+
+def test_install_evidence_wires_staged_contract_and_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    manifest_path = stage / subject.MANIFEST_FILENAME
+    contract_path = stage / subject.WHEEL_CONTRACT_FILENAME
+    manifest_path.write_text("{}", encoding="utf-8")
+    contract_path.write_text("{}", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_verify(**kwargs: object) -> dict[str, str]:
+        captured.update(kwargs)
+        return {"status": "pass"}
+
+    monkeypatch.setattr(subject, "verify_build_evidence", fake_verify)
+    assert subject.verify_install_evidence(source_root=tmp_path, stage_root=stage) == {
+        "status": "pass"
+    }
+    assert captured["contract_path"] == contract_path
+    assert captured["manifest_path"] == manifest_path
+    assert captured["build_dir"] == stage
+    assert captured["source_root"] == tmp_path
+
+
 def test_generated_manifest_verifies_hashes_identity_and_exact_abi(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
