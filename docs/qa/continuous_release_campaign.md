@@ -3191,6 +3191,26 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 124 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tet cube bounded integral rerun
+
+- Strict native-Tet cube focused runner passed at concurrency `1` in `9.96 s`.
+  Source/output identities `e930...fbc81` / `cb2f...f23f` remain bound; both
+  bounded native SI audits report `measured_no_intersections`.
+- Oriented triangle integrals report source volume `1.0`, output volume
+  `0.9999999999999999`, volume error `1.1102230246251565e-14%`, and centroid
+  relative shift `4.4026974813720074e-17`.
+- Signed mean remains `UNVERIFIED` because exact side predicate is unavailable.
+  Feature, patch, physical-group, and provenance authority remain absent.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; all evidence retains `gate4_pass=false`.  No
+  Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing, default,
+  UI, mesh, provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 123 pre-merge checkpoint -- 2026-07-31
 
 ### Bounded oriented integral evidence
