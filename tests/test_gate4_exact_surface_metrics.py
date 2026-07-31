@@ -79,6 +79,17 @@ def test_invalid_surface_is_fail_closed() -> None:
     assert record.gate4_pass is False
 
 
+def test_non_integer_triangle_indices_are_rejected() -> None:
+    non_integer_faces = _TETRA_FACES.astype(np.float64)
+    record = measure_gate4_exact_surface_metrics(
+        _TETRA_POINTS, non_integer_faces, _TETRA_POINTS, _TETRA_FACES, sample_count=32
+    )
+
+    assert record.status == "unverified_invalid_finite_triangle_surface"
+    assert record.source_to_output is None
+    assert record.gate4_pass is False
+
+
 def test_sampling_is_deterministic() -> None:
     first = measure_gate4_exact_surface_metrics(
         _TETRA_POINTS, _TETRA_FACES, _TETRA_POINTS, _TETRA_FACES, sample_count=64

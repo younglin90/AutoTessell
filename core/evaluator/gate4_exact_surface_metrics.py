@@ -82,9 +82,12 @@ def _as_finite_triangles(
     """Return a strict finite triangle surface, otherwise ``None``."""
     try:
         points = np.asarray(vertices, dtype=np.float64)
-        triangles = np.asarray(faces, dtype=np.int64)
+        raw_triangles = np.asarray(faces)
     except (TypeError, ValueError, OverflowError):
         return None
+    if not np.issubdtype(raw_triangles.dtype, np.integer):
+        return None
+    triangles = raw_triangles.astype(np.int64, copy=False)
     if (
         points.ndim != 2
         or points.shape[1:] != (3,)
