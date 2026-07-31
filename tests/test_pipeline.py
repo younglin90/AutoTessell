@@ -526,8 +526,8 @@ class TestPipelineWithMockedGenerator:
         # Legacy quality verdict stays separate from a Gate-4 promotion claim.
         assert result.success is True
 
-    def test_gate4_snapshot_survives_generator_work_cleanup(self, tmp_path: Path) -> None:
-        """Gate-4 source evidence is retained outside the disposable work area."""
+    def test_gate4_snapshot_survives_generator_output_cleanup(self, tmp_path: Path) -> None:
+        """Pre-generator bytes survive a generator that removes all case content."""
         from core.generator.polymesh_writer import write_generic_polymesh
 
         source = tmp_path / "source.stl"
@@ -567,8 +567,8 @@ endsolid tetra
 
         generator = _make_mock_generator()
 
-        def write_mesh_after_work_cleanup(*, case_dir: Path, **_kwargs: Any) -> GeneratorLog:
-            shutil.rmtree(case_dir / "_work")
+        def write_mesh_after_output_cleanup(*, case_dir: Path, **_kwargs: Any) -> GeneratorLog:
+            shutil.rmtree(case_dir)
             points = np.asarray(
                 ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
                 dtype=np.float64,
@@ -577,7 +577,7 @@ endsolid tetra
             write_generic_polymesh(points, faces, case_dir)
             return _make_generator_log()
 
-        generator.run.side_effect = write_mesh_after_work_cleanup
+        generator.run.side_effect = write_mesh_after_output_cleanup
         orchestrator = PipelineOrchestrator(
             generator=generator,
             checker=_make_mock_checker(),

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -46,30 +47,49 @@ _ACTUAL_UNVERIFIED_FIELDS = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class PendingGate4SourceSnapshot:
+    """Exact caller bytes retained until generator-owned output cleanup ends."""
+
+    original_path: str
+    source_bytes: bytes
+    sha256: str
+    suffix: str
+
+    def materialize(self, snapshot_dir: Path) -> Gate4SourceIdentity:
+        snapshot_path = snapshot_dir / f"gate4-original-{self.sha256}{self.suffix}"
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        if snapshot_path.exists():
+            if snapshot_path.is_symlink() or snapshot_path.read_bytes() != self.source_bytes:
+                raise ValueError("immutable Gate-4 source snapshot collision")
+        else:
+            snapshot_path.write_bytes(self.source_bytes)
+        return Gate4SourceIdentity(
+            original_path=self.original_path,
+            snapshot_path=str(snapshot_path.resolve()),
+            byte_count=len(self.source_bytes),
+            sha256=self.sha256,
+        )
+
+
+def prepare_immutable_source(source_path: Path) -> PendingGate4SourceSnapshot:
+    """Read and hash caller bytes before preprocessing or generator mutation."""
+    resolved = source_path.resolve(strict=True)
+    source_bytes = resolved.read_bytes()
+    return PendingGate4SourceSnapshot(
+        original_path=str(resolved),
+        source_bytes=source_bytes,
+        sha256=hashlib.sha256(source_bytes).hexdigest(),
+        suffix=resolved.suffix or ".bin",
+    )
+
+
 def capture_immutable_source(
     source_path: Path,
     snapshot_dir: Path,
 ) -> Gate4SourceIdentity:
     """Write one exact source-byte snapshot before pipeline mutations begin."""
-    resolved = source_path.resolve(strict=True)
-    source_bytes = resolved.read_bytes()
-    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
-    suffix = resolved.suffix or ".bin"
-    snapshot_path = snapshot_dir / f"gate4-original-{source_sha256}{suffix}"
-    snapshot_dir.mkdir(parents=True, exist_ok=True)
-
-    if snapshot_path.exists():
-        if snapshot_path.is_symlink() or snapshot_path.read_bytes() != source_bytes:
-            raise ValueError("immutable Gate-4 source snapshot collision")
-    else:
-        snapshot_path.write_bytes(source_bytes)
-
-    return Gate4SourceIdentity(
-        original_path=str(resolved),
-        snapshot_path=str(snapshot_path.resolve()),
-        byte_count=len(source_bytes),
-        sha256=source_sha256,
-    )
+    return prepare_immutable_source(source_path).materialize(snapshot_dir)
 
 
 def inspect_gate4_output_artifact(case_dir: Path) -> Gate4OutputArtifactIdentity | None:
