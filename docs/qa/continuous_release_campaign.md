@@ -4,7 +4,7 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `80`
+- cycle: `81`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
@@ -2823,6 +2823,26 @@ provenance gate.
 - Strict topology is unchanged.  Target cells remain secondary.  No
   `third_party/` modification is included.
 - Ruff is `UNVERIFIED`: `109` pre-existing `mesher.py` violations.
+
+### Release state
+
+- Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 81 pre-merge checkpoint -- 2026-07-31
+
+### Tri+Quad output provenance L0
+
+- `8b4ea112` adds canonical accepted triangle-pair provenance and residual
+  triangle source-index provenance to actual `native_quad_dominant` output.
+  Output vertices, triangles, quads, and diagnostics remain byte-identical in
+  value and order.  Every source triangle is partitioned exactly once.
+- Actual-output diagnostic records exact face-partition facts, but remains
+  `accepted=false` and `product_claimed=false`.  Missing hard source evidence
+  is feature, boundary, topology, physical group, and provenance; there is no
+  `tri_quad` success/relabel or strict-quad change.
+- No routing, default, C++, or `third_party/` change is included.  Advisor
+  validation runner: `PASS`, concurrency `1`, `4.53 s`, three focused suites.
 
 ### Release state
 

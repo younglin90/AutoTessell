@@ -136,6 +136,11 @@ def test_fused_public_route_matches_extension_absent_oracle() -> None:
     np.testing.assert_array_equal(native_result.vertices, oracle.vertices)
     np.testing.assert_array_equal(native_result.triangles, oracle.triangles)
     np.testing.assert_array_equal(native_result.quads, oracle.quads)
+    np.testing.assert_array_equal(native_result.accepted_face_pairs, oracle.accepted_face_pairs)
+    np.testing.assert_array_equal(
+        native_result.remaining_triangle_source_indices,
+        oracle.remaining_triangle_source_indices,
+    )
     native_diagnostics = native_result.diagnostics.model_dump()
     oracle_diagnostics = oracle.diagnostics.model_dump()
     for metric in (
@@ -227,4 +232,9 @@ def test_noncontiguous_int64_input_is_copied_into_strict_native_abi() -> None:
 
     np.testing.assert_array_equal(actual.triangles, expected.triangles)
     np.testing.assert_array_equal(actual.quads, expected.quads)
+    np.testing.assert_array_equal(actual.accepted_face_pairs, expected.accepted_face_pairs)
+    np.testing.assert_array_equal(
+        actual.remaining_triangle_source_indices,
+        expected.remaining_triangle_source_indices,
+    )
     assert actual.diagnostics == expected.diagnostics

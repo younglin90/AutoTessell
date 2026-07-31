@@ -655,6 +655,11 @@ def test_public_quad_route_matches_native_disabled_fallback_and_repeats(
         np.testing.assert_array_equal(result.vertices, first.vertices)
         np.testing.assert_array_equal(result.triangles, first.triangles)
         np.testing.assert_array_equal(result.quads, first.quads)
+        np.testing.assert_array_equal(result.accepted_face_pairs, first.accepted_face_pairs)
+        np.testing.assert_array_equal(
+            result.remaining_triangle_source_indices,
+            first.remaining_triangle_source_indices,
+        )
         assert result.diagnostics.model_dump() == first.diagnostics.model_dump()
 
     from core.utils import native_extensions
@@ -664,6 +669,11 @@ def test_public_quad_route_matches_native_disabled_fallback_and_repeats(
     np.testing.assert_array_equal(fallback.vertices, first.vertices)
     np.testing.assert_array_equal(fallback.triangles, first.triangles)
     np.testing.assert_array_equal(fallback.quads, first.quads)
+    np.testing.assert_array_equal(fallback.accepted_face_pairs, first.accepted_face_pairs)
+    np.testing.assert_array_equal(
+        fallback.remaining_triangle_source_indices,
+        first.remaining_triangle_source_indices,
+    )
     fallback_diagnostics = fallback.diagnostics.model_dump()
     native_diagnostics = first.diagnostics.model_dump()
     for metric in (

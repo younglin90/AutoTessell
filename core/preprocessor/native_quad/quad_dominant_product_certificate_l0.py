@@ -1,11 +1,11 @@
 """Fail-closed output diagnostic for the existing quad-dominant candidate.
 
-``native_quad_dominant_remesh`` produces a local pair-merger result.  It does
-not emit source shape, feature, boundary, topology, physical-group, or face
-provenance evidence.  This adapter records that fact against the *actual*
-result and never upgrades either ``quad`` or ``tri_quad`` into a product
-success.  It is runtime-disconnected: no route, writer, or mesh mutation is
-performed here.
+``native_quad_dominant_remesh`` produces a local pair-merger result.  It now
+emits exact local source-face partition facts, but not source shape, feature,
+boundary, topology, physical-group, or source-certificate provenance evidence.
+This adapter records those facts against the *actual* result and never upgrades
+either ``quad`` or ``tri_quad`` into a product success.  It is
+runtime-disconnected: no route, writer, or mesh mutation is performed here.
 """
 
 from __future__ import annotations
@@ -48,6 +48,9 @@ class QuadDominantProductCertificateL0:
     output_vertices_hash: str | None
     output_triangles_hash: str | None
     output_quads_hash: str | None
+    accepted_face_pairs_hash: str | None
+    remaining_triangle_source_indices_hash: str | None
+    output_face_provenance_exact: bool
     missing_source_evidence: tuple[str, ...]
     source_certificate_complete: bool
     product_claimed: bool
@@ -81,6 +84,63 @@ def _hash(array: np.ndarray | None) -> str | None:
     return digest.hexdigest()
 
 
+def _exact_output_face_provenance(
+    source_faces: np.ndarray | None,
+    output_triangles: np.ndarray | None,
+    output_quads: np.ndarray | None,
+    accepted_pairs: object,
+    remaining_source_indices: object,
+) -> bool:
+    if (
+        source_faces is None
+        or output_triangles is None
+        or output_quads is None
+        or not isinstance(accepted_pairs, np.ndarray)
+        or accepted_pairs.dtype != np.dtype(np.int64)
+        or accepted_pairs.ndim != 2
+        or accepted_pairs.shape[1] != 2
+        or not accepted_pairs.flags.c_contiguous
+        or not isinstance(remaining_source_indices, np.ndarray)
+        or remaining_source_indices.dtype != np.dtype(np.int64)
+        or remaining_source_indices.ndim != 1
+        or not remaining_source_indices.flags.c_contiguous
+    ):
+        return False
+    if len(accepted_pairs) != len(output_quads):
+        return False
+    if accepted_pairs.size and (
+        (accepted_pairs < 0).any()
+        or (accepted_pairs >= len(source_faces)).any()
+        or (accepted_pairs[:, 0] >= accepted_pairs[:, 1]).any()
+    ):
+        return False
+    if len(accepted_pairs) > 1:
+        previous, current = accepted_pairs[:-1], accepted_pairs[1:]
+        if (
+            (current[:, 0] < previous[:, 0])
+            | ((current[:, 0] == previous[:, 0]) & (current[:, 1] <= previous[:, 1]))
+        ).any():
+            return False
+    consumed = np.zeros(len(source_faces), dtype=bool)
+    if accepted_pairs.size:
+        flattened = accepted_pairs.reshape(-1)
+        if len(np.unique(flattened)) != len(flattened):
+            return False
+        consumed[flattened] = True
+    expected_remaining = np.flatnonzero(~consumed).astype(np.int64, copy=False)
+    if not np.array_equal(remaining_source_indices, expected_remaining):
+        return False
+    if not np.array_equal(output_triangles, source_faces[remaining_source_indices]):
+        return False
+    from core.preprocessor.native_remesh.quad_dominant import _oriented_quads_for_pairs
+
+    try:
+        expected_quads, _ = _oriented_quads_for_pairs(source_faces, accepted_pairs)
+    except RuntimeError:
+        return False
+    return bool(np.array_equal(output_quads, expected_quads))
+
+
 def diagnose_quad_dominant_product_output_l0(
     source_vertices: object,
     source_triangles: object,
@@ -104,6 +164,15 @@ def diagnose_quad_dominant_product_output_l0(
     output_points = _canonical_array(result.vertices, dtype=np.dtype(np.float64), columns=3)
     output_triangles = _canonical_array(result.triangles, dtype=np.dtype(np.int64), columns=3)
     output_quads = _canonical_array(result.quads, dtype=np.dtype(np.int64), columns=4)
+    accepted_pairs = result.accepted_face_pairs
+    remaining_source_indices = result.remaining_triangle_source_indices
+    output_face_provenance_exact = _exact_output_face_provenance(
+        source_faces,
+        output_triangles,
+        output_quads,
+        accepted_pairs,
+        remaining_source_indices,
+    )
 
     triangle_count = -1 if output_triangles is None else len(output_triangles)
     quad_count = -1 if output_quads is None else len(output_quads)
@@ -127,7 +196,10 @@ def diagnose_quad_dominant_product_output_l0(
 
     if not representation.accepted:
         status = "reject_quad_dominant_representation"
-        rejection_reason = representation.rejection_reason or "quad_dominant_representation_rejected"
+        rejection_reason = (
+            representation.rejection_reason
+            or "quad_dominant_representation_rejected"
+        )
     elif not source_vertices_exact:
         status = "reject_quad_dominant_source_shape"
         rejection_reason = "quad_dominant_source_vertices_not_exact"
@@ -147,6 +219,13 @@ def diagnose_quad_dominant_product_output_l0(
         output_vertices_hash=_hash(output_points),
         output_triangles_hash=_hash(output_triangles),
         output_quads_hash=_hash(output_quads),
+        accepted_face_pairs_hash=_hash(
+            accepted_pairs if isinstance(accepted_pairs, np.ndarray) else None
+        ),
+        remaining_triangle_source_indices_hash=_hash(
+            remaining_source_indices if isinstance(remaining_source_indices, np.ndarray) else None
+        ),
+        output_face_provenance_exact=output_face_provenance_exact,
         missing_source_evidence=tuple(missing),
         source_certificate_complete=False,
         product_claimed=False,
