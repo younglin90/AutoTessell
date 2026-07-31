@@ -3191,6 +3191,31 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 157 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tet cube quality-report rebind
+
+- The regenerated actual native-Tet cube three-run manifest binds the exact
+  reports `a1aa3a16646659b098f322ae73aa282a864f72ec1f598d98bfcd580c4cff4615`,
+  `27bd083400a60aeeb946c46c78c5ce3dc920d99357d84d60d0eed428e0dd193b`, and
+  `af79d6da504d73a301d761405d5c6152959a32306d1585bd78b9ba8e53c22490`.
+  All three retain `polyMesh` identity `cb2f...f23f`.
+- Corpus manifest/evidence:
+  `/tmp/autotessell-c157-tet-cube-corpus.json` and
+  `/tmp/autotessell-c157-tet-cube-corpus-evidence.json`.  Runner manifest/
+  evidence: `/tmp/autotessell-c157-tet-cube-corpus-runner.json` and
+  `/tmp/autotessell-c157-tet-cube-corpus-runner-evidence.json`.
+- The runner is expected `ERROR` / `UNVERIFIED` with exit `1`: the verifier
+  deliberately returns nonzero while release evidence is incomplete.  This is
+  no Gate-4, Gate-9, or release `PASS`.
+
+### Release state
+
+- Native-Hex quality-report hash rebind remains pending.  No Gate is promoted
+  to `PASS`; Gates 1--15 remain unmet.  No generator, product, route, default,
+  or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 156 pre-merge checkpoint -- 2026-07-31
 
 ### Release-native quality-report byte identity
