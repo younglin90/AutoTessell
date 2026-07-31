@@ -3191,6 +3191,26 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 140 pre-merge checkpoint -- 2026-07-31
+
+### Native-Poly face-geometry strict fixture runtime control
+
+- `2367716e` keeps the real cube native-Tet primal and agglomeration
+  invariants, but fixes its deterministic fixture configuration: same-side
+  transaction enabled and P4C external fallback disabled.  The native-only
+  primal succeeds before agglomeration; any failure now fails closed instead
+  of dynamically skipping.
+- Root focused runner passed at concurrency `1`: face-geometry `4.09 s`,
+  Gate-3 marker inventory `3.79 s`.  Dynamic marker count is `95`, with no
+  remaining dynamic DEFER marker.
+
+### Release state
+
+- Gate 3 remains `UNVERIFIED`: full suite and release matrix evidence remain
+  incomplete.  No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No
+  routing, default, UI, mesh, provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 139 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Poly face-geometry dynamic-skip retest
