@@ -3191,6 +3191,38 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 121 pre-merge checkpoint -- 2026-07-31
+
+### CAD/STEP physical-group and provenance authority blocker
+
+- No implementation landed.  The native STEP provenance reader supplies
+  authoritative B-Rep face ordinals, orientation, and seam connectivity, but
+  sets every `physical_group_names` entry to `None` and
+  `physical_groups_authoritative=false`.  XDE names, layers, colors, and
+  assemblies are display/identity metadata, not boundary-condition authority.
+- The default-off snapshot transaction binds source bytes and the reader
+  payload, but deliberately rejects injected authoritative physical groups.
+  The standalone physical-group reporter accepts only an already-authored
+  per-source-face declaration and produces an unintegrated digest.
+- Production CAD loading converts the reader output to `trimesh` arrays, and
+  native-Tet ingress receives only vertices/faces.  No authenticated authored
+  mapping can currently bind to those source faces or propagate to output
+  boundary faces without an unimplemented contract; inferring one would be a
+  false authority claim.
+- STL carries no authored CAD face/physical-group identity, so physical-group
+  and provenance evidence remains `UNVERIFIED`.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Signed/integral
+  measures, features, patches, physical groups, and provenance remain open.
+  Gates 1--15 remain unmet.  No routing, default, UI, mesh, or `third_party/`
+  behavior changed.
+- Unblock only with a frozen authored mapping format, its source-byte and
+  B-Rep-face cryptographic binding, and fail-closed native-Tet output-boundary
+  propagation.  No heuristic substitute is permitted.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 120 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Tet sphere bounded SI rerun
