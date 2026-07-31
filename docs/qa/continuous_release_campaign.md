@@ -3140,6 +3140,57 @@ provenance gate.
   non-masking evidence for the remaining Gate-3 paths before any promotion.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 104 pre-merge checkpoint -- 2026-07-31
+
+### Gate-4 source and evaluator inventory
+
+- No code or test change.  Gate 4 is `UNVERIFIED`.  Its authoritative
+  specification requires bidirectional surface distance, signed bias,
+  normal/feature fidelity, integral measures, components/genus/boundary-loop
+  and hole preservation, self-intersection/non-manifold exclusion, and
+  patch/physical-group/provenance continuity.
+- The current evaluator provides only a best-effort sampled surface-distance
+  summary, area deviation, maximum normal deviation, and a normal-derived
+  feature proxy.  It has no immutable original-`S0` binding, signed-distance
+  bias, normal p95, output volume/centroid, explicit feature-edge drift,
+  output component/genus/boundary-loop/hole audit, or source-to-output
+  patch/physical-group/provenance binding.  It currently receives the
+  preprocessing path, so it cannot establish fidelity to the immutable user
+  input when preprocessing changes that surface.
+- Tracked artifacts are insufficient and heterogeneous: the cube native-Poly
+  report has `geometry_fidelity: null` and `FAIL`; the cylinder cfMesh-Poly
+  report and knot/sphere WildMesh reports contain only the partial legacy
+  summary.  There is no actual native-Tet/native-Hex output evidence, and
+  native-Tri, strict-Quad, and Tri+Quad remain runtime-disconnected products,
+  not comparable pipeline artifacts.
+- The repository has useful raw corpus files but no frozen Gate-4 manifest
+  that binds each source to expected feature, boundary, hole, component,
+  patch, and physical-group invariants.  STEP ingestion explicitly withholds
+  authoritative physical groups; a CAD row is therefore a `DEFER`, not an
+  equivalence substitute.
+
+### Bounded matrix after fail-closed substrate
+
+- Proposed matrix: explicit no-fallback `tier_native_tet`, `tier_native_hex`,
+  and `tier_native_poly` across five representative sources: cube (sharp
+  geometry), perforated plate (small features/holes), dual torus (genus), five
+  disconnected spheres (components), and open hemisphere (boundary loops).
+  The open row may only pass by an explicit no-artifact refusal unless that
+  product declares open-surface support.
+- For every produced artifact, extract `Sh` and compare it against immutable
+  `S0`; a missing artifact, missing metric, timeout, or fallback is
+  `UNVERIFIED`, never `PASS`.  Record bidirectional distances, signed bias,
+  normal p95/flips, area/volume/centroid, feature coverage/drift, topology,
+  patch graph, and physical/provenance authority.
+
+### Release state
+
+- No Gate change to `PASS`; Gates 1--15 remain unmet.  No routing, default,
+  mesh, topology, surface, provenance, or `third_party/` behavior changed.
+- Next action: implement immutable original-`S0` binding and a no-output /
+  no-metric fail-closed evaluator substrate before running the matrix.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
