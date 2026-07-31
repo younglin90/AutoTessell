@@ -87,7 +87,19 @@ def _worker_payload(repeat: int, case_dir: Path) -> dict[str, object]:
             )
         return original_cvt(points, tets, *args, **kwargs)
 
-    mesher_path = str(Path(mesher.__file__).resolve())
+    mesher_file = Path(mesher.__file__).resolve()
+    mesher_path = str(mesher_file)
+    mesher_lines = mesher_file.read_text(encoding="utf-8").splitlines()
+    post_sliver_filter_line = next(
+        line_number
+        for line_number, line in enumerate(mesher_lines, start=1)
+        if line.strip() == "if kept.shape[0] == 0:"
+    )
+    post_filter_compaction_line = next(
+        line_number
+        for line_number, line in enumerate(mesher_lines, start=1)
+        if line.strip() == "if _phase_a_observer is not None:"
+    )
 
     def traced_line(frame: object, event: str, _arg: object) -> object:
         if event != "line" or not hasattr(frame, "f_code"):
@@ -95,8 +107,8 @@ def _worker_payload(repeat: int, case_dir: Path) -> dict[str, object]:
         if frame.f_code.co_filename != mesher_path:
             return traced_line
         stage_name = {
-            2196: "post_sliver_filter",
-            2208: "post_filter_compaction",
+            post_sliver_filter_line: "post_sliver_filter",
+            post_filter_compaction_line: "post_filter_compaction",
         }.get(frame.f_lineno)
         if stage_name is None or any(
             record["stage"] == stage_name for record in inline_stage_records

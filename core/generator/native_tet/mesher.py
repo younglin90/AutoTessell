@@ -17,6 +17,53 @@ if TYPE_CHECKING:
     from core.generator.native_tet.rescue_gate import TetBoundaryAudit
 
 
+@dataclass(frozen=True, slots=True)
+class _PhaseAProvenanceCheckpoint:
+    """Immutable test-only arrays observed at a fixed native-tet boundary."""
+
+    stage: str
+    source_points: np.ndarray
+    source_faces: np.ndarray
+    candidate_points: np.ndarray
+    candidate_tets: np.ndarray
+
+
+def _immutable_observability_snapshot(values: np.ndarray) -> np.ndarray:
+    """Return C-order diagnostic snapshot backed by immutable bytes."""
+    contiguous = np.ascontiguousarray(values)
+    return np.frombuffer(
+        contiguous.tobytes(order="C"), dtype=contiguous.dtype
+    ).reshape(contiguous.shape)
+
+
+def _report_phase_a_provenance_checkpoint(
+    observer: Any,
+    *,
+    stage: str,
+    source_points: np.ndarray,
+    source_faces: np.ndarray,
+    candidate_points: np.ndarray,
+    candidate_tets: np.ndarray,
+) -> None:
+    """Report immutable evidence; observer failure never changes mesh output."""
+    try:
+        observer(
+            _PhaseAProvenanceCheckpoint(
+                stage=stage,
+                source_points=_immutable_observability_snapshot(source_points),
+                source_faces=_immutable_observability_snapshot(source_faces),
+                candidate_points=_immutable_observability_snapshot(candidate_points),
+                candidate_tets=_immutable_observability_snapshot(candidate_tets),
+            )
+        )
+    except Exception as exc:
+        log.warning(
+            "native_tet_phase_a_provenance_observer_failed",
+            stage=stage,
+            error=str(exc)[:120],
+        )
+
+
 def _input_vertices_exactly_present_l0(
     source_vertices: object,
     candidate_vertices: object,
@@ -769,6 +816,7 @@ def generate_native_tet(
     # BOOLMERGE5b: JSON-safe ordered STL provenance and volume boolean mask.
     boolean_input_paths: list[str] | None = None,
     boolean_operation: str = "union",
+    _phase_a_observer: Any = None,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -2201,6 +2249,12 @@ def generate_native_tet(
     remap[used] = np.arange(used.shape[0])
     final_tets = remap[kept].astype(np.int64)
     final_pts = all_pts[used].copy()
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer, stage="post_filter_compaction",
+            source_points=_input_source_vertices, source_faces=_input_source_faces,
+            candidate_points=final_pts, candidate_tets=final_tets,
+        )
 
     # BSP_ORIENT_FIX (beta2160) — front-load orientation normalize right after BSP
     # boundary recovery so ALL downstream post-passes work on correctly oriented tets.
@@ -2210,6 +2264,12 @@ def generate_native_tet(
     final_tets, _n_flipped_bsp, _n_degen_bsp = _vaf_bsp(final_pts, final_tets)
     log.info("native_tet_bsp_orient_fix", n_flipped=int(_n_flipped_bsp), n_degenerate=int(_n_degen_bsp))
     log.info("native_tet_pass_timing", pass_name="BSP_ORIENT_FIX", dt_ms=int((time.perf_counter() - _t_bsp) * 1000))
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer, stage="post_bsp_orient_fix",
+            source_points=_input_source_vertices, source_faces=_input_source_faces,
+            candidate_points=final_pts, candidate_tets=final_tets,
+        )
 
     # 4b) Phase A1 + A4 — feature 잠금 + interior Laplacian smoothing.
     # Round 7: feature corner 를 실제 locked set 에 포함.
@@ -2278,6 +2338,12 @@ def generate_native_tet(
             n_feature_edges=int(feature_info.feature_edges.shape[0]),
             n_corner=int(feature_info.corner_vertices.shape[0]),
             n_corner_new=int(corner_new_ids_array.size),
+        )
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer, stage="post_phase_a_smoothing",
+            source_points=_input_source_vertices, source_faces=_input_source_faces,
+            candidate_points=final_pts, candidate_tets=final_tets,
         )
 
     # 4c) Phase B — local operations (split/collapse/flip) + tangent smoothing.
@@ -2751,6 +2817,15 @@ def generate_native_tet(
                 fixed_by_swap=vr.n_fixed_by_swap,
                 degenerate=vr.n_degenerate,
             )
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer,
+            stage="post_phase_a_fix_inverted",
+            source_points=_input_source_vertices,
+            source_faces=_input_source_faces,
+            candidate_points=final_pts,
+            candidate_tets=final_tets,
+        )
 
     # JJ3 (beta1820) — drop_extreme_slivers 전에 smooth_then_drop_slivers 호출
     # (drop 대신 주변 vertex 이동으로 sliver 회복 시도). hard mesh quality ↑.
@@ -2855,6 +2930,15 @@ def generate_native_tet(
                     )
         except Exception as exc:
             log.debug("native_tet_smooth_then_drop_skipped", reason=str(exc))
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer,
+            stage="post_smooth_then_drop_slivers",
+            source_points=_input_source_vertices,
+            source_faces=_input_source_faces,
+            candidate_points=final_pts,
+            candidate_tets=final_tets,
+        )
 
     # Round 73-74: extreme sliver 제거 (파라미터 노출). V5 — surface-aware revert.
     if enable_phase_a and not _phase_bc_skip:
@@ -2898,6 +2982,15 @@ def generate_native_tet(
                 log.info("native_tet_drop_slivers", dropped=n_drop)
         except Exception as exc:
             log.debug("native_tet_drop_slivers_skipped", reason=str(exc))
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer,
+            stage="post_drop_extreme_slivers",
+            source_points=_input_source_vertices,
+            source_faces=_input_source_faces,
+            candidate_points=final_pts,
+            candidate_tets=final_tets,
+        )
 
     # BETA2825 — 축퇴 tet 위상보존 제거 (signed 3-2 flip + 공면 flap 제거).
     # non-skip 경로의 disk 메쉬 = 아래 line 의 write(final_pts/final_tets).
@@ -3156,6 +3249,15 @@ def generate_native_tet(
                         )
         except Exception as exc:
             log.debug("native_tet_degenerate_removal_skipped", reason=str(exc))
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer,
+            stage="post_degenerate_removal",
+            source_points=_input_source_vertices,
+            source_faces=_input_source_faces,
+            candidate_points=final_pts,
+            candidate_tets=final_tets,
+        )
 
     # BETA2826 — surface-locked AMIPS smooth, disk-write 직전 (pre-write Stage-4).
     # P4C=0 경로에서 sweep/post-write AMIPS 는 아래 write *이후* 실행되어
@@ -3237,6 +3339,15 @@ def generate_native_tet(
             log.debug(
                 "native_tet_prewrite_locked_smooth_skipped", reason=str(exc)
             )
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer,
+            stage="post_prewrite_locked_smooth",
+            source_points=_input_source_vertices,
+            source_faces=_input_source_faces,
+            candidate_points=final_pts,
+            candidate_tets=final_tets,
+        )
 
     # FSL3 — guarded 2-3 flip: flip-eligible all-surface flat sliver 제거,
     # write 직전 (BETA2826 locked-smooth 직후). 이중 가드(최종 mesh 기준):
@@ -3270,6 +3381,15 @@ def generate_native_tet(
             )
         except Exception as exc:
             log.debug("native_tet_fsl3_flip_skipped", reason=str(exc))
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer,
+            stage="post_fsl3_flip",
+            source_points=_input_source_vertices,
+            source_faces=_input_source_faces,
+            candidate_points=final_pts,
+            candidate_tets=final_tets,
+        )
 
     # FSL Wave 1 (TET-LAZY-1 + TET-SHAPE-3(a)) -- Dassi 2018 lazy compound
     # flips (depth 1/2) then Ni 2017 / Shewchuk exhaustive multi-face
@@ -3404,6 +3524,22 @@ def generate_native_tet(
     _boundary_audit_anchor = (final_pts.copy(), final_tets.copy())
 
     def _boundary_audit_probe(stage_name: str) -> None:
+        if _phase_a_observer is not None and stage_name in (
+            "post_best_of",
+            "post_nn1_collapse",
+            "pre_rr1_flip",
+            "post_rr1_flip",
+            "pre_ddd1_bsp",
+            "post_eee_quality",
+        ):
+            _report_phase_a_provenance_checkpoint(
+                _phase_a_observer,
+                stage=stage_name,
+                source_points=_input_source_vertices,
+                source_faces=_input_source_faces,
+                candidate_points=final_pts,
+                candidate_tets=final_tets,
+            )
         try:
             from core.generator.native_tet.boundary_invariant import (
                 check_boundary_invariant as _check_boundary_audit,
@@ -4750,6 +4886,13 @@ def generate_native_tet(
                         },
                     )
 
+                if _phase_a_observer is not None:
+                    _report_phase_a_provenance_checkpoint(
+                        _phase_a_observer, stage="pre_cvt3d",
+                        source_points=_input_source_vertices,
+                        source_faces=_input_source_faces,
+                        candidate_points=final_pts, candidate_tets=final_tets,
+                    )
                 _cvt3d_before_pts = final_pts
                 _cvt3d_before_tets = final_tets
                 _new_pts_cvt, _cvt_res = lloyd_cvt_3d(
