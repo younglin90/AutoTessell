@@ -198,6 +198,38 @@ def _commit_sidedness_nonincreasing_candidate(
     return before_points, before_tets, report
 
 
+def _commit_cvt3d_sidedness_nonincreasing_candidate(
+    before_points: np.ndarray,
+    before_tets: np.ndarray,
+    candidate_points: np.ndarray,
+    candidate_tets: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, dict[str, int | bool]]:
+    """Commit a CVT candidate only when both strict internal-face debts hold.
+
+    CVT can improve a degenerate-cell count while moving two opposite apexes
+    onto the same side of an internal face.  That is not a valid trade.  Keep
+    the generic sidedness transaction's exact-object rollback and attach the
+    degenerate counts solely as diagnostic evidence for the fail-closed path.
+    """
+    from core.generator.native_tet.rescue_gate import audit_tet_boundary
+
+    selected_points, selected_tets, report = (
+        _commit_sidedness_nonincreasing_candidate(
+            before_points,
+            before_tets,
+            candidate_points,
+            candidate_tets,
+        )
+    )
+    before = audit_tet_boundary(before_points, before_tets)
+    candidate = audit_tet_boundary(candidate_points, candidate_tets)
+    return selected_points, selected_tets, {
+        **report,
+        "before_degenerate_tets": int(before.n_degenerate_tets),
+        "candidate_degenerate_tets": int(candidate.n_degenerate_tets),
+    }
+
+
 def _optional_pass_result(result: Any, n_expected: int) -> tuple[Any, str | None]:
     """Normalize an optional-pass return value without raising downstream.
 
@@ -4598,6 +4630,43 @@ def generate_native_tet(
                 _n_surface_cvt = 0
                 _cvt3d_iter = int(os.environ.get("AUTO_TESSELL_CVT3D_ITER", "3"))
                 _cvt3d_relax = float(os.environ.get("AUTO_TESSELL_CVT3D_RELAX", "0.5"))
+
+                def _cvt3d_fail_closed_result(
+                    points: np.ndarray,
+                    tets: np.ndarray,
+                    transaction: dict[str, int | bool],
+                ) -> NativeTetResult:
+                    """Return before any later topology mutator can run."""
+                    import shutil
+
+                    stale_poly_mesh = Path(case_dir) / "constant" / "polyMesh"
+                    if stale_poly_mesh.is_dir():
+                        shutil.rmtree(stale_poly_mesh)
+                    return NativeTetResult(
+                        False,
+                        time.perf_counter() - t0,
+                        n_cells=int(tets.shape[0]),
+                        n_points=int(points.shape[0]),
+                        message=(
+                            "native_tet CVT candidate increases strict "
+                            "internal-face debt"
+                        ),
+                        tet_points=points,
+                        tets=tets,
+                        warnings=None,
+                        debug_info={
+                            "cvt3d_sidedness_transaction": transaction,
+                            "strict_source_topology": {
+                                "valid": False,
+                                "polymesh_artifacts_removed": (
+                                    not stale_poly_mesh.exists()
+                                ),
+                            },
+                        },
+                    )
+
+                _cvt3d_before_pts = final_pts
+                _cvt3d_before_tets = final_tets
                 _new_pts_cvt, _cvt_res = lloyd_cvt_3d(
                     final_pts, final_tets,
                     n_surface=_n_surface_cvt,
@@ -4606,7 +4675,37 @@ def generate_native_tet(
                     locked_ids=_boundary_lock_ids_cvt,
                 )
                 if _cvt_res.accepted:
-                    final_pts = _new_pts_cvt
+                    (
+                        _cvt3d_selected_pts,
+                        _cvt3d_selected_tets,
+                        _cvt3d_sidedness_transaction,
+                    ) = _commit_cvt3d_sidedness_nonincreasing_candidate(
+                        _cvt3d_before_pts,
+                        _cvt3d_before_tets,
+                        _new_pts_cvt,
+                        final_tets,
+                    )
+                    _cvt3d_sidedness_transaction = {
+                        **_cvt3d_sidedness_transaction,
+                        "n_iter": int(_cvt_res.n_iter_used),
+                        "n_moved": int(_cvt_res.n_moved),
+                    }
+                    if not _cvt3d_sidedness_transaction["accepted"]:
+                        # This is the first persistent overlap transition
+                        # after JJ3.  Do not let a later local pass conceal
+                        # it: return the exact pre-CVT arrays and publish no
+                        # new polyMesh artifact.
+                        log.warning(
+                            "native_tet_cvt3d_sidedness_rejected",
+                            **_cvt3d_sidedness_transaction,
+                        )
+                        return _cvt3d_fail_closed_result(
+                            _cvt3d_selected_pts,
+                            _cvt3d_selected_tets,
+                            _cvt3d_sidedness_transaction,
+                        )
+                    final_pts = _cvt3d_selected_pts
+                    final_tets = _cvt3d_selected_tets
                 log.info(
                     "native_tet_cvt3d_lloyd",
                     n_iter=_cvt_res.n_iter_used,
@@ -4641,7 +4740,34 @@ def generate_native_tet(
                             monotone_worst_drop_max=0.020,
                         )
                         if _cvt2_res.accepted:
-                            final_pts = _new_pts_cvt2
+                            (
+                                _cvt2_selected_pts,
+                                _cvt2_selected_tets,
+                                _cvt2_sidedness_transaction,
+                            ) = _commit_cvt3d_sidedness_nonincreasing_candidate(
+                                final_pts,
+                                final_tets,
+                                _new_pts_cvt2,
+                                final_tets,
+                            )
+                            _cvt2_sidedness_transaction = {
+                                **_cvt2_sidedness_transaction,
+                                "pass_index": 2,
+                                "n_iter": int(_cvt2_res.n_iter_used),
+                                "n_moved": int(_cvt2_res.n_moved),
+                            }
+                            if not _cvt2_sidedness_transaction["accepted"]:
+                                log.warning(
+                                    "native_tet_cvt3d_sidedness_rejected",
+                                    **_cvt2_sidedness_transaction,
+                                )
+                                return _cvt3d_fail_closed_result(
+                                    _cvt2_selected_pts,
+                                    _cvt2_selected_tets,
+                                    _cvt2_sidedness_transaction,
+                                )
+                            final_pts = _cvt2_selected_pts
+                            final_tets = _cvt2_selected_tets
                         log.info(
                             "native_tet_cvt3d_lloyd_pass2_qw",
                             n_iter=_cvt2_res.n_iter_used,

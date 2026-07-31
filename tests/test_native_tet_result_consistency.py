@@ -100,9 +100,7 @@ def test_cylinder_overlap_candidate_rolls_back_deterministically(
         assert result.n_cells == 1140
         strict = result.debug_info["strict_source_topology"]
         assert strict["valid"] is True
-        transaction = result.debug_info[
-            "smooth_then_drop_sidedness_transaction"
-        ]
+        transaction = result.debug_info["smooth_then_drop_sidedness_transaction"]
         assert transaction == {
             "accepted": False,
             "before_same_side_internal_faces": 0,
@@ -129,6 +127,58 @@ def test_cylinder_overlap_candidate_rolls_back_deterministically(
     )
 
 
+def test_cube_cvt3d_overlap_rolls_back_before_later_mutation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """A CVT quality gain must not hide a new internal-face overlap.
+
+    The frozen cube reaches the first persistent post-JJ3 transition with
+    five degenerate tets and no definite same-side face.  CVT removes those
+    degenerates, but creates four definite overlaps.  The only truthful
+    result is the exact pre-CVT mesh and an early refusal; later passes must
+    not get an opportunity to mutate the returned arrays.
+    """
+    monkeypatch.setenv("AUTO_TESSELL_P4C_PYTETWILD", "0")
+    monkeypatch.setenv("AUTO_TESSELL_CONVEX_EXTRUSION_RESCUE", "0")
+    mesh = load_mesh(CUBE)
+    case_dir = tmp_path / "cube"
+    result = generate_native_tet(
+        np.asarray(mesh.vertices, dtype=np.float64),
+        np.asarray(mesh.faces, dtype=np.int64),
+        case_dir,
+        target_cells=2000,
+        enable_bsp_insertion=False,
+        enable_edge_recovery=False,
+        enable_phase_b=False,
+        enable_phase_c=False,
+    )
+
+    assert result.success is False
+    assert result.message == ("native_tet CVT candidate increases strict internal-face debt")
+    assert result.n_points == 300
+    assert result.n_cells == 1286
+    assert not (case_dir / "constant" / "polyMesh").exists()
+    audit = audit_tet_boundary(result.tet_points, result.tets)
+    assert audit.n_same_side_internal_faces == 0
+    assert audit.n_ambiguous_internal_faces == 20
+    assert audit.n_degenerate_tets == 5
+    assert audit.n_inverted_tets == 34
+    transaction = result.debug_info["cvt3d_sidedness_transaction"]
+    assert transaction == {
+        "accepted": False,
+        "before_same_side_internal_faces": 0,
+        "candidate_same_side_internal_faces": 4,
+        "before_ambiguous_internal_faces": 20,
+        "candidate_ambiguous_internal_faces": 0,
+        "exact_rollback": True,
+        "before_degenerate_tets": 5,
+        "candidate_degenerate_tets": 0,
+        "n_iter": 3,
+        "n_moved": 411,
+    }
+
+
 @pytest.mark.parametrize(
     (
         "fixture",
@@ -143,10 +193,7 @@ def test_cylinder_overlap_candidate_rolls_back_deterministically(
         "transaction_candidate_same",
         "min_mean_q",
     ),
-    (
-        (CUBE, 300, 1284, 320, 4, 0, 0, False, 0, 232, 0.3563),
-        (SPHERE, 735, 2164, 1280, 108, 0, 0, True, 120, 120, 0.2573),
-    ),
+    ((SPHERE, 735, 2164, 1280, 108, 0, 0, True, 120, 120, 0.2573),),
 )
 def test_boundary_lock_refuses_cube_and_sphere_internal_overlap(
     fixture: Path,
@@ -201,12 +248,8 @@ def test_boundary_lock_refuses_cube_and_sphere_internal_overlap(
     assert strict["polymesh_artifacts_removed"] is True
     transaction = result.debug_info["smooth_then_drop_sidedness_transaction"]
     assert transaction["accepted"] is transaction_accepted
-    assert transaction["before_same_side_internal_faces"] == (
-        transaction_before_same
-    )
-    assert transaction["candidate_same_side_internal_faces"] == (
-        transaction_candidate_same
-    )
+    assert transaction["before_same_side_internal_faces"] == (transaction_before_same)
+    assert transaction["candidate_same_side_internal_faces"] == (transaction_candidate_same)
     assert snapshot(result.tet_points, result.tets).mean_q >= min_mean_q
     hausdorff = hausdorff_vs_input(
         np.asarray(mesh.vertices, dtype=np.float64),

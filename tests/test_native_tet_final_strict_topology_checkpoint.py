@@ -43,9 +43,7 @@ def _disable_late_topology_mutators(monkeypatch) -> None:
             monkeypatch.setenv(name, "1" if name.endswith("_OFF") else "0")
 
 
-def test_cube_10000_l0_trace_refuses_residual_internal_overlap(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_cube_10000_l0_trace_refuses_residual_internal_overlap(tmp_path: Path, monkeypatch) -> None:
     """L0: JJ3 rolls back exactly; a later overlap still fails closed.
 
     Target tracking is observed only.  This card's acceptance is deterministic
@@ -58,9 +56,7 @@ def test_cube_10000_l0_trace_refuses_residual_internal_overlap(
     observed: list[tuple[str, int, int, int, int]] = []
     transaction: dict[str, object] = {}
     original = boundary_invariant.check_boundary_invariant
-    original_transaction = (
-        native_tet_mesher._commit_sidedness_nonincreasing_candidate
-    )
+    original_transaction = native_tet_mesher._commit_sidedness_nonincreasing_candidate
 
     def _hash(array: np.ndarray) -> str:
         return hashlib.sha256(np.ascontiguousarray(array)).hexdigest()
@@ -121,57 +117,36 @@ def test_cube_10000_l0_trace_refuses_residual_internal_overlap(
 
     final_audit = audit_tet_boundary(result.tet_points, result.tets)
     assert not result.success
-    assert result.message == "native_tet source-aware strict topology is invalid"
-    assert result.n_cells > 0
+    assert result.message == ("native_tet CVT candidate increases strict internal-face debt")
+    assert result.n_cells == 5913
     assert not final_audit.valid
-    assert final_audit.n_same_side_internal_faces == 12
+    # The returned arrays are exactly the pre-CVT checkpoint.  Later local
+    # passes must not get a chance to turn CVT's quality improvement into a
+    # different topology result.
+    assert final_audit.n_same_side_internal_faces == 4
+    assert final_audit.n_ambiguous_internal_faces == 128
+    assert final_audit.n_degenerate_tets == 32
     assert final_audit.n_duplicate_tets == 0
     report = transaction["report"]
     assert isinstance(report, dict)
     assert report == {
         "accepted": False,
-        "before_same_side_internal_faces": 0,
-        "candidate_same_side_internal_faces": 1108,
-        "before_ambiguous_internal_faces": 4620,
-        "candidate_ambiguous_internal_faces": 228,
+        "before_same_side_internal_faces": 4,
+        "candidate_same_side_internal_faces": 12,
+        "before_ambiguous_internal_faces": 128,
+        "candidate_ambiguous_internal_faces": 0,
         "exact_rollback": True,
     }
     assert transaction["selected_points_is_before"] is True
     assert transaction["selected_tets_is_before"] is True
     assert transaction["before_points"] == transaction["selected_points"]
     assert transaction["before_tets"] == transaction["selected_tets"]
-    assert transaction["before_points"] == (
-        "b7856955a75e1d95aced2302b96eb9b4da641683b8b955d0ede9153ff1124978"
-    )
-    assert transaction["before_tets"] == (
-        "086f3e52462ebeb80206dd4724d70faf4a0e24604e74ef913cdaceafd1f00dab"
-    )
-    assert transaction["candidate_points"] == (
-        "785e9199081ceecd2c3a9f4aa902cdd076fdf186567d3bd1c1f3c00787067925"
-    )
+    assert transaction["candidate_points"] != transaction["before_points"]
     assert transaction["candidate_tets"] == transaction["before_tets"]
-    repair = result.debug_info["strict_topology_duplicate_group_repair"]
-    assert repair["applied"] is False
-    # Tet42's old path reached one exact duplicate group.  Rejecting JJ3's
-    # overlap candidate changes the downstream path and removes that debt.
-    assert repair["n_duplicate_groups"] == 0
-    assert repair["n_removed_tets"] == 0
-    assert repair["boundary_preserved"] is True
-    assert repair["before_nonmanifold_faces"] == 0
-    assert repair["after_nonmanifold_faces"] == 0
-    assert repair["after_same_side_internal_faces"] == 12
     assert not (tmp_path / "cube_10000" / "constant" / "polyMesh").exists()
     assert observed
-
-    first_unsafe = next(
-        (
-            record
-            for record in observed
-            if record[1] > 0 or record[2] > 0 or record[3] > 0 or record[4] > 0
-        ),
-        None,
-    )
-    assert first_unsafe is not None
+    assert observed[-1][0] == "post_eee_quality"
+    assert all(record[0] != "post_nnn_cvt" for record in observed)
     print("TET_FINAL_STRICT_TOPOLOGY_L0", observed, "final", final_audit)
 
 
