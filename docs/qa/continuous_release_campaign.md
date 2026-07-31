@@ -3191,6 +3191,31 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 125 pre-merge checkpoint -- 2026-07-31
+
+### Exact signed-distance blocker audit
+
+- No implementation landed.  Existing `signed_distance` combines BVH unsigned
+  distance with `inside_winding_number`: +x ray parity uses deterministic
+  coordinate jitter and an exception silently classifies every sample outside.
+  Neither behavior can certify a signed Gate-4 observation.
+- Existing generalized winding number uses floating solid-angle accumulation,
+  denominator `+1e-30`, and `abs(w) > 0.5`; it has no exact boundary or
+  tolerance-failure result.  It is not an exact point-in-solid predicate.
+- No native exact point-in-solid/signed-distance primitive exists beside the
+  bounded native SI predicate.  Deterministic signed means in both directions
+  therefore remain `UNVERIFIED`; no ray, jitter, threshold, fallback, or
+  random substitute is permitted.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
+  remain unmet.  No routing, default, UI, mesh, provenance, or `third_party/`
+  behavior changed.
+- Unblock only with a bounded exact robust side predicate that reports boundary
+  and tolerance uncertainty fail-closed for every signed sample.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 124 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Tet cube bounded integral rerun
