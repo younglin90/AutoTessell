@@ -3191,6 +3191,28 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 160 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tet and native-Hex product-contract rebind
+
+- Current actual three-run native-Tet and native-Hex manifests now bind the
+  immutable source, every `polyMesh` file identity, every quality-report byte
+  hash, and the exact parsed native product contract.  Tet retains aggregate
+  `cb2f...f23f`; Hex retains aggregate `4451...ef6f`.
+- Corpus evidence:
+  `/tmp/autotessell-c160-tet-cube-corpus-evidence.json` and
+  `/tmp/autotessell-c160-hex-cube-corpus-evidence.json`.  Bounded runner
+  evidence: `/tmp/autotessell-c160-native-corpus-contract-runner-evidence.json`.
+  At concurrency `1`, Tet took `0.038 s` and Hex `0.039 s`; both expected exit
+  `1`, `ERROR` / `UNVERIFIED`, because the verifier deliberately cannot issue
+  a release `PASS` while evidence is incomplete.
+
+### Release state
+
+- No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
+  product, route, default, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 159 pre-merge checkpoint -- 2026-07-31
 
 ### Release-native product-contract binding
