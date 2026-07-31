@@ -3191,6 +3191,31 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 117 pre-merge checkpoint -- 2026-07-31
+
+### Gate-4 source binding across generator-owned cleanup
+
+- C116 proved that a retained `<output>/_evidence` path can also be clobbered
+  by generator-owned output cleanup.  It therefore remained
+  `unverified_source_snapshot_changed`; this is failure evidence only.
+- `b1320e8c` captures immutable caller bytes and SHA-256 before preprocessing
+  or generation, keeps them in-process without rereading the original, then
+  materializes the snapshot only after generator/post stages immediately before
+  Gate-4 evaluation.  The hash, non-symlink, and collision/no-overwrite checks
+  remain unchanged.
+- The root focused runners passed at concurrency `1`: full output-cleanup
+  ordering evidence in `4.29 s` and substrate evidence in `3.88 s`.  This is a
+  source-binding lifetime repair, not a metric or verdict promotion.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; all evidence retains `gate4_pass=false`.  No
+  Gate is promoted to `PASS`, and Gates 1--15 remain unmet.  C118 actual-output
+  rerun is pending.
+- No routing, default, UI, mesh, topology, provenance, or `third_party/`
+  behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 115 pre-merge checkpoint -- 2026-07-31
 
 ### Gate-4 immutable source snapshot lifetime repair
