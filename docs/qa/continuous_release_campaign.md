@@ -3191,6 +3191,44 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 105 pre-merge checkpoint -- 2026-07-31
+
+### Immutable Gate-4 source and artifact evidence substrate
+
+- `87f9bff3` captures an exact byte snapshot, path, size, and SHA-256 for a
+  single caller-provided source before preprocessing, boolean premerge, or
+  reconstruction can change the working path.  Multi-source boolean input is
+  explicitly deferred; its generated soup is never treated as `S0`.
+- A comparison requires a non-symlink OpenFOAM `polyMesh` containing `points`,
+  `faces`, `owner`, `neighbour`, and `boundary`.  Per-file and aggregate
+  identities are captured before and after metric calculation.  Missing or
+  changed output, changed source snapshot, and unavailable metric all return
+  `UNVERIFIED` evidence.
+- Legacy sampled geometry metrics remain incomplete.  Every substrate result
+  records `gate4_pass=false`; it changes no routing, default, quality verdict,
+  product claim, or Gate state.
+
+### Validation and baseline separation
+
+- The first full pipeline advisor run is `ERROR` / `UNVERIFIED` in `101.38 s`.
+  Its three failures are exact master baselines, not this card's regression:
+  `TestPipelineWithMockedGenerator::test_hard_fail_retries_up_to_max`,
+  `::test_auto_retry_off_single_iteration`, and
+  `::test_auto_retry_once_stops_after_two`.  The same three master nodes fail
+  in `2.38 s`; they return `success=True` because the mocked `75.0`
+  non-orthogonality is not emitted as a reporter hard fail.
+- After excluding only those proven baseline nodes, the narrow advisor passed
+  the substrate module and the new pipeline wiring node in `4.40 s`.  This is
+  focused implementation evidence only, not a full pipeline or Gate-4 pass.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
+  remain unmet.  No `third_party/` change is included.
+- Next action: implement the actual metric and topology/feature/patch corpus
+  contract, then run the bounded actual-output matrix against immutable `S0`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
