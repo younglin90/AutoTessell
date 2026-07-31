@@ -18,8 +18,8 @@ import numpy as np
 from core.analyzer.geometry_analyzer import GeometryAnalyzer
 from core.evaluator.fidelity import GeometryFidelityChecker
 from core.evaluator.gate4_fidelity_substrate import (
-    capture_immutable_source,
     evaluate_gate4_fidelity_evidence,
+    prepare_immutable_source,
 )
 from core.evaluator.metrics import AdditionalMetricsComputer
 from core.evaluator.quality_checker import MeshQualityChecker
@@ -179,15 +179,13 @@ class PipelineOrchestrator:
 
         try:
             gate4_source: Gate4SourceIdentity | None = None
+            pending_gate4_source = None
             gate4_source_status = "unverified_source_snapshot_missing"
             if additional_input_paths:
                 gate4_source_status = "unverified_multi_source_contract_required"
             else:
                 try:
-                    gate4_source = capture_immutable_source(
-                        Path(input_path),
-                        output_dir / "_evidence" / "gate4-source",
-                    )
+                    pending_gate4_source = prepare_immutable_source(Path(input_path))
                 except (OSError, ValueError) as exc:
                     gate4_source_status = "unverified_source_snapshot_missing"
                     log.warning("gate4_source_snapshot_unavailable", error=str(exc))
@@ -825,6 +823,15 @@ class PipelineOrchestrator:
                 emit_progress(loop_generate_done + 2, f"Evaluate {iteration}/{max_iterations}")
                 log.info("Pipeline stage: Evaluate", tier=successful_tier)
                 try:
+                    if pending_gate4_source is not None:
+                        try:
+                            gate4_source = pending_gate4_source.materialize(
+                                output_dir / "_evidence" / "gate4-source"
+                            )
+                        except (OSError, ValueError) as exc:
+                            gate4_source = None
+                            gate4_source_status = "unverified_source_snapshot_missing"
+                            log.warning("gate4_source_snapshot_unavailable", error=str(exc))
                     _bl_p2_for_eval = getattr(
                         _post_result_for_bl,
                         "native_bl_phase2",
