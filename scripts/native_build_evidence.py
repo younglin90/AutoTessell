@@ -391,6 +391,29 @@ def verify_build_evidence(
     return manifest
 
 
+def verify_install_evidence(
+    *,
+    source_root: Path,
+    stage_root: Path,
+    source_identity: str | None = None,
+) -> dict[str, Any]:
+    """Verify a regular-file CMake install staging tree fail-closed."""
+    if stage_root.is_symlink() or not stage_root.is_dir():
+        raise EvidenceError(f"native install stage must be a regular directory: {stage_root}")
+    manifest_path = stage_root / MANIFEST_FILENAME
+    contract_path = stage_root / WHEEL_CONTRACT_FILENAME
+    for path in (manifest_path, contract_path):
+        if path.is_symlink() or not path.is_file():
+            raise EvidenceError(f"native install metadata must be a regular file: {path}")
+    return verify_build_evidence(
+        contract_path=contract_path,
+        source_root=source_root,
+        build_dir=stage_root,
+        manifest_path=manifest_path,
+        source_identity=source_identity,
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -409,6 +432,10 @@ def _parser() -> argparse.ArgumentParser:
     verify.add_argument("--build-dir", type=Path, required=True)
     verify.add_argument("--manifest", type=Path)
     verify.add_argument("--source-identity")
+    verify_install = subparsers.add_parser("verify-install")
+    verify_install.add_argument("--source-root", type=Path, required=True)
+    verify_install.add_argument("--stage-root", type=Path, required=True)
+    verify_install.add_argument("--source-identity")
     return parser
 
 
@@ -426,12 +453,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 compiler_version=args.compiler_version,
                 cxx_standard=args.cxx_standard,
             )
-        else:
+        elif args.command == "verify":
             manifest = verify_build_evidence(
                 contract_path=args.contract.resolve(),
                 source_root=args.source_root.resolve(),
                 build_dir=args.build_dir.resolve(),
                 manifest_path=args.manifest.resolve() if args.manifest else None,
+                source_identity=args.source_identity,
+            )
+        else:
+            manifest = verify_install_evidence(
+                source_root=args.source_root.resolve(),
+                stage_root=args.stage_root.resolve(),
                 source_identity=args.source_identity,
             )
     except EvidenceError as exc:
