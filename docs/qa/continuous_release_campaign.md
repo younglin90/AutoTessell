@@ -3191,6 +3191,23 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 141 pre-merge checkpoint -- 2026-07-31
+
+### No-mask native automated-test shards
+
+- No-mask native shards passed at concurrency `1`: native-Tet `21.18 s`,
+  native-Poly `3.88 s`, strict-Quad `3.82 s`, Tri+Quad `3.93 s`.  Dynamic
+  marker inventory remains `0`.
+- Strict-Quad and Tri+Quad remain offline, unclaimed routes; these focused
+  shards do not promote either product or broaden routing.
+
+### Release state
+
+- Gate 3 remains `UNVERIFIED`: complete CI and full-suite matrix evidence are
+  absent.  No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No
+  default, UI, mesh, provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 140 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Poly face-geometry strict fixture runtime control
