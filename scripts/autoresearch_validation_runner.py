@@ -18,7 +18,10 @@ async def run(item: dict[str, object]) -> dict[str, object]:
         status="PASS" if proc.returncode==0 else "ERROR"
         return {"name":item.get("name"),"command":command,"started":started,"finished":time.time(),"elapsed_seconds":time.time()-started,"exit_code":proc.returncode,"status":status,"stdout_sha256":digest(out),"stderr_sha256":digest(err)}
     except asyncio.TimeoutError:
-        if proc: os.killpg(proc.pid, signal.SIGTERM); await proc.wait()
+        if proc:
+            os.killpg(proc.pid, signal.SIGTERM)
+            try: await asyncio.wait_for(proc.wait(), 1)
+            except asyncio.TimeoutError: os.killpg(proc.pid, signal.SIGKILL); await proc.wait()
         return {"name":item.get("name"),"started":started,"finished":time.time(),"elapsed_seconds":time.time()-started,"status":"TIMEOUT"}
     except Exception as exc:
         return {"name":item.get("name"),"started":started,"finished":time.time(),"elapsed_seconds":time.time()-started,"status":"ERROR","error":str(exc)}
