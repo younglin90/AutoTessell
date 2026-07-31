@@ -186,7 +186,7 @@ class PipelineOrchestrator:
                 try:
                     gate4_source = capture_immutable_source(
                         Path(input_path),
-                        output_dir / "_work" / "gate4-source",
+                        output_dir / "_evidence" / "gate4-source",
                     )
                 except (OSError, ValueError) as exc:
                     gate4_source_status = "unverified_source_snapshot_missing"
@@ -277,7 +277,8 @@ class PipelineOrchestrator:
                     additional=[str(p) for p in additional_input_paths],
                 )
                 input_path = self._premerge_surfaces_for_union(
-                    boolean_input_paths, work=output_dir,
+                    boolean_input_paths,
+                    work=output_dir,
                 )
                 no_repair = True
                 surface_remesh = False
@@ -338,9 +339,7 @@ class PipelineOrchestrator:
             )
             # strict_tier 정보를 strategy 에 기록 (Generator 가 fallback 회피용으로 참조)
             try:
-                strategy.strict_tier = bool(
-                    strict_tier and str(tier_hint).lower() != "auto"
-                )
+                strategy.strict_tier = bool(strict_tier and str(tier_hint).lower() != "auto")
             except Exception:
                 pass
             if strict_tier and str(tier_hint).lower() != "auto":
@@ -377,7 +376,8 @@ class PipelineOrchestrator:
             else:
                 # 알 수 없는 값 → off 취급 (가장 안전)
                 log.warning(
-                    "auto_retry_unknown_value_fallback_off", value=auto_retry,
+                    "auto_retry_unknown_value_fallback_off",
+                    value=auto_retry,
                 )
                 effective_iters = 1
             log.info(
@@ -430,6 +430,7 @@ class PipelineOrchestrator:
                     # 바뀐 경우 되돌림).
                     if strict_tier and str(tier_hint).lower() != "auto":
                         from core.strategist.tier_selector import canonical_tier
+
                         try:
                             forced = canonical_tier(str(tier_hint))
                         except Exception:
@@ -489,7 +490,9 @@ class PipelineOrchestrator:
                 successful_tier = self._find_successful_tier(generator_log)
                 if successful_tier is None and not _reconstruct_retried:
                     _recon_path = self._reconstruct_surface_last_resort(
-                        preprocessed_path, work_dir, strategy,
+                        preprocessed_path,
+                        work_dir,
+                        strategy,
                     )
                     if _recon_path is not None:
                         log.warning(
@@ -568,6 +571,7 @@ class PipelineOrchestrator:
                     )
                     try:
                         from core.generator.tier_layers_post import LayersPostGenerator
+
                         post_gen = LayersPostGenerator()
                         _post_result_for_bl = post_gen.run(
                             strategy=strategy,
@@ -584,7 +588,8 @@ class PipelineOrchestrator:
                     except Exception as exc:
                         log.warning(
                             "post_layers_stage_exception",
-                            engine=_post_engine, error=str(exc),
+                            engine=_post_engine,
+                            error=str(exc),
                         )
 
                 # U-3 (2026-05-11) — drop residual neg-vol cells
@@ -610,15 +615,19 @@ class PipelineOrchestrator:
                 if (
                     _bl_active_for_drop
                     and os.environ.get(
-                        "AUTO_TESSELL_BL_DROP_NEG_VOL", "0",
-                    ) == "1"
+                        "AUTO_TESSELL_BL_DROP_NEG_VOL",
+                        "0",
+                    )
+                    == "1"
                 ):
                     try:
                         from core.utils.drop_neg_vol_cells import (
                             drop_neg_vol_cells_iterative as _drop_nvc,
                         )
+
                         _skew_thr_raw = os.environ.get(
-                            "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD", "",
+                            "AUTO_TESSELL_BL_DROP_SKEW_THRESHOLD",
+                            "",
                         ).strip()
                         if _skew_thr_raw:
                             _skew_thr = float(_skew_thr_raw)
@@ -638,20 +647,25 @@ class PipelineOrchestrator:
                                 "standard": 4.0,
                                 "fine": 3.0,
                             }.get(_ql, 4.0)
-                        _max_iter = int(os.environ.get(
-                            "AUTO_TESSELL_BL_DROP_MAX_ITER", "8",
-                        ))
+                        _max_iter = int(
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_DROP_MAX_ITER",
+                                "8",
+                            )
+                        )
                         _topo_check = (
                             os.environ.get(
                                 "AUTO_TESSELL_BL_DROP_NEG_VOL_TOPO_CHECK",
                                 "1",
-                            ) == "1"
+                            )
+                            == "1"
                         )
                         _geom_check = (
                             os.environ.get(
                                 "AUTO_TESSELL_BL_DROP_NEG_VOL_GEOM_CHECK",
                                 "1",
-                            ) == "1"
+                            )
+                            == "1"
                         )
                         # web-QA (2026-07-02) — non-ortho outlier drop.
                         # native_bl 이 계단형 표면 위 프리즘을 만들 때 소수
@@ -659,7 +673,8 @@ class PipelineOrchestrator:
                         # 문제 → quality-level 캡보다 1° 낮은 임계로 해당
                         # 셀만 drop.  env 로 override/비활성(0) 가능.
                         _no_thr_raw = os.environ.get(
-                            "AUTO_TESSELL_BL_DROP_NONORTHO_THRESHOLD", "",
+                            "AUTO_TESSELL_BL_DROP_NONORTHO_THRESHOLD",
+                            "",
                         ).strip()
                         if _no_thr_raw:
                             _no_thr: float | None = float(_no_thr_raw)
@@ -668,8 +683,7 @@ class PipelineOrchestrator:
                         else:
                             _ql_no = (
                                 strategy.quality_level.value
-                                if strategy is not None
-                                and hasattr(strategy, "quality_level")
+                                if strategy is not None and hasattr(strategy, "quality_level")
                                 else "standard"
                             )
                             # soft 한계(80/65/60) 바로 아래로 잡아야 잔존
@@ -692,19 +706,24 @@ class PipelineOrchestrator:
                             "drop_neg_vol_cells_done",
                             n_dropped=_drop_stats.get("n_dropped", 0),
                             n_dropped_inverted=_drop_stats.get(
-                                "n_dropped_inverted", 0,
+                                "n_dropped_inverted",
+                                0,
                             ),
                             n_dropped_skew=_drop_stats.get(
-                                "n_dropped_skew", 0,
+                                "n_dropped_skew",
+                                0,
                             ),
                             n_dropped_non_ortho=_drop_stats.get(
-                                "n_dropped_non_ortho", 0,
+                                "n_dropped_non_ortho",
+                                0,
                             ),
                             n_cells_post=_drop_stats.get(
-                                "n_cells_post", 0,
+                                "n_cells_post",
+                                0,
                             ),
                             n_new_boundary=_drop_stats.get(
-                                "n_new_boundary_faces", 0,
+                                "n_new_boundary_faces",
+                                0,
                             ),
                         )
                     except Exception as exc:
@@ -720,22 +739,34 @@ class PipelineOrchestrator:
                 # destroying the surface — Taubin moves vertices instead.
                 if (
                     os.environ.get(
-                        "AUTO_TESSELL_BL_TAUBIN", "0",
-                    ) == "1"
+                        "AUTO_TESSELL_BL_TAUBIN",
+                        "0",
+                    )
+                    == "1"
                 ):
                     try:
                         from core.utils.volume_smoother import (
                             taubin_smooth_polymesh,
                         )
-                        _n_iter = int(os.environ.get(
-                            "AUTO_TESSELL_BL_TAUBIN_ITERS", "5",
-                        ))
-                        _lam = float(os.environ.get(
-                            "AUTO_TESSELL_BL_TAUBIN_LAMBDA", "0.5",
-                        ))
-                        _mu = float(os.environ.get(
-                            "AUTO_TESSELL_BL_TAUBIN_MU", "0.53",
-                        ))
+
+                        _n_iter = int(
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_TAUBIN_ITERS",
+                                "5",
+                            )
+                        )
+                        _lam = float(
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_TAUBIN_LAMBDA",
+                                "0.5",
+                            )
+                        )
+                        _mu = float(
+                            os.environ.get(
+                                "AUTO_TESSELL_BL_TAUBIN_MU",
+                                "0.53",
+                            )
+                        )
                         _t_stats = taubin_smooth_polymesh(
                             case_dir,
                             n_iterations=_n_iter,
@@ -795,7 +826,9 @@ class PipelineOrchestrator:
                 log.info("Pipeline stage: Evaluate", tier=successful_tier)
                 try:
                     _bl_p2_for_eval = getattr(
-                        _post_result_for_bl, "native_bl_phase2", None,
+                        _post_result_for_bl,
+                        "native_bl_phase2",
+                        None,
                     )
                     quality_report = self._evaluate(
                         case_dir=case_dir,
@@ -862,7 +895,8 @@ class PipelineOrchestrator:
                     if strict_tier and str(tier_hint).lower() != "auto":
                         prev_cells = getattr(
                             getattr(quality_report, "checkmesh", None),
-                            "cells", None,
+                            "cells",
+                            None,
                         )
                         if prev_cells is not None and prev_cells == _last_iter_cells:
                             log.warning(
@@ -911,7 +945,8 @@ class PipelineOrchestrator:
         ):
             log.warning(
                 "cross_engine_fallback_triggered",
-                from_mesh_type="poly", to_mesh_type="hex_dominant",
+                from_mesh_type="poly",
+                to_mesh_type="hex_dominant",
                 original_error=result.error,
             )
             retried = self.run(
@@ -942,9 +977,7 @@ class PipelineOrchestrator:
             )
             # annotate: 재시도 성공이라도 originally poly 였음을 표시.
             if retried.error:
-                retried.error = (
-                    f"[cross_engine_fallback poly→hex_dominant] {retried.error}"
-                )
+                retried.error = f"[cross_engine_fallback poly→hex_dominant] {retried.error}"
             else:
                 retried.error = None
             return retried
@@ -1071,7 +1104,9 @@ class PipelineOrchestrator:
             _tm.Trimesh(vertices=V2, faces=F2, process=True).export(str(recon_path))
             log.info(
                 "surface_reconstructed_last_resort",
-                path=str(recon_path), n_faces=int(len(F2)), resolution=res,
+                path=str(recon_path),
+                n_faces=int(len(F2)),
+                resolution=res,
             )
             return recon_path
         except Exception as exc:  # noqa: BLE001
@@ -1164,12 +1199,10 @@ class PipelineOrchestrator:
             return
 
         domain_vol = float(
-            np.prod(
-                np.asarray(strategy.domain.max) - np.asarray(strategy.domain.min)
-            )
+            np.prod(np.asarray(strategy.domain.max) - np.asarray(strategy.domain.min))
         )
 
-        est_cells = domain_vol / (base_cell ** 3)
+        est_cells = domain_vol / (base_cell**3)
         if est_cells > max_cells:
             strategy.domain.base_cell_size = (domain_vol / max_cells) ** (1.0 / 3.0)
             log.info(
@@ -1228,10 +1261,7 @@ class PipelineOrchestrator:
             # post_layers stage 가 발화 (orchestrator line 416 의 num_layers > 0
             # 가드 통과). 그렇지 않으면 BL 체크 ON + tet 일 때 BL 이 만들어지지
             # 않는다.
-            elif (
-                "cfmesh_bl_n_layers" in tier_specific_params
-                and strategy.boundary_layers.enabled
-            ):
+            elif "cfmesh_bl_n_layers" in tier_specific_params and strategy.boundary_layers.enabled:
                 _nL = int(tier_specific_params["cfmesh_bl_n_layers"])
                 if _nL > 0:
                     strategy.boundary_layers.num_layers = _nL

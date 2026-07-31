@@ -8,6 +8,7 @@ dry_run 모드로 Analyzer → Preprocessor → Strategist 단계를 실제 실�
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -97,18 +98,22 @@ def _make_generator_log(tier: str = "tier2_tetwild", status: str = "success") ->
                     tier=tier,
                     status=status,
                     time_seconds=5.0,
-                    mesh_stats=MeshStats(
-                        num_cells=100000,
-                        num_points=50000,
-                        num_faces=300000,
-                        num_internal_faces=250000,
-                        num_boundary_patches=3,
-                        boundary_patches=[
-                            BoundaryPatch(name="inlet", type="patch", num_faces=100),
-                            BoundaryPatch(name="outlet", type="patch", num_faces=100),
-                            BoundaryPatch(name="walls", type="wall", num_faces=5000),
-                        ],
-                    ) if status == "success" else None,
+                    mesh_stats=(
+                        MeshStats(
+                            num_cells=100000,
+                            num_points=50000,
+                            num_faces=300000,
+                            num_internal_faces=250000,
+                            num_boundary_patches=3,
+                            boundary_patches=[
+                                BoundaryPatch(name="inlet", type="patch", num_faces=100),
+                                BoundaryPatch(name="outlet", type="patch", num_faces=100),
+                                BoundaryPatch(name="walls", type="wall", num_faces=5000),
+                            ],
+                        )
+                        if status == "success"
+                        else None
+                    ),
                     error_message=None if status == "success" else "Meshing failed",
                 )
             ],
@@ -482,7 +487,8 @@ class TestPipelineWithMockedGenerator:
         assert result.success is True
         assert result.quality_report is not None
         assert result.quality_report.evaluation_summary.verdict in (
-            Verdict.PASS, Verdict.PASS_WITH_WARNINGS
+            Verdict.PASS,
+            Verdict.PASS_WITH_WARNINGS,
         )
 
     def test_pass_with_warnings_success(self) -> None:
@@ -520,6 +526,88 @@ class TestPipelineWithMockedGenerator:
         # Legacy quality verdict stays separate from a Gate-4 promotion claim.
         assert result.success is True
 
+    def test_gate4_snapshot_survives_generator_work_cleanup(self, tmp_path: Path) -> None:
+        """Gate-4 source evidence is retained outside the disposable work area."""
+        from core.generator.polymesh_writer import write_generic_polymesh
+
+        source = tmp_path / "source.stl"
+        source_bytes = b"""solid tetra
+facet normal 0 0 -1
+ outer loop
+  vertex 0 0 0
+  vertex 0 1 0
+  vertex 1 0 0
+ endloop
+endfacet
+facet normal 0 -1 0
+ outer loop
+  vertex 0 0 0
+  vertex 1 0 0
+  vertex 0 0 1
+ endloop
+endfacet
+facet normal 1 1 1
+ outer loop
+  vertex 1 0 0
+  vertex 0 1 0
+  vertex 0 0 1
+ endloop
+endfacet
+facet normal -1 0 0
+ outer loop
+  vertex 0 1 0
+  vertex 0 0 0
+  vertex 0 0 1
+ endloop
+endfacet
+endsolid tetra
+"""
+        source.write_bytes(source_bytes)
+        output = tmp_path / "case"
+
+        generator = _make_mock_generator()
+
+        def write_mesh_after_work_cleanup(*, case_dir: Path, **_kwargs: Any) -> GeneratorLog:
+            shutil.rmtree(case_dir / "_work")
+            points = np.asarray(
+                ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+                dtype=np.float64,
+            )
+            faces = [[[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]]]
+            write_generic_polymesh(points, faces, case_dir)
+            return _make_generator_log()
+
+        generator.run.side_effect = write_mesh_after_work_cleanup
+        orchestrator = PipelineOrchestrator(
+            generator=generator,
+            checker=_make_mock_checker(),
+            metrics_computer=_make_mock_metrics(),
+            fidelity_checker=_make_mock_fidelity(),
+            reporter=EvaluationReporter(),
+        )
+
+        result = orchestrator.run(
+            input_path=source,
+            output_dir=output,
+            quality_level="draft",
+            max_iterations=1,
+            auto_retry="off",
+            write_of_case=False,
+        )
+
+        assert result.quality_report is not None
+        evidence = result.quality_report.evaluation_summary.gate4_evidence
+        assert evidence is not None
+        assert evidence.status == "unverified_metric_missing"
+        assert evidence.source is not None
+        snapshot = Path(evidence.source.snapshot_path)
+        assert snapshot.parent == output / "_evidence" / "gate4-source"
+        assert snapshot.is_file() and not snapshot.is_symlink()
+        assert snapshot.read_bytes() == source_bytes
+        assert evidence.actual_surface_metrics is not None
+        assert evidence.actual_surface_metrics.status == "unverified_authority_incomplete"
+        assert evidence.gate4_pass is False
+
     def test_generator_log_stored(self) -> None:
         """generator_log가 PipelineResult에 저장된다."""
         result = self._run()
@@ -535,8 +623,10 @@ class TestPipelineWithMockedGenerator:
         """auto_retry=continue + max_iterations 까지 재시도한다 (mock 동일 결과)."""
         cm = _make_checkmesh_result(max_non_orthogonality=75.0)  # hard fail for standard
         result = self._run(
-            checker_cm=cm, quality_level="standard",
-            max_iterations=2, auto_retry="continue",
+            checker_cm=cm,
+            quality_level="standard",
+            max_iterations=2,
+            auto_retry="continue",
         )
         # After 2 iterations both FAIL → success=False
         assert result.success is False
@@ -546,20 +636,22 @@ class TestPipelineWithMockedGenerator:
         """auto_retry=off (v0.4 기본) → Hard FAIL 이어도 1 회만 시도."""
         cm = _make_checkmesh_result(max_non_orthogonality=75.0)
         result = self._run(
-            checker_cm=cm, quality_level="standard",
-            max_iterations=5, auto_retry="off",
+            checker_cm=cm,
+            quality_level="standard",
+            max_iterations=5,
+            auto_retry="off",
         )
         assert result.success is False
-        assert result.iterations == 1, (
-            f"auto_retry=off 인데 {result.iterations} 회 반복됨"
-        )
+        assert result.iterations == 1, f"auto_retry=off 인데 {result.iterations} 회 반복됨"
 
     def test_auto_retry_once_stops_after_two(self) -> None:
         """auto_retry=once → FAIL 시 최대 2 회만 시도."""
         cm = _make_checkmesh_result(max_non_orthogonality=75.0)
         result = self._run(
-            checker_cm=cm, quality_level="standard",
-            max_iterations=10, auto_retry="once",
+            checker_cm=cm,
+            quality_level="standard",
+            max_iterations=10,
+            auto_retry="once",
         )
         assert result.success is False
         assert result.iterations == 2
