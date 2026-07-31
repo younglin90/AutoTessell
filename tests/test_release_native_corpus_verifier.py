@@ -59,6 +59,17 @@ def _manifest(source_root: Path, first: Path, second: Path, third: Path) -> dict
     second_identity = _polymesh_identity(second)
     third_identity = _polymesh_identity(third)
     assert first_identity is not None and second_identity is not None and third_identity is not None
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    for root, identity in (
+        (first, first_identity),
+        (second, second_identity),
+        (third, third_identity),
+    ):
+        report_path = root / "quality-report.json"
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        report["evaluation_summary"]["gate4_evidence"]["source"] = {"sha256": source_hash}
+        report["evaluation_summary"]["gate4_evidence"]["output"] = identity
+        report_path.write_text(json.dumps(report), encoding="utf-8")
     return {
         "schema": "autotessell/release-native-corpus/v1",
         "cases": [
@@ -73,7 +84,7 @@ def _manifest(source_root: Path, first: Path, second: Path, third: Path) -> dict
                 "source_snapshot": {
                     "artifact_dir": str(source_root.resolve()),
                     "path": "source.stl",
-                    "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                    "sha256": source_hash,
                 },
                 "runs": [
                     {
@@ -133,6 +144,10 @@ def test_complete_bounded_evidence_still_never_returns_release_pass(tmp_path: Pa
         "mesh_type": "tet",
         "quality_level": "draft",
         "tier_evaluated": "tier_native_tet",
+    }
+    assert row["runs"][0]["gate4_attestation"] == {
+        "source_sha256": hashlib.sha256((first / "source.stl").read_bytes()).hexdigest(),
+        "poly_mesh": _polymesh_identity(first),
     }
 
 
@@ -288,6 +303,50 @@ def test_native_product_contract_is_required_typed_and_exact(tmp_path: Path) -> 
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "native_product_contract_mismatch"
+
+
+def test_quality_report_gate4_identity_is_required_and_crossbound(tmp_path: Path) -> None:
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
+    _write_run(first)
+    _write_run(second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
+    report_path = first / "quality-report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["evaluation_summary"]["gate4_evidence"].pop("output")
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    manifest["cases"][0]["runs"][0]["quality_report_sha256"] = hashlib.sha256(
+        report_path.read_bytes()
+    ).hexdigest()
+
+    outcome = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert outcome["status"] == "UNVERIFIED"
+    assert outcome["cases"][0]["reason"] == "quality_report_gate4_identity_invalid"
+
+    manifest = _manifest(first, first, second, third)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["evaluation_summary"]["gate4_evidence"]["source"]["sha256"] = "0" * 64
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    manifest["cases"][0]["runs"][0]["quality_report_sha256"] = hashlib.sha256(
+        report_path.read_bytes()
+    ).hexdigest()
+    outcome = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert outcome["status"] == "UNVERIFIED"
+    assert outcome["cases"][0]["reason"] == "quality_report_source_identity_mismatch"
+
+    manifest = _manifest(first, first, second, third)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report["evaluation_summary"]["gate4_evidence"]["output"]["sha256"] = "0" * 64
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    manifest["cases"][0]["runs"][0]["quality_report_sha256"] = hashlib.sha256(
+        report_path.read_bytes()
+    ).hexdigest()
+    outcome = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert outcome["status"] == "UNVERIFIED"
+    assert outcome["cases"][0]["reason"] == "quality_report_output_identity_mismatch"
 
 
 def test_legacy_top_level_fields_are_explicitly_supported_but_ambiguous_shape_rejects(

@@ -176,6 +176,28 @@ def _quality_report_product_contract(value: object) -> dict[str, str] | None:
     )
 
 
+def _quality_report_gate4_identity(value: object) -> tuple[str, dict[str, object]] | None:
+    if not isinstance(value, dict) or not isinstance(value.get("evaluation_summary"), dict):
+        return None
+    gate4_evidence = value["evaluation_summary"].get("gate4_evidence")
+    if not isinstance(gate4_evidence, dict):
+        return None
+    source = gate4_evidence.get("source")
+    output = gate4_evidence.get("output")
+    if not isinstance(source, dict) or not isinstance(output, dict):
+        return None
+    source_hash = source.get("sha256")
+    output_identity = _expected_polymesh_identity(
+        {
+            "sha256": output.get("sha256"),
+            "file_sha256": output.get("file_sha256"),
+        }
+    )
+    if not _canonical_sha256(source_hash) or output_identity is None:
+        return None
+    return source_hash, output_identity
+
+
 def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
     if not isinstance(case, dict) or not isinstance(case.get("id"), str) or not case["id"]:
         return {"status": "UNVERIFIED", "reason": "invalid_case_id"}
@@ -256,6 +278,26 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
                 "status": "UNVERIFIED",
                 "reason": "native_product_contract_mismatch",
             }
+        report_gate4_identity = _quality_report_gate4_identity(quality_report)
+        if report_gate4_identity is None:
+            return {
+                "id": case["id"],
+                "status": "UNVERIFIED",
+                "reason": "quality_report_gate4_identity_invalid",
+            }
+        report_source_hash, report_mesh = report_gate4_identity
+        if report_source_hash != expected_source_hash:
+            return {
+                "id": case["id"],
+                "status": "UNVERIFIED",
+                "reason": "quality_report_source_identity_mismatch",
+            }
+        if report_mesh != actual_mesh:
+            return {
+                "id": case["id"],
+                "status": "UNVERIFIED",
+                "reason": "quality_report_output_identity_mismatch",
+            }
         negative_volumes, unverified_fields = quality_evidence
         if negative_volumes != 0:
             return {"id": case["id"], "status": "UNVERIFIED", "reason": "negative_volumes_not_zero"}
@@ -265,6 +307,10 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
                 "poly_mesh_sha256": actual_mesh["sha256"],
                 "quality_report_sha256": actual_quality_report_hash,
                 "native_product_contract": observed_product_contract,
+                "gate4_attestation": {
+                    "source_sha256": report_source_hash,
+                    "poly_mesh": report_mesh,
+                },
                 "gate4_unverified_fields": unverified_fields,
             }
         )
