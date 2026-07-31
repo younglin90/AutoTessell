@@ -21,6 +21,32 @@ _NATIVE_PRODUCT_CONTRACT_FIELDS = (
     "checker_engine_used",
     "quality_level",
 )
+_REQUIRED_NATIVE_CASE_CONTRACTS = {
+    "native-tet-cube": {
+        "tier_evaluated": "tier_native_tet",
+        "mesh_type": "tet",
+        "checker_engine_used": "native",
+        "quality_level": "draft",
+    },
+    "native-tet-sphere": {
+        "tier_evaluated": "tier_native_tet",
+        "mesh_type": "tet",
+        "checker_engine_used": "native",
+        "quality_level": "draft",
+    },
+    "native-hex-cube": {
+        "tier_evaluated": "tier_native_hex",
+        "mesh_type": "hex_dominant",
+        "checker_engine_used": "native",
+        "quality_level": "draft",
+    },
+    "native-poly-cube": {
+        "tier_evaluated": "tier_native_poly",
+        "mesh_type": "poly",
+        "checker_engine_used": "native",
+        "quality_level": "draft",
+    },
+}
 
 
 def _sha256(path: Path) -> str:
@@ -327,9 +353,8 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
     }
 
 
-def _global_manifest_identity_reason(cases: list[object], allowed: dict[str, Path]) -> str | None:
+def _duplicate_case_id_reason(cases: list[object]) -> str | None:
     seen_case_ids: set[str] = set()
-    seen_run_dirs: set[str] = set()
     for case in cases:
         if not isinstance(case, dict):
             continue
@@ -339,6 +364,14 @@ def _global_manifest_identity_reason(cases: list[object], allowed: dict[str, Pat
         if case_id in seen_case_ids:
             return "duplicate_case_id"
         seen_case_ids.add(case_id)
+    return None
+
+
+def _global_artifact_identity_reason(cases: list[object], allowed: dict[str, Path]) -> str | None:
+    seen_run_dirs: set[str] = set()
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
         runs = case.get("runs")
         if not isinstance(runs, list):
             continue
@@ -359,6 +392,31 @@ def _global_manifest_identity_reason(cases: list[object], allowed: dict[str, Pat
     return None
 
 
+def _required_native_case_matrix_reason(cases: list[object]) -> str | None:
+    """Require exactly the independently scoped first-party native corpus."""
+    case_ids: set[str] = set()
+    contracts: dict[str, dict[str, str] | None] = {}
+    for case in cases:
+        if not isinstance(case, dict):
+            return "required_native_case_missing"
+        case_id = case.get("id")
+        if not isinstance(case_id, str) or not case_id:
+            return "required_native_case_missing"
+        case_ids.add(case_id)
+        contracts[case_id] = _native_product_contract(case.get("native_product_contract"))
+    required_ids = set(_REQUIRED_NATIVE_CASE_CONTRACTS)
+    if required_ids - case_ids:
+        return "required_native_case_missing"
+    if case_ids - required_ids:
+        return "required_native_case_extra"
+    if any(
+        contracts[case_id] != _REQUIRED_NATIVE_CASE_CONTRACTS[case_id]
+        for case_id in required_ids
+    ):
+        return "required_native_case_contract_mismatch"
+    return None
+
+
 def verify_release_native_corpus(manifest: object, artifact_dirs: object) -> dict[str, object]:
     """Verify bounded evidence, always returning an ``UNVERIFIED`` release state."""
     allowed = _allowed_artifact_dirs(artifact_dirs)
@@ -370,9 +428,15 @@ def verify_release_native_corpus(manifest: object, artifact_dirs: object) -> dic
         or not manifest["cases"]
     ):
         return {"status": "UNVERIFIED", "reason": "invalid_manifest_or_artifact_dirs", "cases": ()}
-    global_identity_reason = _global_manifest_identity_reason(manifest["cases"], allowed)
-    if global_identity_reason is not None:
-        return {"status": "UNVERIFIED", "reason": global_identity_reason, "cases": ()}
+    duplicate_case_id_reason = _duplicate_case_id_reason(manifest["cases"])
+    if duplicate_case_id_reason is not None:
+        return {"status": "UNVERIFIED", "reason": duplicate_case_id_reason, "cases": ()}
+    required_matrix_reason = _required_native_case_matrix_reason(manifest["cases"])
+    if required_matrix_reason is not None:
+        return {"status": "UNVERIFIED", "reason": required_matrix_reason, "cases": ()}
+    artifact_identity_reason = _global_artifact_identity_reason(manifest["cases"], allowed)
+    if artifact_identity_reason is not None:
+        return {"status": "UNVERIFIED", "reason": artifact_identity_reason, "cases": ()}
     cases = tuple(_verify_case(case, allowed) for case in manifest["cases"])
     return {
         "status": "UNVERIFIED",
