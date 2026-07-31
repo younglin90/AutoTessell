@@ -3191,6 +3191,25 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 143 pre-merge checkpoint -- 2026-07-31
+
+### Pipeline retry-fixture regression repair evidence
+
+- Existing code commit `da1fd38c` preserves the retry-policy scope while
+  replacing stale `75°` non-orthogonality mocks with `negative_volumes=1`.
+  `tier2_tetwild` standard production hard cap is `90°`, so `75°` no longer
+  creates the hard failure those retry tests require.
+- Targeted runner passed at concurrency `1` in `4.908 s`; unmasked
+  `tests/test_pipeline.py` passed in `67.556 s`.  Durable runner evidence:
+  `/tmp/autotessell-c143-pipeline-*-evidence.json`.
+
+### Release state
+
+- Gate 3 remains `UNVERIFIED`: complete full-suite and CI matrix evidence are
+  absent.  No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No
+  routing, default, UI, mesh, provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 142 pre-merge checkpoint -- 2026-07-31
 
 ### Pipeline automated-test blocker observation
