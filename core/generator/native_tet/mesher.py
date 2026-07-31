@@ -6904,11 +6904,12 @@ def generate_native_tet(
             reason=str(_source_prefix_restore_exc)[:160],
         )
 
-    # Rebuild connectivity only over unchanged coordinates when a previous
-    # local mutation leaves overlapping same-side internal faces.  Admission
-    # requires exact source ownership plus a strict debt decrease; every
-    # other result keeps the original arrays byte-for-byte.
-    if os.environ.get("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION", "1") != "0":
+    # Experimental default-OFF transaction.  Rebuild connectivity only over
+    # unchanged coordinates when a previous local mutation leaves overlapping
+    # same-side internal faces.  Admission requires exact source ownership
+    # plus a strict debt decrease; every other result keeps original arrays
+    # byte-for-byte.
+    if os.environ.get("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION") == "1":
         try:
             from core.generator.native_tet.same_side_retriangulation import (
                 retriangulate_if_strictly_safer,

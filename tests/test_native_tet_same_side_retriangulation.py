@@ -19,7 +19,7 @@ def test_sphere_retriangulation_strictly_reduces_same_side_debt(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setenv("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION", "0")
+    monkeypatch.delenv("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION", raising=False)
     mesh = read_stl(_SPHERE)
     result = generate_native_tet(
         np.ascontiguousarray(mesh.vertices, dtype=np.float64),
@@ -31,6 +31,10 @@ def test_sphere_retriangulation_strictly_reduces_same_side_debt(
         enable_phase_b=False,
         enable_phase_c=False,
     )
+    assert "same_side_retriangulation_transaction" not in result.debug_info
+    assert result.success is False
+    assert not (tmp_path / "sphere" / "constant" / "polyMesh").exists()
+    assert result.debug_info["strict_source_topology"]["valid"] is False
     transaction = retriangulate_if_strictly_safer(
         mesh.vertices,
         mesh.faces,

@@ -12,7 +12,11 @@ from core.generator.native_tet.mesher import generate_native_tet
 _SPHERE = Path(__file__).resolve().parent / "benchmarks" / "sphere.stl"
 
 
-def test_sphere_sss_relocation_rejects_source_losing_candidate(tmp_path: Path) -> None:
+def test_sphere_sss_relocation_rejects_source_losing_candidate(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION", "1")
     mesh = read_stl(_SPHERE)
     case_dir = tmp_path / "sphere"
 

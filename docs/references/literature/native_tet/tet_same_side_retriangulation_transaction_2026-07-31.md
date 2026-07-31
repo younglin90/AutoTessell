@@ -15,6 +15,10 @@ mesher implementation.  Delaunay refinement context: Shewchuk 1998, DOI
 
 ## Admission contract
 
+Promotion: `L1_PASS / EXPERIMENTAL_KEEP`.  Runtime transaction is default OFF;
+only `AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION=1` enables it.  Unset or any
+other value preserves prior strict rejection and emits no transaction artifact.
+
 Candidate commits only when all hold:
 
 - source component bijection;
