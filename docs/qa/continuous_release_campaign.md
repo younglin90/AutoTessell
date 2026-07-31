@@ -3191,6 +3191,25 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 193 checkpoint -- 2026-08-01
+
+### Gate-4 integral admissibility diagnostics
+
+- Exact volume and centroid observations now expose separate source/output
+  admissibility: only closed, orientation-consistent, bounded native-SI-clean
+  surfaces are admitted.  Cap, predicate/error, invalid, and intersection
+  reasons remain concrete `UNVERIFIED` states; integrals emit only when both
+  surfaces are admitted.
+- Focused c1 validation passed in `6.315892664 s`:
+  `/tmp/autotessell-c193-gate4-integral-runner-evidence.json`.  Focused ruff
+  passed; the broader schemas lint remains baseline `UP037` at
+  `core/schemas.py:324`, not changed by this card.
+
+### Release state
+
+- Gate 4 and release remain `UNVERIFIED`; no claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 192 checkpoint -- 2026-08-01
 
 ### Gate-4 bounded native self-intersection availability

@@ -535,6 +535,8 @@ class Gate4ActualSurfaceMetricEvidence(BaseModel):
     signed_status: str = "unverified_not_measured"
     signed_mean_source_to_output: float | None = None
     signed_mean_output_to_source: float | None = None
+    source_integral_admissibility: str = "unverified_not_measured"
+    output_integral_admissibility: str = "unverified_not_measured"
     integral_status: str = "unverified_not_measured"
     source_signed_volume: float | None = None
     output_signed_volume: float | None = None

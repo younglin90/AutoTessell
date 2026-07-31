@@ -63,6 +63,8 @@ class ExactSurfaceMetricRecord:
     signed_status: str
     signed_mean_source_to_output: float | None
     signed_mean_output_to_source: float | None
+    source_integral_admissibility: str
+    output_integral_admissibility: str
     integral_status: str
     source_signed_volume: float | None
     output_signed_volume: float | None
@@ -92,6 +94,8 @@ def _invalid_record(status: str, sample_count: int) -> ExactSurfaceMetricRecord:
         signed_status="unverified_not_measured",
         signed_mean_source_to_output=None,
         signed_mean_output_to_source=None,
+        source_integral_admissibility="unverified_surface_input_invalid",
+        output_integral_admissibility="unverified_surface_input_invalid",
         integral_status="unverified_not_measured",
         source_signed_volume=None,
         output_signed_volume=None,
@@ -221,6 +225,19 @@ def _bounded_native_self_intersection_status(
         return "unverified_native_predicate_failed"
 
 
+def _integral_admissibility(
+    *,
+    closed_and_oriented: bool,
+    self_intersection_status: str,
+) -> str:
+    """State the exact precondition blocking one surface's integral."""
+    if not closed_and_oriented:
+        return "unverified_surface_not_closed_or_orientation_consistent"
+    if self_intersection_status == "measured_no_intersections":
+        return "admitted_closed_orientation_consistent_native_si_clean"
+    return self_intersection_status
+
+
 def _oriented_volume_and_centroid(
     points: NDArray[np.float64],
     triangles: NDArray[np.int64],
@@ -324,6 +341,14 @@ def measure_gate4_exact_surface_metrics(
         if output_closed
         else "unverified_surface_not_closed_or_orientation_consistent"
     )
+    source_integral_admissibility = _integral_admissibility(
+        closed_and_oriented=source_closed,
+        self_intersection_status=source_si_status,
+    )
+    output_integral_admissibility = _integral_admissibility(
+        closed_and_oriented=output_closed,
+        self_intersection_status=output_si_status,
+    )
 
     source_samples, source_sample_triangles = _sample_surface(
         source_points, source_triangles, count=sample_count, seed=0
@@ -391,32 +416,33 @@ def measure_gate4_exact_surface_metrics(
     output_volume: float | None = None
     volume_error_pct: float | None = None
     centroid_shift_rel: float | None = None
-    if source_closed and output_closed:
-        if (
-            source_si_status == "measured_no_intersections"
-            and output_si_status == "measured_no_intersections"
-        ):
-            (
-                integral_status,
-                source_volume,
-                output_volume,
-                volume_error_pct,
-                centroid_shift_rel,
-            ) = _integral_observation(
-                source_points,
-                source_triangles,
-                output_points,
-                output_triangles,
-            )
-            if volume_error_pct is not None and centroid_shift_rel is not None:
-                available.extend(
-                    (
-                        "integral.volume_error_pct",
-                        "integral.centroid_shift_rel",
-                    )
+    if (
+        source_integral_admissibility
+        == "admitted_closed_orientation_consistent_native_si_clean"
+        and output_integral_admissibility
+        == "admitted_closed_orientation_consistent_native_si_clean"
+    ):
+        (
+            integral_status,
+            source_volume,
+            output_volume,
+            volume_error_pct,
+            centroid_shift_rel,
+        ) = _integral_observation(
+            source_points,
+            source_triangles,
+            output_points,
+            output_triangles,
+        )
+        if volume_error_pct is not None and centroid_shift_rel is not None:
+            available.extend(
+                (
+                    "integral.volume_error_pct",
+                    "integral.centroid_shift_rel",
                 )
-        else:
-            integral_status = "unverified_exhaustive_native_self_intersection_required"
+            )
+    elif source_closed and output_closed:
+        integral_status = "unverified_exhaustive_native_self_intersection_required"
 
     signed_status = (
         "unverified_exact_signed_sample_predicate_unavailable"
@@ -443,6 +469,8 @@ def measure_gate4_exact_surface_metrics(
         signed_status=signed_status,
         signed_mean_source_to_output=None,
         signed_mean_output_to_source=None,
+        source_integral_admissibility=source_integral_admissibility,
+        output_integral_admissibility=output_integral_admissibility,
         integral_status=integral_status,
         source_signed_volume=source_volume,
         output_signed_volume=output_volume,

@@ -62,6 +62,14 @@ def test_open_surface_measures_distance_but_defers_normals() -> None:
     assert record.normal_status == "unverified_surface_not_closed_or_orientation_consistent"
     assert record.normal_p95_deg is None
     assert record.normal_flipped is None
+    assert (
+        record.source_integral_admissibility
+        == "unverified_surface_not_closed_or_orientation_consistent"
+    )
+    assert (
+        record.output_integral_admissibility
+        == "unverified_surface_not_closed_or_orientation_consistent"
+    )
     assert record.gate4_pass is False
 
 
@@ -126,6 +134,14 @@ def test_clean_closed_native_audit_enables_oriented_integrals_only(monkeypatch) 
 
     assert record.source_self_intersection_status == "measured_no_intersections"
     assert record.output_self_intersection_status == "measured_no_intersections"
+    assert (
+        record.source_integral_admissibility
+        == "admitted_closed_orientation_consistent_native_si_clean"
+    )
+    assert (
+        record.output_integral_admissibility
+        == "admitted_closed_orientation_consistent_native_si_clean"
+    )
     assert "topology.self_intersections" in record.available_fields
     assert "topology.self_intersections" not in record.unverified_fields
     assert record.integral_status == "measured_closed_orientation_consistent_native_si_clean"
@@ -148,6 +164,8 @@ def test_intersection_or_missing_native_audit_keeps_integrals_unverified(monkeyp
     )
 
     assert record.integral_status == "unverified_exhaustive_native_self_intersection_required"
+    assert record.source_integral_admissibility == "unverified_native_predicate_unavailable"
+    assert record.output_integral_admissibility == "unverified_native_predicate_unavailable"
     assert "topology.self_intersections" in record.unverified_fields
     assert record.volume_error_pct is None
     assert record.centroid_shift_rel is None
