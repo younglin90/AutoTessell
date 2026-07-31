@@ -3191,6 +3191,33 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 118 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tet sphere actual Gate-4 rerun after durable binding
+
+- The bounded strict native-Tet sphere runner passed at concurrency `1` in
+  `16.36 s`: `2224` cells and `0` negative elements.  Source identity
+  `b44c…f7ac4` and output identity `c002…996b` remained stable through the
+  actual observation.
+- Output topology is structurally valid: components `1`, boundary loops `0`,
+  Euler characteristic `2`, genus `0`.  Deterministic `10000`-sample actual
+  metrics report symmetric sampled maximum
+  `3.1401849173675503e-16`, normal p95 `1.2074e-6°`, normal p99
+  `1.7075e-6°`, and `0` flipped normals.
+- This evidence remains `unverified_metric_incomplete`: self-intersection,
+  signed distance, integral measures, authoritative feature identity, patch,
+  physical-group, and provenance evidence are absent.  It is not a Gate-4
+  promotion.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; all evidence retains `gate4_pass=false`.  No
+  Gate is promoted to `PASS`, and Gates 1--15 remain unmet.  No routing,
+  default, UI, mesh, topology, provenance, or `third_party/` behavior changed.
+- Next action: obtain the missing authoritative comparisons; timeout, error,
+  missing, or invalid evidence remains `UNVERIFIED`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 117 pre-merge checkpoint -- 2026-07-31
 
 ### Gate-4 source binding across generator-owned cleanup
