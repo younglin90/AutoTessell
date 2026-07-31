@@ -348,6 +348,13 @@ if(AUTOTESSELL_BUILD_FIRST_PARTY_EVIDENCE)
       --compiler-id "${CMAKE_CXX_COMPILER_ID}"
       --compiler-version "${CMAKE_CXX_COMPILER_VERSION}"
       --cxx-standard 23
+      --os "${CMAKE_SYSTEM_NAME}"
+      --build-type "${CMAKE_BUILD_TYPE}"
+      --install-first-party-native "${AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE}"
+      --build-cfmesh "${BUILD_CFMESH}"
+      --build-cinolib-hex "${BUILD_CINOLIB_HEX}"
+      --build-ftetwild "${BUILD_FTETWILD}"
+      --build-robusthex "${BUILD_ROBUSTHEX}"
       ${_AUTOTESSELL_IDENTITY_ARGS}
     DEPENDS
       ${_AUTOTESSELL_FIRST_PARTY_NATIVE_TARGETS}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.machinery
+import json
 import re
 from pathlib import Path
 from types import ModuleType
@@ -13,6 +14,21 @@ from scripts import native_build_evidence as subject
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "auto_tessell_core/native_build_contract.json"
+CMAKE = ROOT / "auto_tessell_core" / "CMakeLists.txt"
+
+
+def _release_configuration() -> dict[str, object]:
+    return {
+        "adapter_builds": {
+            "BUILD_CFMESH": False,
+            "BUILD_CINOLIB_HEX": False,
+            "BUILD_FTETWILD": False,
+            "BUILD_ROBUSTHEX": False,
+        },
+        "build_type": "Release",
+        "install_first_party_native": True,
+        "os": "Linux",
+    }
 
 
 def _dummy_build(tmp_path: Path, module_names: list[str]) -> Path:
@@ -148,9 +164,11 @@ def test_generated_manifest_verifies_hashes_identity_and_exact_abi(
         compiler_id="GNU",
         compiler_version="13.3.0",
         cxx_standard=23,
+        configuration=_release_configuration(),
     )
     assert len(manifest["modules"]) == 8
     assert manifest["source_identity"] == archive_identity
+    assert manifest["configuration"] == _release_configuration()
     verified = subject.verify_build_evidence(
         contract_path=CONTRACT,
         source_root=ROOT,
@@ -158,6 +176,18 @@ def test_generated_manifest_verifies_hashes_identity_and_exact_abi(
         source_identity=archive_identity,
     )
     assert verified == manifest
+
+    tampered = json.loads(manifest_path.read_text(encoding="utf-8"))
+    tampered["configuration"]["build_type"] = "Debug"
+    manifest_path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(subject.EvidenceError, match="release build type must be Release"):
+        subject.verify_build_evidence(
+            contract_path=CONTRACT,
+            source_root=ROOT,
+            build_dir=build_dir,
+            source_identity=archive_identity,
+        )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     native_snap = subject.find_binary(build_dir, "native_snap")
     native_snap.write_bytes(b"tampered")
@@ -183,3 +213,40 @@ def test_archive_build_derives_truthful_content_identity(
     assert derived != subject.archive_content_identity("a" * 64, "c" * 64)
     with pytest.raises(subject.EvidenceError, match="does not match derived"):
         subject.resolve_source_identity(tmp_path, "archive:sha256:" + "0" * 64, derived)
+
+
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+    [
+        (lambda value: value.__setitem__("os", ""), "release build OS is missing"),
+        (lambda value: value.__setitem__("build_type", "Debug"), "release build type must be Release"),
+        (
+            lambda value: value.__setitem__("install_first_party_native", False),
+            "install first-party native profile is not enabled",
+        ),
+        (
+            lambda value: value["adapter_builds"].__setitem__("BUILD_CFMESH", True),
+            "external adapter build must be disabled",
+        ),
+    ],
+)
+def test_release_configuration_matrix_fails_closed(
+    mutator: object, message: str
+) -> None:
+    configuration = _release_configuration()
+    mutator(configuration)  # type: ignore[operator]
+    assert any(message in error for error in subject.release_configuration_errors(configuration))
+
+
+def test_cmake_evidence_declares_the_release_install_matrix() -> None:
+    cmake = CMAKE.read_text(encoding="utf-8")
+    for flag in (
+        '--os "${CMAKE_SYSTEM_NAME}"',
+        '--build-type "${CMAKE_BUILD_TYPE}"',
+        '--install-first-party-native "${AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE}"',
+        '--build-cfmesh "${BUILD_CFMESH}"',
+        '--build-cinolib-hex "${BUILD_CINOLIB_HEX}"',
+        '--build-ftetwild "${BUILD_FTETWILD}"',
+        '--build-robusthex "${BUILD_ROBUSTHEX}"',
+    ):
+        assert flag in cmake

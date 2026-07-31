@@ -21,10 +21,72 @@ MANIFEST_FILENAME = "autotessell_native_build_manifest.json"
 WHEEL_CONTRACT_FILENAME = "autotessell_native_build_contract.json"
 _GIT_IDENTITY = re.compile(r"git:[0-9a-f]{40}\Z")
 _ARCHIVE_IDENTITY = re.compile(r"archive:sha256:[0-9a-f]{64}\Z")
+_ADAPTER_BUILD_OPTIONS = (
+    "BUILD_CFMESH",
+    "BUILD_CINOLIB_HEX",
+    "BUILD_FTETWILD",
+    "BUILD_ROBUSTHEX",
+)
 
 
 class EvidenceError(RuntimeError):
     """Raised when native build evidence is incomplete or inconsistent."""
+
+
+def release_configuration_errors(configuration: object) -> list[str]:
+    """Return fail-closed errors for the one declared clean-install matrix row."""
+    if not isinstance(configuration, Mapping):
+        return ["manifest release build configuration is missing"]
+    expected_keys = {"adapter_builds", "build_type", "install_first_party_native", "os"}
+    if set(configuration) != expected_keys:
+        return ["manifest release build configuration keys are invalid"]
+    errors: list[str] = []
+    system_name = configuration["os"]
+    if not isinstance(system_name, str) or not system_name.strip():
+        errors.append("manifest release build OS is missing")
+    if configuration["build_type"] != "Release":
+        errors.append("manifest release build type must be Release")
+    if configuration["install_first_party_native"] is not True:
+        errors.append("manifest install first-party native profile is not enabled")
+    adapters = configuration["adapter_builds"]
+    if not isinstance(adapters, Mapping) or set(adapters) != set(_ADAPTER_BUILD_OPTIONS):
+        errors.append("manifest external adapter build keys are invalid")
+    elif any(adapters[name] is not False for name in _ADAPTER_BUILD_OPTIONS):
+        errors.append("manifest external adapter build must be disabled")
+    return errors
+
+
+def release_configuration_from_cmake(
+    *,
+    system_name: str,
+    build_type: str,
+    install_first_party_native: str,
+    adapter_builds: Mapping[str, str],
+) -> dict[str, Any]:
+    """Normalize CMake's declared Release install configuration or fail closed."""
+    def cmake_bool(name: str, value: str) -> bool:
+        if value == "ON":
+            return True
+        if value == "OFF":
+            return False
+        raise EvidenceError(f"CMake option {name} must be ON or OFF, got {value!r}")
+
+    if set(adapter_builds) != set(_ADAPTER_BUILD_OPTIONS):
+        raise EvidenceError("CMake external adapter build keys are invalid")
+    configuration: dict[str, Any] = {
+        "adapter_builds": {
+            name: cmake_bool(name, adapter_builds[name]) for name in _ADAPTER_BUILD_OPTIONS
+        },
+        "build_type": build_type,
+        "install_first_party_native": cmake_bool(
+            "AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE", install_first_party_native
+        ),
+        "os": system_name,
+    }
+    errors = release_configuration_errors(configuration)
+    if errors:
+        raise EvidenceError("\n".join(errors))
+    return configuration
 
 
 def sha256_file(path: Path) -> str:
@@ -206,6 +268,7 @@ def generate_manifest(
     compiler_id: str,
     compiler_version: str,
     cxx_standard: int,
+    configuration: Mapping[str, Any],
 ) -> dict[str, Any]:
     contract = load_contract(contract_path)
     source_rows, aggregate_hash = source_evidence(contract, source_root)
@@ -232,6 +295,9 @@ def generate_manifest(
         }
     if errors:
         raise EvidenceError("\n".join(errors))
+    configuration_errors = release_configuration_errors(configuration)
+    if configuration_errors:
+        raise EvidenceError("\n".join(configuration_errors))
     manifest = {
         "compiler": {
             "cxx_standard": cxx_standard,
@@ -239,6 +305,7 @@ def generate_manifest(
             "version": compiler_version,
         },
         "contract_sha256": contract_hash,
+        "configuration": dict(configuration),
         "modules": modules,
         "python_soabi": sysconfig.get_config_var("SOABI"),
         "schema": 1,
@@ -320,6 +387,7 @@ def verify_build_evidence(
                 errors.append("manifest C++ standard is not 23")
             if not compiler.get("id") or not compiler.get("version"):
                 errors.append("manifest compiler id/version is missing")
+        errors.extend(release_configuration_errors(manifest.get("configuration")))
         identity = manifest.get("source_identity")
         kind = manifest.get("source_identity_kind")
         if kind == "git":
@@ -426,6 +494,11 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--compiler-id", required=True)
     generate.add_argument("--compiler-version", required=True)
     generate.add_argument("--cxx-standard", type=int, required=True)
+    generate.add_argument("--os", required=True)
+    generate.add_argument("--build-type", required=True)
+    generate.add_argument("--install-first-party-native", required=True)
+    for option in _ADAPTER_BUILD_OPTIONS:
+        generate.add_argument("--" + option.lower().replace("_", "-"), required=True)
     verify = subparsers.add_parser("verify")
     verify.add_argument("--contract", type=Path, required=True)
     verify.add_argument("--source-root", type=Path, required=True)
@@ -452,6 +525,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 compiler_id=args.compiler_id,
                 compiler_version=args.compiler_version,
                 cxx_standard=args.cxx_standard,
+                configuration=release_configuration_from_cmake(
+                    system_name=args.os,
+                    build_type=args.build_type,
+                    install_first_party_native=args.install_first_party_native,
+                    adapter_builds={
+                        option: getattr(args, option.lower()) for option in _ADAPTER_BUILD_OPTIONS
+                    },
+                ),
             )
         elif args.command == "verify":
             manifest = verify_build_evidence(
