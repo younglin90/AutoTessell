@@ -29,6 +29,12 @@ _STAGES = (
     "post_rr1_flip",
     "pre_ddd1_bsp",
     "post_eee_quality",
+    "post_nnn1_dry_run",
+    "post_nnn2_insert",
+    "post_nnn3_insert",
+    "post_nnn4_amips",
+    "post_rrr2_targeted_amips",
+    "post_sss_revival",
     "pre_cvt3d",
 )
 
@@ -145,10 +151,10 @@ def test_sphere_provenance_interval_l1(tmp_path: Path) -> None:
         assert payload["result"]["success"] is False
         assert payload["result"]["writer"] is False
         assert tuple(item["stage"] for item in records) == _STAGES
-        assert payload["first_failed"] == "pre_cvt3d"
-        for item in records[:-1]:
+        assert payload["first_failed"] == "post_sss_revival"
+        for item in records[:-2]:
             assert _passes(item["record"]) is True
-        failed = records[-1]["record"]
+        failed = records[-2]["record"]
         assert _passes(failed) is False
         assert failed["n_missing_source_vertices"] == 636
         assert failed["n_missing_source_faces"] == 1280
