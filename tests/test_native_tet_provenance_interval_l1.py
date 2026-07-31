@@ -166,6 +166,10 @@ def test_sphere_provenance_interval_l1(tmp_path: Path) -> None:
         assert payload["immutable"] is True
         assert payload["result"]["success"] is False
         assert payload["result"]["writer"] is False
+        strict_invalid = next(
+            item for item in records if item["stage"] == "pre_sss_pass0_relocate"
+        )
+        assert strict_invalid["strict"] == {"inverted": 350, "same_side": 116}
         assert tuple(item["stage"] for item in records) == _STAGES
         assert payload["first_failed"] == "post_sss_pass0_relocate_pre_accept"
         first_failed_index = next(
