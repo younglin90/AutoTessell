@@ -3191,6 +3191,27 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 130 pre-merge checkpoint -- 2026-07-31
+
+### Fail-closed first-party native release-corpus verifier
+
+- `4b754c94` adds a report-only verifier that accepts only an explicit manifest
+  and explicitly supplied artifact directories.  It checks source snapshot
+  SHA-256, exact five-file `polyMesh` identities, top-level native-checker
+  `negative_volumes=0`, `gate4_pass=false` with nonempty `UNVERIFIED` fields,
+  and exact repeat hashes.
+- Malformed, missing, unsafe, or mismatched evidence is `UNVERIFIED`.  The
+  script always returns release `UNVERIFIED` and exits `1`; it neither invokes
+  generation nor changes routing/default behavior.  Root focused runner passed
+  at concurrency `1` in `4.98 s`.
+- No actual release-corpus manifest/artifact set exists yet.
+
+### Release state
+
+- No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No UI, mesh,
+  provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 129 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Hex cube bounded reproducibility observation

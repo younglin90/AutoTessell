@@ -1,0 +1,129 @@
+"""Focused fail-closed contracts for release-native corpus evidence."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+
+from scripts.release_native_corpus_verifier import (
+    _polymesh_identity,
+    verify_release_native_corpus,
+)
+
+
+def _write_run(root: Path, *, negative_volumes: int = 0, unverified_fields: object = None) -> None:
+    poly_mesh = root / "constant" / "polyMesh"
+    poly_mesh.mkdir(parents=True, exist_ok=True)
+    for name in ("points", "faces", "owner", "neighbour", "boundary"):
+        (poly_mesh / name).write_text(f"stable-{name}", encoding="utf-8")
+    (root / "native-checker.json").write_text(
+        json.dumps({"negative_volumes": negative_volumes}), encoding="utf-8"
+    )
+    fields = (
+        ["distance.signed_mean", "patches.compared"]
+        if unverified_fields is None
+        else unverified_fields
+    )
+    (root / "gate4-evidence.json").write_text(
+        json.dumps({"gate4_pass": False, "unverified_fields": fields}), encoding="utf-8"
+    )
+
+
+def _manifest(source_root: Path, first: Path, second: Path) -> dict[str, object]:
+    source = source_root / "source.stl"
+    source.write_bytes(b"frozen-source")
+    first_identity = _polymesh_identity(first)
+    second_identity = _polymesh_identity(second)
+    assert first_identity is not None and second_identity is not None
+    return {
+        "schema": "autotessell/release-native-corpus/v1",
+        "cases": [
+            {
+                "id": "native-tet-cube",
+                "source_snapshot": {
+                    "artifact_dir": str(source_root.resolve()),
+                    "path": "source.stl",
+                    "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                },
+                "runs": [
+                    {
+                        "artifact_dir": str(first.resolve()),
+                        "poly_mesh": first_identity,
+                        "native_checker_report": "native-checker.json",
+                        "gate4_evidence": "gate4-evidence.json",
+                    },
+                    {
+                        "artifact_dir": str(second.resolve()),
+                        "poly_mesh": second_identity,
+                        "native_checker_report": "native-checker.json",
+                        "gate4_evidence": "gate4-evidence.json",
+                    },
+                ],
+            }
+        ],
+    }
+
+
+def test_complete_bounded_evidence_still_never_returns_release_pass(tmp_path: Path) -> None:
+    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    _write_run(first)
+    _write_run(second)
+    manifest = _manifest(first, first, second)
+
+    report = verify_release_native_corpus(manifest, [first, second])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["reason"] == "release_gate_evidence_incomplete"
+    row = report["cases"][0]
+    assert row["status"] == "UNVERIFIED"
+    assert row["reason"] == "measured_evidence_release_incomplete"
+    assert row["runs"][0]["gate4_unverified_fields"] == (
+        "distance.signed_mean",
+        "patches.compared",
+    )
+
+
+def test_polymesh_change_after_manifest_is_unverified(tmp_path: Path) -> None:
+    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    _write_run(first)
+    _write_run(second)
+    manifest = _manifest(first, first, second)
+    (second / "constant" / "polyMesh" / "points").write_text("changed", encoding="utf-8")
+
+    report = verify_release_native_corpus(manifest, [first, second])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "polymesh_identity_mismatch"
+
+
+def test_negative_volume_or_missing_gate4_inventory_is_unverified(tmp_path: Path) -> None:
+    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    _write_run(first, negative_volumes=1)
+    _write_run(second)
+    manifest = _manifest(first, first, second)
+
+    report = verify_release_native_corpus(manifest, [first, second])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "negative_volumes_not_zero"
+
+    _write_run(first, negative_volumes=0, unverified_fields=[])
+    manifest = _manifest(first, first, second)
+    report = verify_release_native_corpus(manifest, [first, second])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "invalid_gate4_evidence"
+
+
+def test_repeat_hash_mismatch_is_unverified_even_when_each_identity_matches(tmp_path: Path) -> None:
+    first, second = tmp_path / "run-one", tmp_path / "run-two"
+    _write_run(first)
+    _write_run(second)
+    (second / "constant" / "polyMesh" / "faces").write_text("different-faces", encoding="utf-8")
+    manifest = _manifest(first, first, second)
+
+    report = verify_release_native_corpus(manifest, [first, second])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "repeat_polymesh_hash_mismatch"
