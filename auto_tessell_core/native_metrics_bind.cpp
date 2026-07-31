@@ -454,7 +454,7 @@ py::tuple compute_face_geometry_topology(
 
     py::array_t<double> centres({n_faces, static_cast<py::ssize_t>(3)});
     py::array_t<double> normals({n_faces, static_cast<py::ssize_t>(3)});
-    py::array_t<double> areas({n_faces});
+    py::array_t<double> areas(py::array::ShapeContainer{n_faces});
 
     auto c = centres.mutable_unchecked<2>();
     auto n = normals.mutable_unchecked<2>();
@@ -868,9 +868,9 @@ py::tuple compute_cell_centres_and_aspect_ratios_topology(
     py::array_t<double> centres({static_cast<py::ssize_t>(n_cells),
                                  static_cast<py::ssize_t>(3)});
     py::array_t<long long> cell_ids(
-        {static_cast<py::ssize_t>(out_cells.size())});
+        py::array::ShapeContainer{static_cast<py::ssize_t>(out_cells.size())});
     py::array_t<double> ratios(
-        {static_cast<py::ssize_t>(out_ratios.size())});
+        py::array::ShapeContainer{static_cast<py::ssize_t>(out_ratios.size())});
     auto centres_out = centres.mutable_unchecked<2>();
     auto ids_out = cell_ids.mutable_unchecked<1>();
     auto ratios_out = ratios.mutable_unchecked<1>();
@@ -1730,7 +1730,9 @@ py::tuple compute_cell_volumes(
     long long n_internal)
 {
     if (n_cells <= 0) {
-        return py::make_tuple(py::array_t<double>({static_cast<py::ssize_t>(0)}), 0);
+        return py::make_tuple(
+            py::array_t<double>(py::array::ShapeContainer{static_cast<py::ssize_t>(0)}),
+            0);
     }
 
     const auto fc = face_centres.unchecked<2>();
@@ -1740,7 +1742,8 @@ py::tuple compute_cell_volumes(
     const auto own = owner.unchecked<1>();
     const auto nbr = neighbour.unchecked<1>();
 
-    py::array_t<double> volumes({static_cast<py::ssize_t>(n_cells)});
+    py::array_t<double> volumes(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(n_cells)});
     auto vol = volumes.mutable_unchecked<1>();
     for (long long i = 0; i < n_cells; ++i) {
         vol(i) = 0.0;
@@ -1831,8 +1834,10 @@ py::tuple compute_oriented_cell_volume_audit(
         }
     }
 
-    py::array_t<double> signed_volumes({static_cast<py::ssize_t>(n_cells)});
-    py::array_t<double> absolute_pyramid_sums({static_cast<py::ssize_t>(n_cells)});
+    py::array_t<double> signed_volumes(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(n_cells)});
+    py::array_t<double> absolute_pyramid_sums(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(n_cells)});
     double* const signed_data = signed_volumes.mutable_data();
     double* const absolute_data = absolute_pyramid_sums.mutable_data();
     {
@@ -1954,9 +1959,9 @@ py::tuple compute_per_cell_aspect_ratios(
     }
 
     py::array_t<long long> cell_ids(
-        {static_cast<py::ssize_t>(out_cells.size())});
+        py::array::ShapeContainer{static_cast<py::ssize_t>(out_cells.size())});
     py::array_t<double> ratios(
-        {static_cast<py::ssize_t>(out_ratios.size())});
+        py::array::ShapeContainer{static_cast<py::ssize_t>(out_ratios.size())});
     auto ids_out = cell_ids.mutable_unchecked<1>();
     auto ratios_out = ratios.mutable_unchecked<1>();
     for (size_t i = 0; i < out_cells.size(); ++i) {
@@ -2019,7 +2024,7 @@ long long count_faces_not_upper_triangular(
 py::array_t<long long> copy_index_vector(const std::vector<long long>& values)
 {
     py::array_t<long long> result(
-        {static_cast<py::ssize_t>(values.size())});
+        py::array::ShapeContainer{static_cast<py::ssize_t>(values.size())});
     auto out = result.mutable_unchecked<1>();
     for (size_t i = 0; i < values.size(); ++i) {
         out(static_cast<py::ssize_t>(i)) = values[i];
@@ -2083,7 +2088,7 @@ py::array_t<double> triangle_quality_batch(const py::array& triangles_input)
         py::reinterpret_borrow<py::array_t<double>>(triangles_input);
     const auto triangles = triangles_array.unchecked<3>();
     const auto triangle_count = triangles.shape(0);
-    py::array_t<double> quality({triangle_count});
+    py::array_t<double> quality(py::array::ShapeContainer{triangle_count});
     auto output = quality.mutable_unchecked<1>();
     constexpr double normalization =
         2.0 * std::numbers::sqrt3_v<double>;
@@ -2184,7 +2189,7 @@ py::array_t<bool> triangle_flip_candidate_mask(
     const py::ssize_t face_count = faces.shape(0);
     const py::ssize_t edge_count = edges.shape(0);
 
-    py::array_t<bool> result({edge_count});
+    py::array_t<bool> result(py::array::ShapeContainer{edge_count});
     auto accepted = result.mutable_unchecked<1>();
     std::fill_n(accepted.mutable_data(0), edge_count, false);
 
@@ -2622,7 +2627,7 @@ py::dict estimate_triangle_curvature_sizing(
     }
 
     py::array_t<double> lengths_array(
-        {static_cast<py::ssize_t>(lengths.size())});
+        py::array::ShapeContainer{static_cast<py::ssize_t>(lengths.size())});
     auto lengths_out = lengths_array.mutable_unchecked<1>();
     for (size_t vertex = 0; vertex < lengths.size(); ++vertex) {
         lengths_out(static_cast<py::ssize_t>(vertex)) = lengths[vertex];
@@ -3396,7 +3401,7 @@ py::tuple prepare_quad_pairs(
         pairs_out(index, 0) = face_pairs[static_cast<size_t>(index)].faces[0];
         pairs_out(index, 1) = face_pairs[static_cast<size_t>(index)].faces[1];
     }
-    py::array_t<long long> diagnostics_array({py::ssize_t{5}});
+    py::array_t<long long> diagnostics_array(py::array::ShapeContainer{py::ssize_t{5}});
     auto diagnostics = diagnostics_array.mutable_unchecked<1>();
     diagnostics(0) = boundary_count;
     diagnostics(1) = feature_count;

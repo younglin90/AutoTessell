@@ -3191,6 +3191,23 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 189 checkpoint -- 2026-08-01
+
+### Clang20 native Metrics array-shape correction
+
+- Cycle 188 full clang evidence is `UNVERIFIED` at fourteen native-Metrics
+  scalar-brace allocations.  Cycle 189 changes only those allocations to
+  explicit pybind shape containers, preserving arrays and tuples' dtype,
+  value, and one-dimensional shape semantics.
+- Fresh c1 clang20 Release Makefiles target-only `native_metrics` validation
+  passed in `26.134483058 s`:
+  `/tmp/autotessell-c189-native-metrics-runner-evidence.json`.
+
+### Release state
+
+- Full build and Gate 2 remain `UNVERIFIED`; no behavior claim is made.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 187 checkpoint -- 2026-08-01
 
 ### Clang20 native Hex-quality array-shape correction
