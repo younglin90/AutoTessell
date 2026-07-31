@@ -16,6 +16,10 @@ from typing import Any
 
 import numpy as np
 
+from core.evaluator.surface_physical_group_provenance import (
+    AuthoritativePhysicalGroupMapping,
+)
+
 _CPP23_ENV = "AUTO_TESSELL_STRICT_QUAD_PREFLIGHT_CPP23"
 _STRUCTURAL_KEYS = (
     "valid",
@@ -157,6 +161,41 @@ def _normalise_payloads(values: object, expected_count: int) -> tuple[tuple[Any,
     return tuple(normalized), True
 
 
+def _payload_hash(values: tuple[Any, ...]) -> str:
+    import json
+
+    return sha256(
+        json.dumps(values, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _authoritative_physical_groups(
+    values: object,
+    expected_count: int,
+) -> tuple[tuple[str, ...], bool]:
+    if (
+        not isinstance(values, AuthoritativePhysicalGroupMapping)
+        or not values.authoritative
+        or len(values.source_face_groups) != expected_count
+        or not all(isinstance(group, str) and group.strip() for group in values.source_face_groups)
+    ):
+        return (), False
+    return tuple(values.source_face_groups), True
+
+
+def _normalise_quad_physical_groups(
+    values: object,
+    expected_count: int,
+) -> tuple[tuple[str, ...], bool]:
+    if (
+        not isinstance(values, (tuple, list))
+        or len(values) != expected_count
+        or not all(isinstance(group, str) and group.strip() for group in values)
+    ):
+        return (), False
+    return tuple(values), True
+
+
 @dataclass(frozen=True, slots=True)
 class StrictQuadPairPreflight:
     """Read-only evidence for a fixed-vertex two-triangle quad subset."""
@@ -167,8 +206,13 @@ class StrictQuadPairPreflight:
     candidate_vertices_hash: str | None
     source_triangles_hash: str | None
     quads_hash: str | None
+    pair_provenance_hash: str | None
+    feature_hash: str | None
+    source_patch_hash: str | None
+    source_physical_group_hash: str | None
     structural_facts: tuple[tuple[str, bool | int], ...]
     patch_payload_preserved: bool
+    physical_group_payload_preserved: bool
     contract: str = "strict_quad_fixed_vertex_pair_preflight_l0"
 
 
@@ -345,6 +389,8 @@ def diagnose_strict_quad_pair_preflight(
     *,
     source_patch_ids: object,
     candidate_quad_patch_ids: object,
+    source_physical_groups: object = None,
+    candidate_quad_physical_groups: object = None,
 ) -> StrictQuadPairPreflight:
     """Diagnose one strict fixed-vertex pair product without producing it."""
     try:
@@ -358,7 +404,21 @@ def diagnose_strict_quad_pair_preflight(
             _indices(feature_edges, 2, "feature_edges"),
         )
     except ValueError as exc:
-        return StrictQuadPairPreflight(False, (str(exc),), None, None, None, None, (), False)
+        return StrictQuadPairPreflight(
+            False,
+            (str(exc),),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            (),
+            False,
+            False,
+        )
     facts = _python_structural_facts(*arrays)
     if strict_quad_pair_preflight_cpp23_enabled():
         _native_facts_or_fail_closed(facts, arrays)
@@ -374,16 +434,43 @@ def diagnose_strict_quad_pair_preflight(
             ):
                 patch_payload_preserved = False
                 break
+    source_groups, source_groups_valid = _authoritative_physical_groups(
+        source_physical_groups,
+        len(arrays[2]),
+    )
+    quad_groups, quad_groups_valid = _normalise_quad_physical_groups(
+        candidate_quad_physical_groups,
+        len(arrays[4]),
+    )
+    physical_group_payload_preserved = bool(source_groups_valid and quad_groups_valid)
+    if physical_group_payload_preserved and facts["provenance_complete"]:
+        for quad_index, pair in enumerate(arrays[5]):
+            first, second = int(pair[0]), int(pair[1])
+            if (
+                source_groups[first] != source_groups[second]
+                or quad_groups[quad_index] != source_groups[first]
+            ):
+                physical_group_payload_preserved = False
+                break
     reasons = [key for key, value in facts.items() if isinstance(value, bool) and not value]
     if not patch_payload_preserved:
         reasons.append("patch_payload_preserved")
+    if not physical_group_payload_preserved:
+        reasons.append("physical_group_payload_preserved")
     return StrictQuadPairPreflight(
-        accepted=bool(facts["valid"] and patch_payload_preserved),
+        accepted=bool(
+            facts["valid"] and patch_payload_preserved and physical_group_payload_preserved
+        ),
         rejection_reasons=tuple(reasons),
         source_vertices_hash=_hash(arrays[0]),
         candidate_vertices_hash=_hash(arrays[1]),
         source_triangles_hash=_hash(arrays[2]),
         quads_hash=_hash(arrays[4]),
+        pair_provenance_hash=_hash(arrays[5]),
+        feature_hash=_hash(arrays[6]),
+        source_patch_hash=_payload_hash(source_patches) if source_patches_valid else None,
+        source_physical_group_hash=(_payload_hash(source_groups) if source_groups_valid else None),
         structural_facts=tuple((key, facts[key]) for key in _STRUCTURAL_KEYS),
         patch_payload_preserved=patch_payload_preserved,
+        physical_group_payload_preserved=physical_group_payload_preserved,
     )

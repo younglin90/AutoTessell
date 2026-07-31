@@ -11,6 +11,9 @@ import numpy as np
 import pytest
 import trimesh
 
+from core.evaluator.surface_physical_group_provenance import (
+    AuthoritativePhysicalGroupMapping,
+)
 from core.preprocessor.native_quad.strict_pair_preflight import (
     diagnose_strict_quad_pair_preflight,
     strict_quad_pair_preflight_cpp23_enabled,
@@ -95,9 +98,18 @@ def _report(
     source_patches: object,
     quad_patches: object,
     *,
+    source_groups: object | None = None,
+    quad_groups: object | None = None,
     candidate_vertices: np.ndarray | None = None,
     candidate_triangles: np.ndarray | None = None,
 ):
+    if source_groups is None:
+        source_groups = AuthoritativePhysicalGroupMapping(
+            tuple("group" for _ in range(len(triangles))),
+            True,
+        )
+    if quad_groups is None:
+        quad_groups = ["group"] * len(quads)
     return diagnose_strict_quad_pair_preflight(
         vertices,
         vertices.copy() if candidate_vertices is None else candidate_vertices,
@@ -108,6 +120,8 @@ def _report(
         features,
         source_patch_ids=source_patches,
         candidate_quad_patch_ids=quad_patches,
+        source_physical_groups=source_groups,
+        candidate_quad_physical_groups=quad_groups,
     )
 
 

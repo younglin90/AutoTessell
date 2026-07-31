@@ -38,10 +38,16 @@ class StrictQuadFixedPairProduct:
     vertices: np.ndarray
     triangles: np.ndarray
     quads: np.ndarray
+    quad_source_pairs: np.ndarray
     quad_patch_ids: tuple[int | str | None, ...]
+    quad_physical_groups: tuple[str, ...]
     source_vertices_hash: str
     source_triangles_hash: str
     quads_hash: str
+    pair_provenance_hash: str
+    feature_hash: str
+    source_patch_hash: str
+    source_physical_group_hash: str
     contract: str = "strict_quad_fixed_pair_product_l0"
 
 
@@ -84,6 +90,19 @@ def _quad_patch_payloads(
     return tuple(normalized)
 
 
+def _quad_physical_group_payloads(
+    values: object,
+    expected_count: int,
+) -> tuple[str, ...] | None:
+    if (
+        not isinstance(values, (tuple, list))
+        or len(values) != expected_count
+        or not all(isinstance(value, str) and value.strip() for value in values)
+    ):
+        return None
+    return tuple(values)
+
+
 def materialize_strict_quad_fixed_pair_product_l0(
     source_vertices: object,
     candidate_vertices: object,
@@ -95,6 +114,8 @@ def materialize_strict_quad_fixed_pair_product_l0(
     *,
     source_patch_ids: object,
     candidate_quad_patch_ids: object,
+    source_physical_groups: object = None,
+    candidate_quad_physical_groups: object = None,
 ) -> StrictQuadFixedPairProductResult:
     """Materialize a strict quad product only after both certificates pass.
 
@@ -114,6 +135,8 @@ def materialize_strict_quad_fixed_pair_product_l0(
         feature_edges,
         source_patch_ids=source_patch_ids,
         candidate_quad_patch_ids=candidate_quad_patch_ids,
+        source_physical_groups=source_physical_groups,
+        candidate_quad_physical_groups=candidate_quad_physical_groups,
     )
     if not preflight.accepted:
         return StrictQuadFixedPairProductResult(
@@ -159,7 +182,11 @@ def materialize_strict_quad_fixed_pair_product_l0(
     # Re-normalize before retaining it so the materialized object is immutable
     # and has no mutable caller-owned list alias.
     payloads = _quad_patch_payloads(candidate_quad_patch_ids, len(quads))
-    if payloads is None:
+    physical_groups = _quad_physical_group_payloads(
+        candidate_quad_physical_groups,
+        len(quads),
+    )
+    if payloads is None or physical_groups is None:
         return StrictQuadFixedPairProductResult(
             False,
             "reject_strict_quad_fixed_pair_patch_payload",
@@ -172,6 +199,10 @@ def materialize_strict_quad_fixed_pair_product_l0(
         preflight.source_vertices_hash is None
         or preflight.source_triangles_hash is None
         or preflight.quads_hash is None
+        or preflight.pair_provenance_hash is None
+        or preflight.feature_hash is None
+        or preflight.source_patch_hash is None
+        or preflight.source_physical_group_hash is None
     ):
         return StrictQuadFixedPairProductResult(
             False,
@@ -186,10 +217,16 @@ def materialize_strict_quad_fixed_pair_product_l0(
         vertices=_readonly_copy(np.asarray(source_vertices, dtype=np.float64)),
         triangles=_readonly_copy(np.empty((0, 3), dtype=np.int64)),
         quads=_readonly_copy(np.asarray(quads, dtype=np.int64)),
+        quad_source_pairs=_readonly_copy(np.asarray(pair_provenance, dtype=np.int64)),
         quad_patch_ids=payloads,
+        quad_physical_groups=physical_groups,
         source_vertices_hash=preflight.source_vertices_hash,
         source_triangles_hash=preflight.source_triangles_hash,
         quads_hash=preflight.quads_hash,
+        pair_provenance_hash=preflight.pair_provenance_hash,
+        feature_hash=preflight.feature_hash,
+        source_patch_hash=preflight.source_patch_hash,
+        source_physical_group_hash=preflight.source_physical_group_hash,
     )
     return StrictQuadFixedPairProductResult(
         True,
