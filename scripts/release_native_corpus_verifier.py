@@ -190,9 +190,23 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
                 "status": "UNVERIFIED",
                 "reason": "polymesh_identity_mismatch",
             }
+        expected_quality_report_hash = run.get("quality_report_sha256")
+        if not _canonical_sha256(expected_quality_report_hash):
+            return {
+                "id": case["id"],
+                "status": "UNVERIFIED",
+                "reason": "quality_report_hash_required",
+            }
         quality_report_path = _safe_file(artifact_dir, run.get("quality_report"))
         if quality_report_path is None:
             return {"id": case["id"], "status": "UNVERIFIED", "reason": "missing_quality_report"}
+        actual_quality_report_hash = _sha256(quality_report_path)
+        if actual_quality_report_hash != expected_quality_report_hash:
+            return {
+                "id": case["id"],
+                "status": "UNVERIFIED",
+                "reason": "quality_report_hash_mismatch",
+            }
         try:
             quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError):
@@ -211,6 +225,7 @@ def _verify_case(case: object, allowed: dict[str, Path]) -> dict[str, object]:
             {
                 "artifact_dir": str(artifact_dir),
                 "poly_mesh_sha256": actual_mesh["sha256"],
+                "quality_report_sha256": actual_quality_report_hash,
                 "gate4_unverified_fields": unverified_fields,
             }
         )

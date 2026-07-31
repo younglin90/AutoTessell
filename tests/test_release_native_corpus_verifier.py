@@ -70,16 +70,25 @@ def _manifest(source_root: Path, first: Path, second: Path, third: Path) -> dict
                         "artifact_dir": str(first.resolve()),
                         "poly_mesh": first_identity,
                         "quality_report": "quality-report.json",
+                        "quality_report_sha256": hashlib.sha256(
+                            (first / "quality-report.json").read_bytes()
+                        ).hexdigest(),
                     },
                     {
                         "artifact_dir": str(second.resolve()),
                         "poly_mesh": second_identity,
                         "quality_report": "quality-report.json",
+                        "quality_report_sha256": hashlib.sha256(
+                            (second / "quality-report.json").read_bytes()
+                        ).hexdigest(),
                     },
                     {
                         "artifact_dir": str(third.resolve()),
                         "poly_mesh": third_identity,
                         "quality_report": "quality-report.json",
+                        "quality_report_sha256": hashlib.sha256(
+                            (third / "quality-report.json").read_bytes()
+                        ).hexdigest(),
                     },
                 ],
             }
@@ -104,6 +113,10 @@ def test_complete_bounded_evidence_still_never_returns_release_pass(tmp_path: Pa
     assert row["runs"][0]["gate4_unverified_fields"] == (
         "distance.signed_mean",
         "patches.compared",
+    )
+    assert (
+        row["runs"][0]["quality_report_sha256"]
+        == hashlib.sha256((first / "quality-report.json").read_bytes()).hexdigest()
     )
 
 
@@ -186,6 +199,36 @@ def test_split_legacy_reports_cannot_replace_one_quality_report(tmp_path: Path) 
     assert report["cases"][0]["reason"] == "missing_quality_report"
 
 
+def test_quality_report_hash_is_required_and_exact(tmp_path: Path) -> None:
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
+    _write_run(first)
+    _write_run(second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
+    manifest["cases"][0]["runs"][0].pop("quality_report_sha256")
+
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "quality_report_hash_required"
+
+    manifest = _manifest(first, first, second, third)
+    manifest["cases"][0]["runs"][0]["quality_report_sha256"] = "A" * 64
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "quality_report_hash_required"
+
+    manifest = _manifest(first, first, second, third)
+    (second / "quality-report.json").write_bytes(
+        (second / "quality-report.json").read_bytes() + b"\n"
+    )
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "quality_report_hash_mismatch"
+
+
 def test_legacy_top_level_fields_are_explicitly_supported_but_ambiguous_shape_rejects(
     tmp_path: Path,
 ) -> None:
@@ -204,6 +247,9 @@ def test_legacy_top_level_fields_are_explicitly_supported_but_ambiguous_shape_re
         "unverified_fields": ["distance.signed_mean"]
     }
     report_path.write_text(json.dumps(value), encoding="utf-8")
+    manifest["cases"][0]["runs"][0]["quality_report_sha256"] = hashlib.sha256(
+        report_path.read_bytes()
+    ).hexdigest()
 
     report = verify_release_native_corpus(manifest, [first, second, third])
 
