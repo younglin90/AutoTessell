@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -13,13 +14,36 @@ from core.generator.native_tet.hausdorff import hausdorff_vs_input
 from core.generator.native_tet.mesher import generate_native_tet
 from core.generator.native_tet.quality import snapshot
 from core.generator.native_tet.rescue_gate import audit_tet_boundary
+from core.generator.native_tet.source_facet_provenance import (
+    audit_source_facet_provenance_python,
+)
+from core.utils.polymesh_reader import (
+    parse_foam_faces,
+    parse_foam_labels,
+    parse_foam_points,
+)
 
 CYLINDER = Path(__file__).resolve().parent / "benchmarks" / "cylinder.stl"
 CUBE = Path(__file__).resolve().parent / "benchmarks" / "cube.stl"
 SPHERE = Path(__file__).resolve().parent / "benchmarks" / "sphere.stl"
 
 
-def test_cylinder_overlap_is_refused_deterministically(
+def _assert_disk_source_facets(mesh: Any, case_dir: Path) -> None:
+    poly_mesh = case_dir / "constant" / "polyMesh"
+    disk_points = np.asarray(parse_foam_points(poly_mesh / "points"), dtype=np.float64)
+    disk_faces = np.asarray(parse_foam_faces(poly_mesh / "faces"), dtype=np.int64)
+    n_internal = len(parse_foam_labels(poly_mesh / "neighbour"))
+    report = audit_source_facet_provenance_python(
+        np.asarray(mesh.vertices, dtype=np.float64),
+        np.asarray(mesh.faces, dtype=np.int64),
+        disk_points,
+        disk_faces[n_internal:],
+    )
+    assert report["source_faces_preserved"] is True
+    assert report["n_unowned_candidate_faces"] == 0
+
+
+def test_cylinder_overlap_candidate_rolls_back_deterministically(
     tmp_path,
     monkeypatch,
 ) -> None:
@@ -41,15 +65,16 @@ def test_cylinder_overlap_is_refused_deterministically(
             enable_phase_c=False,
         )
 
-        assert result.success is False
-        assert not (case_dir / "constant" / "polyMesh").exists()
+        assert result.success, result.message
+        assert (case_dir / "constant" / "polyMesh").exists()
+        _assert_disk_source_facets(mesh, case_dir)
         audit = audit_tet_boundary(result.tet_points, result.tets)
-        assert audit.valid is False
-        assert audit.n_internal_faces == 2870
-        assert audit.n_same_side_internal_faces == 72
+        assert audit.valid
+        assert audit.n_internal_faces == 2172
+        assert audit.n_same_side_internal_faces == 0
         assert audit.n_ambiguous_internal_faces == 0
-        assert audit.n_duplicate_tets == 2
-        assert audit.n_nonmanifold_faces == 4
+        assert audit.n_duplicate_tets == 0
+        assert audit.n_nonmanifold_faces == 0
         assert audit.n_inverted_tets == 0
         assert audit.n_degenerate_tets == 0
         hausdorff = hausdorff_vs_input(
@@ -72,10 +97,22 @@ def test_cylinder_overlap_is_refused_deterministically(
         assert report["n_overlap_pairs"] == 0
         assert report["source_faces_preserved"] is True
         assert result.n_points == 353
-        assert result.n_cells == 1493
+        assert result.n_cells == 1140
         strict = result.debug_info["strict_source_topology"]
-        assert strict["valid"] is False
-        assert strict["polymesh_artifacts_removed"] is True
+        assert strict["valid"] is True
+        transaction = result.debug_info[
+            "smooth_then_drop_sidedness_transaction"
+        ]
+        assert transaction == {
+            "accepted": False,
+            "before_same_side_internal_faces": 0,
+            "candidate_same_side_internal_faces": 166,
+            "before_ambiguous_internal_faces": 412,
+            "candidate_ambiguous_internal_faces": 4,
+            "exact_rollback": True,
+            "n_moved": 254,
+            "n_dropped": 0,
+        }
         reports.append(report)
         signatures.append(
             (
@@ -87,8 +124,8 @@ def test_cylinder_overlap_is_refused_deterministically(
     assert reports[1:] == reports[:-1]
     assert signatures[1:] == signatures[:-1]
     assert signatures[0] == (
-        "85ad5dd102c51a66b668f4b6251e934665ec5b9fcb54fdec570b2309f83f7824",
-        "77ffb3be34f1a66191a1a0fd197898521bf41931e06bb43cce208e8eeb18f894",
+        "453039a0fb6341d8d05d6985bf88f5188a0e86d9214ee0d7979a632167348f04",
+        "6f50e4cab807dc21c4d4433550bb410fc97af72084f048e8e6023eb1453a3426",
     )
 
 
@@ -101,11 +138,14 @@ def test_cylinder_overlap_is_refused_deterministically(
         "expected_same_side",
         "expected_duplicates",
         "expected_nonmanifold",
+        "transaction_accepted",
+        "transaction_before_same",
+        "transaction_candidate_same",
         "min_mean_q",
     ),
     (
-        (CUBE, 300, 1301, 318, 142, 1, 2, 0.3563),
-        (SPHERE, 735, 2164, 1280, 108, 0, 0, 0.2573),
+        (CUBE, 300, 1284, 320, 4, 0, 0, False, 0, 232, 0.3563),
+        (SPHERE, 735, 2164, 1280, 108, 0, 0, True, 120, 120, 0.2573),
     ),
 )
 def test_boundary_lock_refuses_cube_and_sphere_internal_overlap(
@@ -116,6 +156,9 @@ def test_boundary_lock_refuses_cube_and_sphere_internal_overlap(
     expected_same_side: int,
     expected_duplicates: int,
     expected_nonmanifold: int,
+    transaction_accepted: bool,
+    transaction_before_same: int,
+    transaction_candidate_same: int,
     min_mean_q: float,
     tmp_path: Path,
     monkeypatch,
@@ -156,6 +199,14 @@ def test_boundary_lock_refuses_cube_and_sphere_internal_overlap(
     strict = result.debug_info["strict_source_topology"]
     assert strict["valid"] is False
     assert strict["polymesh_artifacts_removed"] is True
+    transaction = result.debug_info["smooth_then_drop_sidedness_transaction"]
+    assert transaction["accepted"] is transaction_accepted
+    assert transaction["before_same_side_internal_faces"] == (
+        transaction_before_same
+    )
+    assert transaction["candidate_same_side_internal_faces"] == (
+        transaction_candidate_same
+    )
     assert snapshot(result.tet_points, result.tets).mean_q >= min_mean_q
     hausdorff = hausdorff_vs_input(
         np.asarray(mesh.vertices, dtype=np.float64),

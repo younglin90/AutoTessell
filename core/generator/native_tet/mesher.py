@@ -157,6 +157,47 @@ def _best_of_candidate_meets_target_floor(
     return int(n_cells) >= int(np.ceil(0.30 * target))
 
 
+def _commit_sidedness_nonincreasing_candidate(
+    before_points: np.ndarray,
+    before_tets: np.ndarray,
+    candidate_points: np.ndarray,
+    candidate_tets: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, dict[str, int | bool]]:
+    """Commit a geometry candidate only when both sidedness debts do not grow.
+
+    Same-side overlap and near-coplanar ambiguity are independent hard debts;
+    decreasing one must never compensate for increasing the other.  Rejection
+    returns the exact input objects so the caller's transaction is lossless.
+    """
+    from core.generator.native_tet.rescue_gate import (
+        audit_internal_face_sidedness,
+    )
+
+    before = audit_internal_face_sidedness(before_points, before_tets)
+    candidate = audit_internal_face_sidedness(candidate_points, candidate_tets)
+    accepted = bool(
+        candidate.n_same_side_internal_faces
+        <= before.n_same_side_internal_faces
+        and candidate.n_ambiguous_internal_faces
+        <= before.n_ambiguous_internal_faces
+    )
+    report: dict[str, int | bool] = {
+        "accepted": accepted,
+        "before_same_side_internal_faces": before.n_same_side_internal_faces,
+        "candidate_same_side_internal_faces": (
+            candidate.n_same_side_internal_faces
+        ),
+        "before_ambiguous_internal_faces": before.n_ambiguous_internal_faces,
+        "candidate_ambiguous_internal_faces": (
+            candidate.n_ambiguous_internal_faces
+        ),
+        "exact_rollback": not accepted,
+    }
+    if accepted:
+        return candidate_points, candidate_tets, report
+    return before_points, before_tets, report
+
+
 def _optional_pass_result(result: Any, n_expected: int) -> tuple[Any, str | None]:
     """Normalize an optional-pass return value without raising downstream.
 
@@ -646,6 +687,7 @@ def generate_native_tet(
         NativeTetResult.
     """
     t0 = time.perf_counter()
+    _smooth_then_drop_sidedness_transaction: dict[str, int | bool] | None = None
     try:
         from scipy.spatial import Delaunay
     except Exception as exc:
@@ -2660,8 +2702,28 @@ def generate_native_tet(
             )
             if new_tets.shape[0] >= final_tets.shape[0] * 0.9:
                 # 셀 손실 10% 이내일 때만 채택.
-                final_pts = new_pts
-                final_tets = new_tets
+                (
+                    _jj3_selected_pts,
+                    _jj3_selected_tets,
+                    _jj3_sidedness_transaction,
+                ) = _commit_sidedness_nonincreasing_candidate(
+                    prev_pts_jj3,
+                    prev_tets_jj3,
+                    new_pts,
+                    new_tets,
+                )
+                _smooth_then_drop_sidedness_transaction = {
+                    **_jj3_sidedness_transaction,
+                    "n_moved": int(n_moved),
+                    "n_dropped": int(n_drop_jj),
+                }
+                if not _jj3_sidedness_transaction["accepted"]:
+                    log.warning(
+                        "native_tet_smooth_then_drop_sidedness_revert",
+                        **_smooth_then_drop_sidedness_transaction,
+                    )
+                final_pts = _jj3_selected_pts
+                final_tets = _jj3_selected_tets
 
                 # 이웃 블록(1764-1799 / 1832-1870)과 동일한 surface-aware
                 # revert guard.  lock 이 옳다면 0 회 발화한다.
@@ -2683,7 +2745,10 @@ def generate_native_tet(
                     )
                     final_pts = prev_pts_jj3
                     final_tets = prev_tets_jj3
-                elif n_moved > 0 or n_drop_jj > 0:
+                elif (
+                    _jj3_sidedness_transaction["accepted"]
+                    and (n_moved > 0 or n_drop_jj > 0)
+                ):
                     log.info(
                         "native_tet_smooth_then_drop",
                         moved=int(n_moved), dropped=int(n_drop_jj),
@@ -6149,6 +6214,10 @@ def generate_native_tet(
         "n_final_tets": int(final_tets.shape[0]),
         "n_final_points": int(final_pts.shape[0]),
     }
+    if _smooth_then_drop_sidedness_transaction is not None:
+        debug_info["smooth_then_drop_sidedness_transaction"] = (
+            _smooth_then_drop_sidedness_transaction
+        )
     warnings_list: list[str] = []
     try:
         if chk is not None and chk.warnings:

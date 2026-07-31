@@ -7,6 +7,7 @@ failure can be located before the writer consumes the arrays.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -45,16 +46,46 @@ def _disable_late_topology_mutators(monkeypatch) -> None:
 def test_cube_10000_l0_trace_refuses_residual_internal_overlap(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """L0: duplicate cleanup cannot certify a still-overlapping tet complex.
+    """L0: JJ3 rolls back exactly; a later overlap still fails closed.
 
     Target tracking is observed only.  This card's acceptance is deterministic
     fail-closed topology detection, not target-band success.
     """
     import core.generator.native_tet.boundary_invariant as boundary_invariant
+    import core.generator.native_tet.mesher as native_tet_mesher
 
     _disable_late_topology_mutators(monkeypatch)
     observed: list[tuple[str, int, int, int, int]] = []
+    transaction: dict[str, object] = {}
     original = boundary_invariant.check_boundary_invariant
+    original_transaction = (
+        native_tet_mesher._commit_sidedness_nonincreasing_candidate
+    )
+
+    def _hash(array: np.ndarray) -> str:
+        return hashlib.sha256(np.ascontiguousarray(array)).hexdigest()
+
+    def traced_transaction(before_points, before_tets, candidate_points, candidate_tets):
+        selected_points, selected_tets, report = original_transaction(
+            before_points,
+            before_tets,
+            candidate_points,
+            candidate_tets,
+        )
+        transaction.update(
+            {
+                "before_points": _hash(before_points),
+                "before_tets": _hash(before_tets),
+                "candidate_points": _hash(candidate_points),
+                "candidate_tets": _hash(candidate_tets),
+                "selected_points": _hash(selected_points),
+                "selected_tets": _hash(selected_tets),
+                "selected_points_is_before": selected_points is before_points,
+                "selected_tets_is_before": selected_tets is before_tets,
+                "report": report,
+            }
+        )
+        return selected_points, selected_tets, report
 
     def traced(before_points, before_tets, after_points, after_tets, stage, *args, **kwargs):
         audit = audit_tet_boundary(
@@ -75,6 +106,11 @@ def test_cube_10000_l0_trace_refuses_residual_internal_overlap(
         )
 
     monkeypatch.setattr(boundary_invariant, "check_boundary_invariant", traced)
+    monkeypatch.setattr(
+        native_tet_mesher,
+        "_commit_sidedness_nonincreasing_candidate",
+        traced_transaction,
+    )
     mesh = read_stl(_CUBE)
     result = generate_native_tet(
         np.asarray(mesh.vertices, dtype=np.float64),
@@ -88,15 +124,42 @@ def test_cube_10000_l0_trace_refuses_residual_internal_overlap(
     assert result.message == "native_tet source-aware strict topology is invalid"
     assert result.n_cells > 0
     assert not final_audit.valid
-    assert final_audit.n_same_side_internal_faces > 0
+    assert final_audit.n_same_side_internal_faces == 12
+    assert final_audit.n_duplicate_tets == 0
+    report = transaction["report"]
+    assert isinstance(report, dict)
+    assert report == {
+        "accepted": False,
+        "before_same_side_internal_faces": 0,
+        "candidate_same_side_internal_faces": 1108,
+        "before_ambiguous_internal_faces": 4620,
+        "candidate_ambiguous_internal_faces": 228,
+        "exact_rollback": True,
+    }
+    assert transaction["selected_points_is_before"] is True
+    assert transaction["selected_tets_is_before"] is True
+    assert transaction["before_points"] == transaction["selected_points"]
+    assert transaction["before_tets"] == transaction["selected_tets"]
+    assert transaction["before_points"] == (
+        "b7856955a75e1d95aced2302b96eb9b4da641683b8b955d0ede9153ff1124978"
+    )
+    assert transaction["before_tets"] == (
+        "086f3e52462ebeb80206dd4724d70faf4a0e24604e74ef913cdaceafd1f00dab"
+    )
+    assert transaction["candidate_points"] == (
+        "785e9199081ceecd2c3a9f4aa902cdd076fdf186567d3bd1c1f3c00787067925"
+    )
+    assert transaction["candidate_tets"] == transaction["before_tets"]
     repair = result.debug_info["strict_topology_duplicate_group_repair"]
     assert repair["applied"] is False
-    assert repair["n_duplicate_groups"] == 1
-    assert repair["n_removed_tets"] == 2
+    # Tet42's old path reached one exact duplicate group.  Rejecting JJ3's
+    # overlap candidate changes the downstream path and removes that debt.
+    assert repair["n_duplicate_groups"] == 0
+    assert repair["n_removed_tets"] == 0
     assert repair["boundary_preserved"] is True
-    assert repair["before_nonmanifold_faces"] > 0
+    assert repair["before_nonmanifold_faces"] == 0
     assert repair["after_nonmanifold_faces"] == 0
-    assert repair["after_same_side_internal_faces"] > 0
+    assert repair["after_same_side_internal_faces"] == 12
     assert not (tmp_path / "cube_10000" / "constant" / "polyMesh").exists()
     assert observed
 
