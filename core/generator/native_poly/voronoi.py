@@ -224,6 +224,11 @@ class NativePolyResult:
     mesh_integrity_suspect: bool = False
     # BETA2821 — post-mesh cell self-intersect count. None = 미측정, 0 = clean.
     n_self_intersect_cells_post: int | None = None
+    # Mandatory pre-write admission result. ``validity_refused`` is a typed,
+    # terminal native-Poly failure: no writer or fallback candidate may run.
+    failure_kind: str | None = None
+    n_negative_volumes: int | None = None
+    n_degenerate_cells: int | None = None
 
 
 from core.utils.geometry import inside_winding_number as _inside_ray_cast_full
@@ -251,6 +256,7 @@ def validate_poly_cell_volumes(
     points: np.ndarray,
     *,
     degenerate_eps: float = 1e-20,
+    mandatory: bool = False,
 ) -> tuple[int, int]:
     """For each poly cell, tetrahedralize from centroid (fan over each face's triangles).
 
@@ -259,7 +265,7 @@ def validate_poly_cell_volumes(
     Returns (n_negative_volume, n_degenerate).
     """
     import os as _os  # noqa: PLC0415
-    if _os.environ.get("AUTO_TESSELL_VAL2_OFF"):
+    if _os.environ.get("AUTO_TESSELL_VAL2_OFF") and not mandatory:
         return 0, 0
 
     pts = np.asarray(points, dtype=np.float64)
@@ -396,6 +402,79 @@ def _write_polymesh_poly(
     from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
 
     return write_generic_polymesh(vertices, cells, case_dir, strict=strict)
+
+
+@dataclass(frozen=True)
+class _PolyPrewriteOutcome:
+    stats: dict[str, int] | None
+    refusal: NativePolyResult | None
+    n_negative: int | None
+    n_degenerate: int | None
+
+
+def _admit_and_write_polymesh_poly(
+    vertices: np.ndarray,
+    cells: list[list[list[int]]],
+    case_dir: Path,
+    *,
+    strict: bool,
+    started_at: float,
+) -> _PolyPrewriteOutcome:
+    """Validate unconditionally, then write only a valid Poly candidate."""
+    try:
+        n_negative, n_degenerate = validate_poly_cell_volumes(
+            cells,
+            vertices,
+            mandatory=True,
+        )
+    except Exception as exc:
+        return _PolyPrewriteOutcome(
+            None,
+            NativePolyResult(
+                False,
+                time.perf_counter() - started_at,
+                message=f"native_poly_validity_refused: validation_error={exc}",
+                failure_kind="validity_refused",
+            ),
+            None,
+            None,
+        )
+    if n_negative > 0 or n_degenerate > 0:
+        return _PolyPrewriteOutcome(
+            None,
+            NativePolyResult(
+                False,
+                time.perf_counter() - started_at,
+                message=(
+                    "native_poly_validity_refused: "
+                    f"negative={n_negative}, degenerate={n_degenerate}"
+                ),
+                failure_kind="validity_refused",
+                n_negative_volumes=int(n_negative),
+                n_degenerate_cells=int(n_degenerate),
+            ),
+            int(n_negative),
+            int(n_degenerate),
+        )
+    try:
+        stats = _write_polymesh_poly(vertices, cells, case_dir, strict=strict)
+    except Exception as exc:
+        return _PolyPrewriteOutcome(
+            None,
+            NativePolyResult(
+                False,
+                time.perf_counter() - started_at,
+                message=f"polyMesh 쓰기 실패: {exc}",
+            ),
+            int(n_negative),
+            int(n_degenerate),
+        )
+    return _PolyPrewriteOutcome(
+        stats,
+        None,
+        int(n_negative),
+        int(n_degenerate),
+    )
 
 
 _TTT3_POLY_BL_EXTRUDE_ENABLE = True  # TTT4: BL prism extrude 활성.
@@ -797,6 +876,53 @@ def _ccw_sort_face_vertices(
     return [int(verts_idx[k]) for k in order]
 
 
+def _orient_poly_cell_faces_outward(
+    vertices: np.ndarray,
+    cells: list[list[list[int]]],
+) -> tuple[list[list[list[int]]], int, int]:
+    """Orient each final face away from its cell without changing membership."""
+    points = np.asarray(vertices, dtype=np.float64)
+    if points.size == 0:
+        return [[list(face) for face in cell] for cell in cells], 0, 0
+    bbox_diag = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
+    alignment_tol = 128.0 * np.finfo(np.float64).eps * max(
+        bbox_diag**3,
+        np.finfo(np.float64).tiny,
+    )
+    oriented: list[list[list[int]]] = []
+    n_reversed = 0
+    n_ambiguous = 0
+    for cell in cells:
+        unique_vertices = sorted({vertex for face in cell for vertex in face})
+        if len(unique_vertices) < 4:
+            oriented.append([list(face) for face in cell])
+            n_ambiguous += len(cell)
+            continue
+        cell_center = points[unique_vertices].mean(axis=0)
+        oriented_cell: list[list[int]] = []
+        for source_face in cell:
+            face = list(source_face)
+            if len(face) < 3:
+                oriented_cell.append(face)
+                n_ambiguous += 1
+                continue
+            polygon = points[face]
+            face_center = polygon.mean(axis=0)
+            normal = np.zeros(3, dtype=np.float64)
+            for index, current in enumerate(polygon):
+                normal += np.cross(current, polygon[(index + 1) % len(polygon)])
+            alignment = float(np.dot(normal, face_center - cell_center))
+            if abs(alignment) <= alignment_tol:
+                n_ambiguous += 1
+            elif alignment < 0.0:
+                # Reverse winding while retaining the provenance anchor vertex.
+                face = [face[0], *reversed(face[1:])]
+                n_reversed += 1
+            oriented_cell.append(face)
+        oriented.append(oriented_cell)
+    return oriented, n_reversed, n_ambiguous
+
+
 def _detect_cell_self_intersect(
     cell_faces: list[list[int]],
     points: np.ndarray,
@@ -1064,7 +1190,11 @@ def _lloyd_3d_iteration(
         if pinned_mask is not None and len(pinned_mask) == seeds.shape[0]
         else None
     )
-    pinned_orig = seeds[pinned].copy() if pinned is not None and pinned.any() else None
+    # Keep original positions row-aligned with the current seed array.  Lloyd's
+    # inside filter may compact ``seeds_inside`` between iterations; retaining
+    # the initial-length mask would make the next pinned assignment invalid and
+    # could associate a surviving pin with the wrong original row.
+    pinned_orig = seeds.copy() if pinned is not None else None
     try:
         from scipy.spatial import Voronoi  # noqa: PLC0415
     except Exception:
@@ -1136,7 +1266,7 @@ def _lloyd_3d_iteration(
         # Pin: feature seeds 위치를 매 반복마다 원본으로 복원 — Lloyd 평탄화로
         # 인한 sharp edge drift 방지 (poly mesh 경계 보존).
         if pinned is not None and pinned_orig is not None:
-            new_seeds_arr[pinned] = pinned_orig
+            new_seeds_arr[pinned] = pinned_orig[pinned]
         # C-PERF-1 / beta2380 — Lloyd plateau early-exit (Du 1999 §3 monotonicity).
         try:
             import os as _os_lp
@@ -1153,6 +1283,9 @@ def _lloyd_3d_iteration(
                     seeds_inside = new_seeds_arr
                     inside_mask_p = _inside_ray_cast(seeds_inside, V, F)
                     seeds_inside = seeds_inside[inside_mask_p]
+                    if pinned is not None and pinned_orig is not None:
+                        pinned = pinned[inside_mask_p]
+                        pinned_orig = pinned_orig[inside_mask_p]
                     break
         except Exception:
             pass
@@ -1160,6 +1293,9 @@ def _lloyd_3d_iteration(
         # inside 재필터
         inside_mask = _inside_ray_cast(seeds_inside, V, F)
         seeds_inside = seeds_inside[inside_mask]
+        if pinned is not None and pinned_orig is not None:
+            pinned = pinned[inside_mask]
+            pinned_orig = pinned_orig[inside_mask]
         if seeds_inside.shape[0] < 5:
             # 너무 많이 잘려나가면 직전 seeds 반환
             break
@@ -1226,6 +1362,9 @@ def generate_native_poly_voronoi(
         except Exception:
             pass
         return r
+
+    def _terminal_validity_refusal(r: NativePolyResult) -> bool:
+        return getattr(r, "failure_kind", None) == "validity_refused"
 
     if prefer_hex_for_budget and int(max_cells or target_cells or 0) > 0:
         try:
@@ -1357,7 +1496,10 @@ def generate_native_poly_voronoi(
                 target_edge_length=target_edge_length,
                 seed_density=cur_seed,
                 n_lloyd=n_lloyd,
+                bl_layers=int(bl_layers),
             )
+            if _terminal_validity_refusal(r_attempt):
+                return _inject_si(r_attempt)
             if r_attempt.success and r_attempt.n_cells > 2:
                 candidates.append(
                     (
@@ -1378,7 +1520,10 @@ def generate_native_poly_voronoi(
                 vertices, faces, case_dir,
                 target_edge_length=target_edge_length,
                 seed_density=cur_seed, n_lloyd=n_lloyd, lp_p=4.0,
+                bl_layers=int(bl_layers),
             )
+            if _terminal_validity_refusal(r_p4) and not candidates:
+                return _inject_si(r_p4)
             if r_p4.success and r_p4.n_cells > 2:
                 candidates.append((
                     _grade_score(r_p4.quality_grade) + _VORONOI_BONUS,
@@ -1398,7 +1543,10 @@ def generate_native_poly_voronoi(
                 target_edge_length=target_edge_length,
                 seed_density=cur_seed, n_lloyd=n_lloyd, lp_p=2.0,
                 clip_boundary=True,
+                bl_layers=int(bl_layers),
             )
+            if _terminal_validity_refusal(r_clipped) and not candidates:
+                return _inject_si(r_clipped)
             if r_clipped.success and r_clipped.n_cells > 2:
                 candidates.append((
                     _grade_score(r_clipped.quality_grade) + _VORONOI_BONUS,
@@ -1547,7 +1695,10 @@ def generate_native_poly_voronoi(
                             seed_density=int(seed_density),
                             n_lloyd=int(n_lloyd),
                             lp_p=_lp_p,
+                            bl_layers=int(bl_layers),
                         )
+                        if _terminal_validity_refusal(_retry_r):
+                            return _inject_si(_retry_r)
                         if _retry_r.success and _retry_r.n_cells > 2:
                             log.info(
                                 "native_poly_p2_repair_voronoi_OK",
@@ -1634,7 +1785,10 @@ def generate_native_poly_voronoi(
                         target_edge_length=target_edge_length,
                         seed_density=int(seed_density),
                         n_lloyd=int(n_lloyd), lp_p=2.0,
+                        bl_layers=int(bl_layers),
                     )
+                    if _terminal_validity_refusal(_retry_r2):
+                        return _inject_si(_retry_r2)
                     # 채택 정책: 새 grade 가 더 좋으면 (A > B > C > D > ?) 채택.
                     _grade_rank = {"A": 4, "B": 3, "C": 2, "D": 1, "?": 0}
                     if (
@@ -1665,7 +1819,10 @@ def generate_native_poly_voronoi(
                                 target_edge_length=target_edge_length,
                                 seed_density=int(seed_density) * 2,
                                 n_lloyd=int(n_lloyd), lp_p=2.0,
+                                bl_layers=int(bl_layers),
                             )
+                            if _terminal_validity_refusal(_retry_r3):
+                                return _inject_si(_retry_r3)
                             if (
                                 _retry_r3.success
                                 and _grade_rank.get(_retry_r3.quality_grade, 0)
@@ -1712,6 +1869,7 @@ def generate_native_poly_voronoi(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
         seed_density=seed_density, n_lloyd=n_lloyd,
+        bl_layers=int(bl_layers),
     )
     return _inject_si(_inner_r)
 
@@ -1892,6 +2050,7 @@ def _generate_native_poly_voronoi_inner(
     n_lloyd: int = 2,
     lp_p: float = 2.0,
     clip_boundary: bool = False,
+    bl_layers: int = 0,
 ) -> NativePolyResult:
     """단일 시도 (auto_escalate 없는 원본 흐름)."""
     t0 = time.perf_counter()
@@ -2239,7 +2398,17 @@ def _generate_native_poly_voronoi_inner(
         delta=0,
     )
 
-    if _TTT3_POLY_BL_EXTRUDE_ENABLE and _wall_adj:
+    _requested_bl_layers = max(0, int(bl_layers or 0))
+    _safe_bl_layers = min(2, _requested_bl_layers)
+    if _requested_bl_layers > _safe_bl_layers:
+        log.warning(
+            "poly_bl_layers_reduced",
+            requested=_requested_bl_layers,
+            actual_cap=_safe_bl_layers,
+            reason="native_poly_safe_max",
+        )
+
+    if _TTT3_POLY_BL_EXTRUDE_ENABLE and _wall_adj and _safe_bl_layers > 0:
         bbox_diag = float(np.linalg.norm(V.max(0) - V.min(0)))
         _n_cells_pre = len(final_cells)
         final_vertices, final_cells = _extrude_prism_layer(
@@ -2292,7 +2461,7 @@ def _generate_native_poly_voronoi_inner(
         # Uses _geometric_layer_thickness from core.layers.native_bl (BL2, 1.2× ratio).
         # Layer chain: wall → layer1 (t1) → layer2 (t1*1.2) → outer.
         # Guards applied per-layer; truncate chain at last valid layer (don't reject all).
-        _POL_LAYERS_N: int = 2  # algorithmic cap (not a sweep param).
+        _POL_LAYERS_N: int = _safe_bl_layers
         try:
             from core.layers.native_bl import _geometric_layer_thickness as _glt
             _first_step = bbox_diag * 0.005 * 0.95
@@ -2503,33 +2672,45 @@ def _generate_native_poly_voronoi_inner(
     )
     _pol_val3_prev = _pol_val3_cur
 
-    # VAL2 (beta2148) — negative-volume poly validation (default ON).
-    try:
-        validate_poly_cell_volumes(final_cells, final_vertices)
-    except Exception as _val2_exc:
-        log.debug("native_poly_val2_skipped", reason=str(_val2_exc))
-    # POL_VAL3 — final pass tracking (VAL2 post).
-    _pol_val3_final = _count_neg_vol_poly(final_cells, final_vertices)
+    # Cell-local outward winding.  The PCA normal used for CCW face sorting has
+    # arbitrary sign; resolve only that sign after all geometry passes.  Face
+    # membership, cell order, coordinates, and provenance keys remain intact.
+    final_cells, _n_face_reversed, _n_face_ambiguous = (
+        _orient_poly_cell_faces_outward(final_vertices, final_cells)
+    )
+    log.info(
+        "native_poly_face_orientation",
+        n_reversed=_n_face_reversed,
+        n_ambiguous=_n_face_ambiguous,
+        n_cells=len(final_cells),
+    )
+
+    # VAL2 (beta2148) — mandatory pre-write validity admission.  The diagnostic
+    # disable switch must not bypass release-critical negative/degenerate-cell
+    # rejection.  Refusal happens before the first polyMesh writer call.
+    _prewrite = _admit_and_write_polymesh_poly(
+        final_vertices,
+        final_cells,
+        case_dir,
+        strict=_no_drop_holes1_active,
+        started_at=t0,
+    )
+    if _prewrite.refusal is not None:
+        return _prewrite.refusal
+    assert _prewrite.n_negative is not None
+    assert _prewrite.n_degenerate is not None
+    assert _prewrite.stats is not None
+    _n_negative = _prewrite.n_negative
+    _n_degenerate = _prewrite.n_degenerate
+    stats = _prewrite.stats
+    # POL_VAL3 — final pass tracking uses the mandatory admission source.
+    _pol_val3_final = int(_n_negative)
     log.info(
         "native_poly_neg_vol_track",
         pass_name="VAL2_post",
         n_neg=_pol_val3_final,
         delta=_pol_val3_final - _pol_val3_prev,
     )
-
-    try:
-        stats = _write_polymesh_poly(
-            final_vertices,
-            final_cells,
-            case_dir,
-            strict=_no_drop_holes1_active,
-        )
-    except Exception as exc:
-        return NativePolyResult(
-            False, time.perf_counter() - t0,
-            message=f"polyMesh 쓰기 실패: {exc}",
-        )
-
     # Y1 (beta1650) — Fluent poly mesher 비교 메트릭.
     grade = "?"
     max_no = -1.0; mean_no = -1.0

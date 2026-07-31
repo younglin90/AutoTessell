@@ -99,10 +99,10 @@ _VALID_BIPYRAMID_ENTITIES = {
 }
 _VALID_POLYMESH_HASHES = {
     "points": "fdab8bddd008ad6fc003427a6a153c4ae4898ddb540dee684cc2be2134a25957",
-    "faces": "e34a8b7e92d198a658ef33227d71ecbba55dba2c9c8ebd66c9db16fa297c854c",
-    "owner": "2f3f3f3e97e28db3e2c4ad74ec0b55690bb399ab97098b15d97172ae488873ca",
-    "neighbour": "8d80df3c7b13898717eb271b3913d3e577179c3f85e9441418159002f9374873",
-    "boundary": "d29e59ca7dede8b5d1b3ecd5e7858923ab3e5ca459dafcf1d8b2ebd0281d88c0",
+    "faces": "0846799c7a230d88394a434ff49bf169ceed0a761f3ed253b097301fc6f6e09d",
+    "owner": "6c8335250af566f1affbc17c21e1f8846f7aafdff99f5e5fcc010421d7a8bdf5",
+    "neighbour": "408c0ac900fc804194882df5d6432d76745df82ecdc44a499f13e31a20e78bac",
+    "boundary": "f637c72d06683b18f208c23b7517968ebc7a31eff2b6a841e8bf4d1d9755c5f8",
 }
 
 
@@ -130,11 +130,13 @@ def test_residual_star_invalid_cube_refuses_deterministically_without_artifacts(
         # Cell 6 remains genuinely non-star-shaped and must keep the whole write
         # transaction fail-closed.
         assert result.invalid_star_cells == 1
-        assert result.invalid_star_subtets == 9
+        # Provenance-defined separator triangulation removes three duplicate
+        # invalid wedges while preserving the same rejected non-star cell.
+        assert result.invalid_star_subtets == 6
         assert result.message == (
             "star_validity_refused: mode=centroid, invalid_cells=1, "
-            "invalid_subtets=9; garimella point candidate rejected: "
-            "star_invalid_cells=1, star_invalid_subtets=9"
+            "invalid_subtets=6; garimella point candidate rejected: "
+            "star_invalid_cells=1, star_invalid_subtets=6"
         )
         poly_dir = case_dir / "constant" / "polyMesh"
         assert not any(
