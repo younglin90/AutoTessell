@@ -32,6 +32,10 @@ def _write_run(
         json.dumps(
             {
                 "evaluation_summary": {
+                    "tier_evaluated": "tier_native_tet",
+                    "mesh_type": "tet",
+                    "checker_engine_used": "native",
+                    "quality_level": "draft",
                     "checkmesh": {"negative_volumes": negative_volumes},
                     "gate4_evidence": (
                         {"gate4_pass": False, "unverified_fields": fields}
@@ -60,6 +64,12 @@ def _manifest(source_root: Path, first: Path, second: Path, third: Path) -> dict
         "cases": [
             {
                 "id": "native-tet-cube",
+                "native_product_contract": {
+                    "tier_evaluated": "tier_native_tet",
+                    "mesh_type": "tet",
+                    "checker_engine_used": "native",
+                    "quality_level": "draft",
+                },
                 "source_snapshot": {
                     "artifact_dir": str(source_root.resolve()),
                     "path": "source.stl",
@@ -118,6 +128,12 @@ def test_complete_bounded_evidence_still_never_returns_release_pass(tmp_path: Pa
         row["runs"][0]["quality_report_sha256"]
         == hashlib.sha256((first / "quality-report.json").read_bytes()).hexdigest()
     )
+    assert row["runs"][0]["native_product_contract"] == {
+        "checker_engine_used": "native",
+        "mesh_type": "tet",
+        "quality_level": "draft",
+        "tier_evaluated": "tier_native_tet",
+    }
 
 
 def test_exactly_two_runs_are_unverified_before_artifact_inspection(tmp_path: Path) -> None:
@@ -227,6 +243,51 @@ def test_quality_report_hash_is_required_and_exact(tmp_path: Path) -> None:
 
     assert report["status"] == "UNVERIFIED"
     assert report["cases"][0]["reason"] == "quality_report_hash_mismatch"
+
+
+def test_native_product_contract_is_required_typed_and_exact(tmp_path: Path) -> None:
+    first, second, third = tmp_path / "run-one", tmp_path / "run-two", tmp_path / "run-three"
+    _write_run(first)
+    _write_run(second)
+    _write_run(third)
+    manifest = _manifest(first, first, second, third)
+    manifest["cases"][0].pop("native_product_contract")
+
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "native_product_contract_required"
+
+    manifest = _manifest(first, first, second, third)
+    manifest["cases"][0]["native_product_contract"]["quality_level"] = 0
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "native_product_contract_required"
+
+    manifest = _manifest(first, first, second, third)
+    manifest["cases"][0]["native_product_contract"] = {
+        "tier_evaluated": "tier_native_tet",
+        "mesh_type": "tet",
+        "checker_engine_used": "native",
+    }
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "native_product_contract_required"
+
+    manifest = _manifest(first, first, second, third)
+    report_path = first / "quality-report.json"
+    report_value = json.loads(report_path.read_text(encoding="utf-8"))
+    report_value["evaluation_summary"]["mesh_type"] = "hex_dominant"
+    report_path.write_text(json.dumps(report_value), encoding="utf-8")
+    manifest["cases"][0]["runs"][0]["quality_report_sha256"] = hashlib.sha256(
+        report_path.read_bytes()
+    ).hexdigest()
+    report = verify_release_native_corpus(manifest, [first, second, third])
+
+    assert report["status"] == "UNVERIFIED"
+    assert report["cases"][0]["reason"] == "native_product_contract_mismatch"
 
 
 def test_legacy_top_level_fields_are_explicitly_supported_but_ambiguous_shape_rejects(
