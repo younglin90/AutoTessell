@@ -3191,6 +3191,23 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 185 checkpoint -- 2026-08-01
+
+### Clang20 native polyMesh array-shape correction
+
+- Cycle 184 full clang evidence is `UNVERIFIED` at five native-polyMesh
+  scalar-brace allocations.  Cycle 185 changes only those allocations to
+  explicit pybind shape containers, preserving dtype, value, and
+  one-dimensional shape semantics.
+- Fresh c1 clang20 Release Makefiles target-only `native_polymesh` validation
+  passed in `13.888079463 s`:
+  `/tmp/autotessell-c185-native-polymesh-runner-evidence.json`.
+
+### Release state
+
+- Full build and Gate 2 remain `UNVERIFIED`; no behavior claim is made.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 183 checkpoint -- 2026-08-01
 
 ### Clang20 native Tet-QOpt array-shape correction

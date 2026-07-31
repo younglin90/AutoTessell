@@ -686,7 +686,8 @@ py::array_t<bool> face_flip_mask(
         }
     }
 
-    py::array_t<bool> result({static_cast<py::ssize_t>(ragged.size())});
+    py::array_t<bool> result(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(ragged.size())});
     bool* const flips = result.mutable_data();
     const double* const point_data = points.data();
     const double* const centroid_data = cell_centroids.data();
@@ -757,7 +758,8 @@ py::tuple face_plane_geometry(
         }
     }
 
-    py::array_t<bool> on_plane({static_cast<py::ssize_t>(ragged.size())});
+    py::array_t<bool> on_plane(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(ragged.size())});
     bool* const flags = on_plane.mutable_data();
     const double* const point_data = points.data();
     const double* const normal_data = plane_normals.data();
@@ -1274,7 +1276,8 @@ TopologyResult build_topology_kernel(
 
 py::array_t<Label> copy_labels(const std::vector<Label>& values)
 {
-    py::array_t<Label> result({static_cast<py::ssize_t>(values.size())});
+    py::array_t<Label> result(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(values.size())});
     auto output = result.mutable_unchecked<1>();
     for (size_t i = 0; i < values.size(); ++i) {
         output(static_cast<py::ssize_t>(i)) = values[i];
@@ -1339,7 +1342,8 @@ py::tuple compute_tet_dual_points(
     }
     py::array_t<double> dual_points({
         static_cast<py::ssize_t>(tet_count), static_cast<py::ssize_t>(3)});
-    py::array_t<std::uint8_t> statuses({static_cast<py::ssize_t>(tet_count)});
+    py::array_t<std::uint8_t> statuses(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(tet_count)});
     const double* const point_data = points.data();
     const Label* const tet_data = tets.data();
     double* const dual_data = dual_points.mutable_data();
@@ -1654,8 +1658,9 @@ py::tuple audit_tet_primal_conformity(
             py::make_tuple(key[0], key[1], key[2]),
             py::cast(owners));
     }
-    py::array_t<Label> python_orphans({
-        static_cast<py::ssize_t>(orphan_vertex_rows.size())});
+    py::array_t<Label> python_orphans(
+        py::array::ShapeContainer{
+            static_cast<py::ssize_t>(orphan_vertex_rows.size())});
     auto orphan_output = python_orphans.mutable_unchecked<1>();
     for (size_t index = 0U; index < orphan_vertex_rows.size(); ++index) {
         orphan_output(static_cast<py::ssize_t>(index)) = orphan_vertex_rows[index];
