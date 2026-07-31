@@ -3191,6 +3191,23 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 137 pre-merge checkpoint -- 2026-07-31
+
+### Native-Poly cube third bounded reproducibility run
+
+- Third strict native-Poly cube run passed at concurrency `1` in `33.50 s`.
+  All three runs have exact byte-identical `points`, `faces`, `owner`,
+  `neighbour`, and `boundary`; native checker reports `0` negative volumes.
+- Thread/order matrix and cross-fixture evidence remain absent, so Gate 9
+  remains `UNVERIFIED`.  The retained obsolete native-Poly protected branch is
+  unchanged; no Gate is promoted to `PASS`.
+
+### Release state
+
+- Gates 1--15 remain unmet.  No routing, default, UI, mesh, provenance, or
+  `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 136 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Poly cube bounded reproducibility observation
