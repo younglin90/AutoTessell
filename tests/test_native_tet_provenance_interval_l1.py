@@ -34,6 +34,8 @@ _STAGES = (
     "post_nnn3_insert",
     "post_nnn4_amips",
     "post_rrr2_targeted_amips",
+    "pre_sss_pass0_relocate",
+    "post_sss_pass0_relocate_pre_accept",
     "post_sss_revival_pass_0",
     "post_sss_revival_pass_1",
     "post_sss_revival",
@@ -55,7 +57,10 @@ def _worker(repeat: int, case_dir: Path) -> dict[str, object]:
         capture_initial_strict_overlap_source_l1,
     )
     from core.generator.native_tet.mesher import generate_native_tet
-    from core.generator.native_tet.rescue_gate import audit_internal_face_sidedness, audit_tet_boundary
+    from core.generator.native_tet.rescue_gate import (
+        audit_internal_face_sidedness,
+        audit_tet_boundary,
+    )
 
     mesh = read_stl(_SPHERE)
     points = np.ascontiguousarray(mesh.vertices, dtype=np.float64)
@@ -84,8 +89,12 @@ def _worker(repeat: int, case_dir: Path) -> dict[str, object]:
             {
                 "stage": checkpoint.stage,
                 "strict": {
-                    "inverted": audit_tet_boundary(checkpoint.candidate_points, checkpoint.candidate_tets).n_inverted_tets,
-                    "same_side": audit_internal_face_sidedness(checkpoint.candidate_points, checkpoint.candidate_tets).n_same_side_internal_faces,
+                    "inverted": audit_tet_boundary(
+                        checkpoint.candidate_points, checkpoint.candidate_tets
+                    ).n_inverted_tets,
+                    "same_side": audit_internal_face_sidedness(
+                        checkpoint.candidate_points, checkpoint.candidate_tets
+                    ).n_same_side_internal_faces,
                 },
                 "record": capture_initial_strict_overlap_source_l1(
                     fixture="sphere",
@@ -158,11 +167,11 @@ def test_sphere_provenance_interval_l1(tmp_path: Path) -> None:
         assert payload["result"]["success"] is False
         assert payload["result"]["writer"] is False
         assert tuple(item["stage"] for item in records) == _STAGES
-        assert payload["first_failed"] == "post_sss_revival_pass_0"
+        assert payload["first_failed"] == "post_sss_pass0_relocate_pre_accept"
         first_failed_index = next(
             index
             for index, item in enumerate(records)
-            if item["stage"] == "post_sss_revival_pass_0"
+            if item["stage"] == "post_sss_pass0_relocate_pre_accept"
         )
         for item in records[:first_failed_index]:
             assert _passes(item["record"]) is True
