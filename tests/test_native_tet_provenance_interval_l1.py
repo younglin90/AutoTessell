@@ -144,6 +144,7 @@ def _run(tmp_path: Path, repeat: int) -> dict[str, object]:
         str(evidence),
     ]
     environment = dict(os.environ)
+    environment["AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION"] = "1"
     environment["PYTHONPATH"] = str(_ROOT) + (
         ":" + environment["PYTHONPATH"] if environment.get("PYTHONPATH") else ""
     )
@@ -165,8 +166,11 @@ def test_sphere_provenance_interval_l1(tmp_path: Path) -> None:
     for payload in payloads:
         records = payload["records"]
         assert payload["immutable"] is True
-        assert payload["result"]["success"] is False
-        assert payload["result"]["writer"] is False
+        assert payload["result"] == {
+            "success": True,
+            "n_cells": 2227,
+            "writer": True,
+        }
         pre_quality = next(
             item for item in records if item["stage"] == "sss_pass0_pre_quality"
         )

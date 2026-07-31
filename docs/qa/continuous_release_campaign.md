@@ -4,7 +4,7 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `55`
+- cycle: `80`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
@@ -2799,3 +2799,32 @@ provenance gate.
   the protected Poly worktree.  Separately resolve the 21 Gate-3 DEFER markers
   with stable reasons or verified replacement coverage, then schedule an actual
   full-suite card.  Gate 1--15 remain unmet; continue.
+
+## Cycle 80 pre-merge reconciliation -- 2026-07-31
+
+### Ledger/Git reconciliation
+
+- Last recorded ledger checkpoint: Cycle 62, `master`
+  `3448c9ae809ec38288545eb3c86d6728f48427a2`.
+- Current pre-merge base: `master`
+  `76661a3de4f7a35b4477362ed23363b11591b7a2`.
+- Git-reachable commits after Cycle 62 were not ledgered.  This checkpoint
+  explicitly reconciles that gap; it does not invent outcomes for those commits.
+
+### Tet same-side transaction candidate
+
+- Candidate commits: `0cd7acb1`, `45947bd6`, `2002a409`.
+- Advisor validation runner: `PASS`, concurrency `1`, `60.47 s`, three focused
+  files.  Default OFF preserves strict refusal, emits no `polyMesh`, and emits
+  no transaction artifact.  Opt-in
+  `AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION=1` retains source component
+  bijection and source faces, has unowned faces `0`, inverted tets `0`, and
+  reduces same-side debt `108 -> 0`.
+- Strict topology is unchanged.  Target cells remain secondary.  No
+  `third_party/` modification is included.
+- Ruff is `UNVERIFIED`: `109` pre-existing `mesher.py` violations.
+
+### Release state
+
+- Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.

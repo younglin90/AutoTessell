@@ -12,7 +12,11 @@ from core.generator.native_tet.mesher import generate_native_tet
 _SPHERE = Path(__file__).resolve().parent / "benchmarks" / "sphere.stl"
 
 
-def test_sphere_sss_relocation_rejects_source_losing_candidate(tmp_path: Path) -> None:
+def test_sphere_sss_relocation_rejects_source_losing_candidate(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION", "1")
     mesh = read_stl(_SPHERE)
     case_dir = tmp_path / "sphere"
 
@@ -46,8 +50,8 @@ def test_sphere_sss_relocation_rejects_source_losing_candidate(tmp_path: Path) -
         "candidate_ambiguous_internal_faces": 0,
         "exact_rollback": True,
     }
-    assert result.success is False
-    assert not (case_dir / "constant" / "polyMesh").exists()
+    assert result.success is True
+    assert (case_dir / "constant" / "polyMesh").exists()
     source = result.debug_info["strict_source_component_bijection"]
     assert source["bijective"] is True
     assert source["source_faces_preserved"] is True
@@ -55,6 +59,22 @@ def test_sphere_sss_relocation_rejects_source_losing_candidate(tmp_path: Path) -
     assert source["n_missing_source_faces"] == 0
     assert source["n_unowned_candidate_faces"] == 0
     strict = result.debug_info["strict_source_topology"]
-    assert strict["valid"] is False
+    assert strict["valid"] is True
     assert strict["n_inverted_tets"] == 0
-    assert strict["n_same_side_internal_faces"] == 108
+    assert strict["n_same_side_internal_faces"] == 0
+    assert result.debug_info["same_side_retriangulation_transaction"] == {
+        "accepted": True,
+        "reason": "delaunay_connectivity_strictly_reduced_same_side",
+        "before_n_cells": 2166,
+        "candidate_n_cells": 2227,
+        "before_same_side_internal_faces": 108,
+        "candidate_same_side_internal_faces": 0,
+        "before_ambiguous_internal_faces": 0,
+        "candidate_ambiguous_internal_faces": 0,
+        "before_inverted_tets": 0,
+        "candidate_inverted_tets": 0,
+        "source_component_bijective": True,
+        "source_faces_preserved": True,
+        "candidate_unowned_faces": 0,
+        "exact_rollback": False,
+    }
