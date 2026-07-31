@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 171 pre-merge checkpoint -- 2026-07-31
+
+### Tet same-side strict transaction rerun
+
+- Broad current 14-test c1 runner timed out at `60.073 s` and is
+  `UNVERIFIED`: `/tmp/autotessell-c171-tet-same-side-current-runner-evidence.json`.
+- The exact two sphere same-side strict-transaction tests used a bounded
+  `90 s` runner and passed in `23.686941822 s`:
+  `/tmp/autotessell-c171b-tet-sphere-debt-runner-evidence.json`.  Their actual
+  scope is source exactness, strict topology, inversion `0`, and reduced
+  same-side debt only.
+
+### Release state
+
+- Broad-suite status remains `UNVERIFIED`; no Gate or release claim is
+  promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 170 pre-merge checkpoint -- 2026-07-31
 
 ### Native corpus exact required-set rerun
