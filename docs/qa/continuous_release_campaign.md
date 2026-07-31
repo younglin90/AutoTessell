@@ -3191,6 +3191,26 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 165 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tet sphere full current-corpus binding
+
+- The retained actual native-Tet sphere three-run corpus now binds the
+  immutable source, complete `polyMesh` identities, quality-report byte
+  hashes, typed native product contract, and report-internal Gate-4
+  source/output attestations.  All three retain aggregate `c002...5996b`.
+- Corpus evidence:
+  `/tmp/autotessell-c165-tet-sphere-corpus-evidence.json`; runner evidence:
+  `/tmp/autotessell-c165-tet-sphere-corpus-runner-evidence.json`.  The bounded
+  runner used concurrency `1`, took `0.039 s`, and is expected `ERROR` /
+  `UNVERIFIED` with exit `1`: release evidence remains incomplete by design.
+
+### Release state
+
+- No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
+  product, route, default, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 163 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Poly cube full current-corpus binding
