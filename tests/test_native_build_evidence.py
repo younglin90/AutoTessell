@@ -62,6 +62,24 @@ def test_missing_manifest_still_names_stale_abi_symbols(
     assert "native_snap: missing public symbols: extract_feature_edges" in message
 
 
+def test_symbolic_linked_extension_binary_is_refused(
+    tmp_path: Path,
+) -> None:
+    suffix = importlib.machinery.EXTENSION_SUFFIXES[0]
+    build_dir = tmp_path / "native-build"
+    build_dir.mkdir()
+    linked_binary = build_dir / f"native_metrics{suffix}"
+    outside_binary = tmp_path / f"native_metrics{suffix}"
+    outside_binary.write_bytes(b"untrusted-binary")
+    try:
+        linked_binary.symlink_to(outside_binary)
+    except OSError as exc:
+        pytest.skip(f"symbolic links unavailable: {exc}")
+
+    with pytest.raises(subject.EvidenceError, match="symbolic-link extension binary is not accepted"):
+        subject.find_binary(build_dir, "native_metrics")
+
+
 def test_generated_manifest_verifies_hashes_identity_and_exact_abi(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
