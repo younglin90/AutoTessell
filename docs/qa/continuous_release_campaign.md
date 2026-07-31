@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `53`
+- cycle: `54`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `0cf28a3a6e8e6586e61576c6f6d5bc31f45f5920`
+- last_verified_master: `ee30ae7de42db72d4b521d1ad41c37679c917b10`
 - allowed_to_stop: `false`
-- next_action: `Continue separate tri/quad/tri_quad evaluator planning, authoritative CAD-to-front corpus expansion, Tet initial-overlap root-cause evidence, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
+- next_action: `Continue source-certificate-bound tri/quad/tri_quad evaluator planning, authoritative CAD-to-front corpus expansion, Tet overlap-class policy analysis, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2619,3 +2619,54 @@ Gate 6 stays `FAIL` and secondary by policy.  Gates 2--3 and 7--15 remain
   use the Tet ledger only to localize the first strict-overlap source.  Keep
   Poly source-cap work deferred until an explicit owner-semantics policy exists.
   Gate 1--15 remain unmet; continue.
+
+## Cycle 54 checkpoint -- 2026-07-31
+
+### Integrated fail-closed diagnostics
+
+- `cdbc36f6` adds `native_surface_product`, a first-party C++23,
+  default-OFF, report-only evaluator.  It reads only immutable C-contiguous
+  `int64` triangle `(T,3)` and quad `(Q,4)` arrays through no-copy spans and
+  distinguishes local `tri`, `quad`, `tri_quad`, and invalid topology.  It
+  does not certify a product: every result reports
+  `product_accepted=false` with
+  `source_product_certificate_required`, because source envelope, feature,
+  patch, physical-group, and provenance proof are absent.  Explicit external
+  Release build and post-merge test: `8 passed`.  Bundle SHA-256:
+  `0dbca3e43e19a8ffc8fbc6e961c69bf4bec61a30d1e8dc626efc1d049da645b7`.
+- `8848aff7` adds Hex authority corpus L2 metadata validation.  Duplicate
+  authority keys, duplicate explicit order, empty metadata, and runtime-invalid
+  key/path/order types fail closed before source reads, sidecar, numeric
+  preflight, candidate construction, or artifacts.  Canonical order is stable
+  under caller iteration reordering.  Post-merge focused tests:
+  `20 passed, 2 skipped` (optional native extension).  Bundle SHA-256:
+  `da2541e59f418eb539ff81740b8dd810be1dfde2a97bda75853e3641da06b6c5`.
+- `ee30ae7d` records the first Tet same-side strict-overlap source in isolated
+  subprocesses only.  The existing audit is invoked first with unchanged
+  arguments; the diagnostic then records exact source/candidate hashes,
+  ambiguity counts, source-component/patch provenance, and call index.  It
+  changes no generator/predicate/threshold/refusal/writer/transaction/target
+  path.  Cube and sphere retain strict failure and writer artifact `0`;
+  post-merge L1: `4 passed` in `37.98 s`.  Bundle SHA-256:
+  `46ca16d5c081c65415f2f608d28f33ec2b6cc29c1752bfeb37e0ed9217dd9e6c`.
+- The Cycle-54 C++ temporary Release build and all merged Cycle-54 worktrees
+  and branches were removed after their bundle evidence was created.  Poly
+  remains the sole protected DEFER worktree.  `third_party/` remains unchanged.
+
+### Cycle-54 gate re-evaluation
+
+No release gate becomes `PASS`.  Gate 1 remains `FAIL` while the protected
+unmerged Poly worktree and tracked installer executable remain.  Gate 4 is
+`UNVERIFIED`: the surface evaluator deliberately refuses product certification
+without source evidence.  Gate 5 is `FAIL`: Tet successful zero-overlap output
+is still absent.  Gate 6 remains `FAIL` and secondary by policy.  The remaining
+gates retain their prior `FAIL`/`UNVERIFIED` state pending mechanical evidence.
+
+### Next automatic action
+
+- Bind local surface classification to existing source certificates only after
+  a full no-false-certification contract is specified.  Continue Tet
+  same-side-overlap policy analysis without weakening strict refusal, extend
+  CAD-authoritative Hex corpus evidence, and keep Poly source-cap work deferred
+  until explicit owner semantics are authorized.  Gate 1--15 remain unmet;
+  continue.
