@@ -180,7 +180,8 @@ py::dict local_front_backtrack_steps(
         }
     }
 
-    py::array_t<double> local_steps({static_cast<py::ssize_t>(vertex_count)});
+    py::array_t<double> local_steps(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(vertex_count)});
     autotessell::native_hex::LocalFrontResult result;
     {
         py::gil_scoped_release release;
@@ -635,7 +636,8 @@ QualityValues compute_quality(
 
 py::array_t<double> copy_values(const std::vector<double>& values)
 {
-    py::array_t<double> output({static_cast<py::ssize_t>(values.size())});
+    py::array_t<double> output(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(values.size())});
     auto view = output.mutable_unchecked<1>();
     for (size_t index = 0; index < values.size(); ++index) {
         view(static_cast<py::ssize_t>(index)) = values[index];
@@ -678,7 +680,7 @@ py::array_t<double> generic_cell_signed_volumes(
         throw std::invalid_argument("points must have shape (N, 3)");
     }
     py::array_t<double> volumes(
-        {static_cast<py::ssize_t>(cell_faces.size())});
+        py::array::ShapeContainer{static_cast<py::ssize_t>(cell_faces.size())});
     auto output = volumes.mutable_unchecked<1>();
     const auto point_view = points.unchecked<2>();
     const py::ssize_t point_count = points.shape(0);
@@ -744,7 +746,7 @@ py::array_t<double> boundary_vertex_local_scales(
 
     const py::ssize_t point_count = points.shape(0);
     const py::ssize_t boundary_count = boundary_vertices.shape(0);
-    py::array_t<double> local_scales({boundary_count});
+    py::array_t<double> local_scales(py::array::ShapeContainer{boundary_count});
     const auto point_view = points.unchecked<2>();
     const auto boundary_view = boundary_vertices.unchecked<1>();
     auto output = local_scales.mutable_unchecked<1>();
@@ -800,7 +802,7 @@ py::tuple generic_cell_face_signs(
         throw std::invalid_argument("points must have shape (N, 3)");
     }
     py::array_t<double> signs(
-        {static_cast<py::ssize_t>(cell_faces.size())});
+        py::array::ShapeContainer{static_cast<py::ssize_t>(cell_faces.size())});
     auto output = signs.mutable_unchecked<1>();
     const auto point_view = points.unchecked<2>();
     const py::ssize_t point_count = points.shape(0);
@@ -1011,7 +1013,7 @@ py::array_t<double> hex_face_nonorthogonality(
     const py::ssize_t point_count = points.shape(0);
     const py::ssize_t cell_count = hexes.shape(0);
     const py::ssize_t face_count = faces.shape(0);
-    py::array_t<double> angles({face_count});
+    py::array_t<double> angles(py::array::ShapeContainer{face_count});
     auto output = angles.mutable_unchecked<1>();
 
     {
