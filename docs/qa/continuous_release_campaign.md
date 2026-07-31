@@ -3191,6 +3191,23 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 187 checkpoint -- 2026-08-01
+
+### Clang20 native Hex-quality array-shape correction
+
+- Cycle 186 full clang evidence is `UNVERIFIED` at six native Hex-quality
+  scalar-brace allocations.  Cycle 187 changes only those allocations to
+  explicit pybind shape containers, preserving dtype, value, and
+  one-dimensional shape semantics.
+- Fresh c1 clang20 Release Makefiles target-only `native_hex_quality`
+  validation passed in `13.382420348 s`:
+  `/tmp/autotessell-c187-native-hex-quality-runner-evidence.json`.
+
+### Release state
+
+- Full build and Gate 2 remain `UNVERIFIED`; no behavior claim is made.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 185 checkpoint -- 2026-08-01
 
 ### Clang20 native polyMesh array-shape correction
