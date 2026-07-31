@@ -14,6 +14,7 @@ known non-deterministic native crash (``.claude/rules/lessons-learned.md``).
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -165,11 +166,29 @@ def cube_primal():
 
     mesh = read_stl(CUBE)
     with tempfile.TemporaryDirectory() as td:
-        res = generate_native_tet(
-            mesh.vertices, mesh.faces, Path(td) / "tet", seed_density=10, target_cells=200
-        )
+        previous_same_side = os.environ.get("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION")
+        previous_p4c = os.environ.get("AUTO_TESSELL_P4C_PYTETWILD")
+        os.environ["AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION"] = "1"
+        os.environ["AUTO_TESSELL_P4C_PYTETWILD"] = "0"
+        try:
+            res = generate_native_tet(
+                mesh.vertices,
+                mesh.faces,
+                Path(td) / "tet",
+                seed_density=10,
+                target_cells=200,
+            )
+        finally:
+            if previous_same_side is None:
+                os.environ.pop("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION", None)
+            else:
+                os.environ["AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION"] = previous_same_side
+            if previous_p4c is None:
+                os.environ.pop("AUTO_TESSELL_P4C_PYTETWILD", None)
+            else:
+                os.environ["AUTO_TESSELL_P4C_PYTETWILD"] = previous_p4c
     if not res.success or res.tets is None:
-        pytest.skip(f"generate_native_tet failed: {res.message}")
+        pytest.fail(f"generate_native_tet failed: {res.message}")
     V = np.asarray(res.tet_points, dtype=np.float64)
     T = np.asarray(res.tets, dtype=np.int64)
     return V, T, vertex_star_agglomerate(V, T)

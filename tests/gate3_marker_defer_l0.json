@@ -14,9 +14,7 @@
     "test_qt*.py",
     "test_ui*.py"
   ],
-  "marker_count": 96,
-  "marker_sha256": "394cd3f21ce0da94d17572070f87df9d6d117e2c7de6bba801f0b3a1c3836128",
-  "deferred": [
-    {"file": "tests/test_native_poly_facegeom.py", "line": 172, "marker": "pytest.skip", "reason": "<dynamic reason>"}
-  ]
+  "marker_count": 95,
+  "marker_sha256": "d61bf96a81915babef843876a88bf13e046ab5acd8b3319d0bce5f96dd5094ff",
+  "deferred": []
 }
