@@ -150,7 +150,7 @@ def resolve_source_identity(
 def _extension_candidates(directory: Path, module_name: str) -> list[Path]:
     return sorted(
         {
-            candidate.resolve()
+            candidate
             for suffix in importlib.machinery.EXTENSION_SUFFIXES
             if (candidate := directory / f"{module_name}{suffix}").is_file()
         }
@@ -159,6 +159,12 @@ def _extension_candidates(directory: Path, module_name: str) -> list[Path]:
 
 def find_binary(directory: Path, module_name: str) -> Path:
     candidates = _extension_candidates(directory, module_name)
+    symbolic_links = [path for path in candidates if path.is_symlink()]
+    if symbolic_links:
+        rendered = ", ".join(str(path) for path in symbolic_links)
+        raise EvidenceError(
+            f"{module_name}: symbolic-link extension binary is not accepted: {rendered}"
+        )
     if len(candidates) != 1:
         rendered = ", ".join(str(path) for path in candidates) or "none"
         raise EvidenceError(f"{module_name}: expected one extension binary, found {rendered}")
