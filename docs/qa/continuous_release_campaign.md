@@ -3191,6 +3191,23 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 198 checkpoint -- 2026-08-01
+
+### Clean wheel install and CLI proof
+
+- Fresh c1 wheel validation passed in `48.543011929 s`.  Wheel SHA-256 is
+  `e443376a17fb388840e6ed4406dd2a1560609e18be18b361808cb818c5210f2a`.
+- Fresh venv creation, wheel install, CLI `--help`, and sphere `analyze`
+  passed; sphere analysis completed in `2.637 s`.  Runner evidence:
+  `/tmp/autotessell-c198-wheel-clean-runner-evidence.json`; phase evidence:
+  `/tmp/autotessell-c198-wheel-clean-evidence.json`.
+
+### Release state
+
+- Gates 12 and 2 remain `UNVERIFIED` pending OS/native matrix evidence.  No
+  code, Gate, or release claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 197 checkpoint -- 2026-08-01
 
 ### GNU13 first-party-native install proof
