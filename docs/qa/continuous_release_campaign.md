@@ -3191,6 +3191,40 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 108 pre-merge checkpoint -- 2026-07-31
+
+### Bounded strict native-Hex cube actual-output probe
+
+- A single bounded strict native-Hex cube pipeline run passed its focused
+  runner at concurrency `1` in `9.39 s`.  The generator records
+  `route="hex_uniform_grid"` and `fallback_reason=null`; no alternate engine,
+  cross-tier, or adaptive path was used.
+- Native checking reported `2197` cells and `0` negative volumes.  The exact
+  immutable `S0` SHA-256 is
+  `e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81`;
+  the stable five-file polyMesh aggregate SHA-256 is
+  `4451bba13962869ad44ec2b25e446151eb9597d7f8d876539f47de8e5301ef6f`.
+- The output-only topology audit is structurally valid: components `1`,
+  boundary loops `0`, Euler characteristic `2`, genus `0`, open/non-manifold
+  edges `0`, non-manifold vertices `0`, duplicate faces `0`, and orientation
+  mismatches `0`.  Self-intersection remains `unverified_not_checked`.
+- The legacy metric is present but incomplete.  Signed and directed distance,
+  normal percentile/flip, feature, volume/centroid, source-to-output topology,
+  patch, physical-group, and provenance checks remain missing.  Gate-4
+  evidence is `unverified_metric_incomplete` and `gate4_pass=false`.
+
+### Release state
+
+- The draft pipeline quality verdict does not promote Gate 4.  Gate 4 remains
+  `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15 remain unmet.
+  No code, routing, default, mesh, topology-repair, provenance, or
+  `third_party/` behavior changed.
+- Next action: actual immutable-`S0` matrix needs authoritative
+  self-intersection, directed/signed metrics, feature, topology comparison,
+  patch, physical-group, and provenance evidence.  Missing, timeout, error,
+  or invalid evidence remains `UNVERIFIED`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 107 pre-merge checkpoint -- 2026-07-31
 
 ### Bounded native-Poly cube actual-output probe
