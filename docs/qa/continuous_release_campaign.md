@@ -2876,6 +2876,36 @@ provenance gate.
   No topology or predicate relaxation.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 94 pre-merge checkpoint -- 2026-07-31
+
+### Tet cube CVT-off one-hop local-flip probe
+
+- The first runner execution (`c1`) is `UNVERIFIED`: it reproduced with CVT
+  enabled and found no same-side target.  It supplies no correctness result.
+- Corrected explicit `AUTO_TESSELL_CVT3D_OFF=1` probes passed at concurrency
+  `1`, timeout `60 s`: `c2` in `5.55 s` and asserted `c3` in `5.54 s`.
+  Evidence: `/tmp/cycle94_c2_evidence.json` and
+  `/tmp/cycle94_c3_evidence.json`.
+- First deterministic target: face `(195, 196, 241)`, owners `(499, 526)`,
+  apexes `(242, 189)`, signs `(-1, -1)`.  Base global audit has same-side
+  `4`, ambiguity `4`, inversion `0`, source bijection `true`, source faces
+  preserved `false`, and unowned faces `9`.
+- Its complete capped one-hop neighborhood has six faces.  All six direct
+  `2→3` candidates rejected with `orientation`; there was no legal candidate
+  for a post-candidate source/ambiguity/inversion audit.  No multi-hop or
+  broad search was run.
+
+### Release state
+
+- No current-API code card: wiring the existing `2→3` operation cannot enter
+  this target neighborhood.  No code, default, strict-topology, or Gate
+  change; Gates 1--15 remain unmet.
+- Next action requires a targetable `3→2` operator or a different bounded
+  cavity, plus independent source-boundary repair.  Any future candidate
+  remains fail-closed under the existing source, inversion, ambiguity, and
+  same-side contracts; no relaxation.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
