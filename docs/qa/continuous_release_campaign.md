@@ -3191,6 +3191,29 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 158 pre-merge checkpoint -- 2026-07-31
+
+### Native-Hex cube quality-report rebind
+
+- The current actual native-Hex cube three-run manifest binds report hashes
+  `345954884fd1f452d21e0d03b5f923fd69132de0ae290fd1c7c5c7c6d82c84c0`,
+  `a1cd01962765a93812fedb945a54986b7b86668497af5e073098a910a255aa32`, and
+  `b59fd6340cbdc576e0fccbe3d41ce2b7ca8a8b4747af46462e6397303d7f11a6`.
+  All three retain `polyMesh` identity `4451...ef6f`.
+- Corpus evidence:
+  `/tmp/autotessell-c158-hex-cube-corpus-evidence.json`; runner evidence:
+  `/tmp/autotessell-c158-hex-cube-corpus-runner-evidence.json`.  The bounded
+  runner used concurrency `1`, took `0.067 s`, and is expected `ERROR` /
+  `UNVERIFIED` with exit `1`: the verifier deliberately remains nonzero while
+  release evidence is incomplete.
+
+### Release state
+
+- This rebind does not promote Gate 4, Gate 9, or release to `PASS`.  Gates
+  1--15 remain unmet.  No generator, product, route, default, or
+  `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 157 pre-merge checkpoint -- 2026-07-31
 
 ### Native-Tet cube quality-report rebind
