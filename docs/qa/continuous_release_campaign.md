@@ -3066,6 +3066,27 @@ provenance gate.
   next action: clean native Release build evidence.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 100 pre-merge checkpoint -- 2026-07-31
+
+### Fresh native Release build evidence
+
+- No code change.  Fresh build root `/tmp/autotessell-cycle100-release` used
+  source `tessell-mesh`, Release configuration, Python/tests `OFF`, and
+  parallelism `2`.
+- Advisor runner `c1`: configure `PASS` in `43.52 s`; build `PASS` in
+  `114.54 s`.  Produced native artifacts include `libtessell_mesh_core.a` and
+  `geogram`.
+- Gate 2 remains `UNVERIFIED`: this one clean configuration does not establish
+  the supported native configuration/build matrix.
+
+### Release state
+
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+  change is included.
+- Next action: inventory supported native configurations and run their clean
+  builds before any Gate-2 promotion claim.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
