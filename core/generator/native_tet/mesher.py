@@ -17,6 +17,53 @@ if TYPE_CHECKING:
     from core.generator.native_tet.rescue_gate import TetBoundaryAudit
 
 
+@dataclass(frozen=True, slots=True)
+class _PhaseAProvenanceCheckpoint:
+    """Immutable, test-only arrays observed at a fixed native-tet boundary."""
+
+    stage: str
+    source_points: np.ndarray
+    source_faces: np.ndarray
+    candidate_points: np.ndarray
+    candidate_tets: np.ndarray
+
+
+def _immutable_observability_snapshot(values: np.ndarray) -> np.ndarray:
+    """Copy to a C-order array backed by immutable bytes for a diagnostic hook."""
+    contiguous = np.ascontiguousarray(values)
+    return np.frombuffer(
+        contiguous.tobytes(order="C"), dtype=contiguous.dtype
+    ).reshape(contiguous.shape)
+
+
+def _report_phase_a_provenance_checkpoint(
+    observer: Any,
+    *,
+    stage: str,
+    source_points: np.ndarray,
+    source_faces: np.ndarray,
+    candidate_points: np.ndarray,
+    candidate_tets: np.ndarray,
+) -> None:
+    """Invoke an optional observer without changing generator result semantics."""
+    try:
+        observer(
+            _PhaseAProvenanceCheckpoint(
+                stage=stage,
+                source_points=_immutable_observability_snapshot(source_points),
+                source_faces=_immutable_observability_snapshot(source_faces),
+                candidate_points=_immutable_observability_snapshot(candidate_points),
+                candidate_tets=_immutable_observability_snapshot(candidate_tets),
+            )
+        )
+    except Exception as exc:
+        log.warning(
+            "native_tet_phase_a_provenance_observer_failed",
+            stage=stage,
+            error=str(exc)[:120],
+        )
+
+
 def _input_vertices_exactly_present_l0(
     source_vertices: object,
     candidate_vertices: object,
@@ -769,6 +816,8 @@ def generate_native_tet(
     # BOOLMERGE5b: JSON-safe ordered STL provenance and volume boolean mask.
     boolean_input_paths: list[str] | None = None,
     boolean_operation: str = "union",
+    # Test-only Phase-A source-provenance observer.  Default path does not call it.
+    _phase_a_observer: Any = None,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -2201,6 +2250,15 @@ def generate_native_tet(
     remap[used] = np.arange(used.shape[0])
     final_tets = remap[kept].astype(np.int64)
     final_pts = all_pts[used].copy()
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer,
+            stage="post_filter_compaction",
+            source_points=_input_source_vertices,
+            source_faces=_input_source_faces,
+            candidate_points=final_pts,
+            candidate_tets=final_tets,
+        )
 
     # BSP_ORIENT_FIX (beta2160) — front-load orientation normalize right after BSP
     # boundary recovery so ALL downstream post-passes work on correctly oriented tets.
@@ -2210,6 +2268,15 @@ def generate_native_tet(
     final_tets, _n_flipped_bsp, _n_degen_bsp = _vaf_bsp(final_pts, final_tets)
     log.info("native_tet_bsp_orient_fix", n_flipped=int(_n_flipped_bsp), n_degenerate=int(_n_degen_bsp))
     log.info("native_tet_pass_timing", pass_name="BSP_ORIENT_FIX", dt_ms=int((time.perf_counter() - _t_bsp) * 1000))
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer,
+            stage="post_bsp_orient_fix",
+            source_points=_input_source_vertices,
+            source_faces=_input_source_faces,
+            candidate_points=final_pts,
+            candidate_tets=final_tets,
+        )
 
     # 4b) Phase A1 + A4 — feature 잠금 + interior Laplacian smoothing.
     # Round 7: feature corner 를 실제 locked set 에 포함.
@@ -2278,6 +2345,15 @@ def generate_native_tet(
             n_feature_edges=int(feature_info.feature_edges.shape[0]),
             n_corner=int(feature_info.corner_vertices.shape[0]),
             n_corner_new=int(corner_new_ids_array.size),
+        )
+    if _phase_a_observer is not None:
+        _report_phase_a_provenance_checkpoint(
+            _phase_a_observer,
+            stage="post_phase_a_smoothing",
+            source_points=_input_source_vertices,
+            source_faces=_input_source_faces,
+            candidate_points=final_pts,
+            candidate_tets=final_tets,
         )
 
     # 4c) Phase B — local operations (split/collapse/flip) + tangent smoothing.
@@ -4750,6 +4826,15 @@ def generate_native_tet(
                         },
                     )
 
+                if _phase_a_observer is not None:
+                    _report_phase_a_provenance_checkpoint(
+                        _phase_a_observer,
+                        stage="pre_cvt3d",
+                        source_points=_input_source_vertices,
+                        source_faces=_input_source_faces,
+                        candidate_points=final_pts,
+                        candidate_tets=final_tets,
+                    )
                 _cvt3d_before_pts = final_pts
                 _cvt3d_before_tets = final_tets
                 _new_pts_cvt, _cvt_res = lloyd_cvt_3d(
