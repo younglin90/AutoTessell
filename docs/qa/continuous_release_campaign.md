@@ -3087,6 +3087,29 @@ provenance gate.
   builds before any Gate-2 promotion claim.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 102 pre-merge checkpoint -- 2026-07-31
+
+### First-party native Release profile clean build
+
+- Cycle 101 was read-only supported-configuration inventory only; no ledger
+  code card was created.  No code change in this cycle.
+- Fresh `/tmp` first-party native Release profile used Unix Makefiles because
+  Ninja was unavailable.  External adapters were all `OFF`; the declared
+  eight-target contract was retained.
+- Advisor runner: configure `PASS` in `3.03 s`; `native_build_evidence` build
+  `PASS` in `30.50 s`; contract verification `PASS` in `0.06 s`.
+- Gate 2 remains `UNVERIFIED`: declared record names Ninja, and supported
+  configuration matrix/other-OS evidence remains absent.  Unix Makefiles is
+  measured evidence, not an invented generator-neutral support claim.
+
+### Release state
+
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+  change is included.
+- Next action: acquire and verify Ninja only with authorization, or define
+  generator-neutral support evidence before relying on this Release profile.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 91 pre-merge checkpoint -- 2026-07-31
 
 ### Tet cube CVT-off same-side audit
