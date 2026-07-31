@@ -563,7 +563,8 @@ py::array_t<double> ray_triangle_min_distance(
         exclude_data = typed_exclude.data();
     }
 
-    py::array_t<double> result({static_cast<py::ssize_t>(ray_count)});
+    py::array_t<double> result(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(ray_count)});
     double* const output = result.mutable_data();
     std::vector<RayTriangle> triangles(triangle_count);
     {
@@ -668,7 +669,8 @@ py::array_t<double> indexed_wall_collision_distances(
         }
     }
 
-    py::array_t<double> result({static_cast<py::ssize_t>(ray_count)});
+    py::array_t<double> result(
+        py::array::ShapeContainer{static_cast<py::ssize_t>(ray_count)});
     double* const output = result.mutable_data();
     std::vector<IndexedRayTriangle> triangles(triangle_count);
     std::vector<size_t> next;
