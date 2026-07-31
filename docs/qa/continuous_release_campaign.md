@@ -3191,6 +3191,26 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 170 pre-merge checkpoint -- 2026-07-31
+
+### Native corpus exact required-set rerun
+
+- Current retained evidence covers exactly twelve distinct artifact directories:
+  three runs each for native-Tet cube, native-Tet sphere, native-Hex cube, and
+  native-Poly cube.  The required four-case matrix preserves their distinct
+  typed native contracts; strict Quad and Tri+Quad are not included.
+- Runner evidence:
+  `/tmp/autotessell-c170-native-corpus-required-matrix-runner-evidence.json`.
+  The bounded runner used concurrency `1` and passed in `0.055732175 s`; the
+  outer result remains `UNVERIFIED`, and all four rows remain
+  `UNVERIFIED` / `measured_evidence_release_incomplete`.
+
+### Release state
+
+- No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No product or
+  default claim changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 168 pre-merge checkpoint -- 2026-07-31
 
 ### Native corpus four-case cross-case binding
