@@ -3191,6 +3191,31 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 115 pre-merge checkpoint -- 2026-07-31
+
+### Gate-4 immutable source snapshot lifetime repair
+
+- C114's actual CLI probe found `unverified_source_snapshot_changed`: its
+  snapshot lived below `<output>/_work`, which pipeline cleanup removed before
+  Gate-4 evaluation.  The resulting null output/metric evidence is failure
+  evidence, not a Gate result.
+- `91a670a8` retains the exact snapshot under
+  `<output>/_evidence/gate4-source`.  The SHA-256, non-symlink, and no-overwrite
+  capture contract is unchanged; the retained file is rechecked after metric
+  observation.
+- The root focused runners passed at concurrency `1`: cleanup-ordering
+  evidence in `4.24 s` and substrate evidence in `3.96 s`.  This repairs only
+  evidence lifetime.  It neither invents a metric nor promotes a verdict.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; all attached evidence retains
+  `gate4_pass=false`.  No Gate is promoted to `PASS`, and Gates 1--15 remain
+  unmet.  C116 actual-output rerun remains pending.
+- No routing, default, UI, mesh, topology, provenance, or `third_party/`
+  behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 113 pre-merge checkpoint -- 2026-07-31
 
 ### Cycle-80 Tet same-side retriangulation revalidation
