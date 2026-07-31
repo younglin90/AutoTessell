@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 195 checkpoint -- 2026-08-01
+
+### Clean clang20 first-party-native build evidence
+
+- Clean exact head `ac8ed87aa427c13473e39ba48ff517e640ee50c4`, Release Unix
+  Makefiles, first-party native install ON, and optional adapters OFF passed
+  fresh c1 validation.
+- Configure `5.363211773 s`; serial native-build contract target
+  `90.753839523 s`; contract verification `0.065476149 s`; preflight and
+  postflight were clean.  Evidence:
+  `/tmp/autotessell-c195-native-clang-clean-runner-evidence.json`.
+
+### Release state
+
+- Gate 2 remains `UNVERIFIED` pending fresh GNU/current and native-install
+  matrix evidence.  No code, Gate, or release claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 194 checkpoint -- 2026-08-01
 
 ### Gate-4 deterministic signed-side observation
