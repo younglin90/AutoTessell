@@ -4,7 +4,7 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `84`
+- cycle: `85`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
@@ -2827,6 +2827,23 @@ provenance gate.
 ### Release state
 
 - Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 85 pre-merge checkpoint -- 2026-07-31
+
+### Tet Cycle-78 cleanup proof
+
+- `codex/native-tet-cycle78-whole-p3-bypass` at
+  `2c949ffbe02ce58c07376e402d870394809ad8b0` is an ancestor of `master`;
+  `master-only=44`, `branch-only=0`.  It has no unique research evidence and
+  is eligible only for normal `git branch -d` cleanup, never force removal.
+- Strict Tet source/topology evidence remains Git-reachable in `master`; this
+  proof makes no runtime-policy change.
+
+### Release state
+
+- Gate 1 receives no `PASS` while the protected Poly branch and tracked
+  installer remain.  Gates 1--15 remain unmet.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 84 pre-merge checkpoint -- 2026-07-31
