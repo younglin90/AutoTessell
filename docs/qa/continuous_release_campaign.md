@@ -4,7 +4,7 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `81`
+- cycle: `82`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
@@ -2823,6 +2823,25 @@ provenance gate.
 - Strict topology is unchanged.  Target cells remain secondary.  No
   `third_party/` modification is included.
 - Ruff is `UNVERIFIED`: `109` pre-existing `mesher.py` violations.
+
+### Release state
+
+- Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 82 pre-merge checkpoint -- 2026-07-31
+
+### Tri+Quad payload-binding L0
+
+- `69e7cb99` adds a default-OFF, runtime-disconnected actual-output
+  payload-binding diagnostic.  It validates explicit source/output patch and
+  authoritative physical-group payloads against Cycle-81 exact pair/residual
+  provenance.
+- Missing, malformed, non-authoritative, mixed-pair, reordered, or mismatched
+  payloads reject.  A complete payload binding still records
+  `accepted=false` and `product_claimed=false`.
+- No routing, default, C++, or `third_party/` change is included.  Advisor
+  validation runner: `PASS`, concurrency `1`, `5.84 s`, two focused suites.
 
 ### Release state
 
