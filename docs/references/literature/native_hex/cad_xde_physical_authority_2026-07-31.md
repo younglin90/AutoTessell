@@ -58,6 +58,26 @@ hash. It traverses XDE and the B-Rep from the same STEPCAF transfer and maps by
 actual OCP shape identity. It never maps labels from geometry or traversal order.
 Any incomplete or ambiguous labeled-face mapping fails closed.
 
+## Adverse XDE authority fixtures
+
+Runtime `tmp_path` STEP fixtures exercise the XDE reader's error branches
+without committing a generated CAD binary.  A narrow OCP monkeypatch injects
+only the adverse metadata relation after the ordinary writer has produced the
+source file:
+
+- an XDE face label resolving outside the B-Rep face map;
+- two distinct explicit layer declarations for one B-Rep face;
+- two conflicting surface colors for one B-Rep face;
+- two assembly identities resolving to the same B-Rep face; and
+- a component with no referred shape.
+
+Each case raises its specific `ValueError` before a provenance payload is
+returned.  The legacy `load_cad_native` vertex and triangle arrays are compared
+before and after the rejected optional traversal and remain exact.  Layer
+membership is now fail-closed on conflicting repeated declarations; it never
+selects one declaration by traversal order.  Physical-group authority remains
+false in every accepting and rejecting path.
+
 Legacy `load_cad_native(path, fmt) -> (V, F)` remains unchanged. The optional
 payload stays disconnected from production routing, meshing, writers, patch
 assignment, target-cell control, and boundary-layer generation.

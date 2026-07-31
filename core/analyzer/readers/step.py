@@ -449,6 +449,9 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
             if len(ordinals) != 1:
                 raise ValueError("XDE face metadata must map to exactly one B-Rep face")
             ordinal = ordinals[0]
+            previous_layers = xde_layers[ordinal]
+            if previous_layers and previous_layers != set(layer_names):
+                raise ValueError("conflicting XDE face layers")
             xde_layers[ordinal].update(layer_names)
             if name is not None:
                 previous_name = xde_face_names[ordinal]

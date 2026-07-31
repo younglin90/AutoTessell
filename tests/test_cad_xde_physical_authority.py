@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -101,6 +102,16 @@ def _write_named_assembly(path: Path) -> None:
     assert writer.Write(str(path)) == IFSelect_RetDone
 
 
+def _assert_xde_rejection_preserves_legacy_arrays(path: Path, match: str) -> None:
+    """The optional XDE payload must never alter the established STEP stream."""
+    before_vertices, before_faces = load_cad_native(path, ".step")
+    with pytest.raises(ValueError, match=match):
+        load_cad_native_with_provenance(path, ".step")
+    after_vertices, after_faces = load_cad_native(path, ".step")
+    assert np.array_equal(after_vertices, before_vertices)
+    assert np.array_equal(after_faces, before_faces)
+
+
 def test_explicit_xde_layers_are_authoritative_grouping_not_physical_bc(
     tmp_path: Path,
 ) -> None:
@@ -157,6 +168,150 @@ def test_xde_metadata_hash_repeats_three_times(tmp_path: Path) -> None:
     assert len({report.xde_metadata_sha256 for report in reports}) == 1
     assert len({report.ordered_face_ordinal_sha256 for report in reports}) == 1
     assert len({report.seam_connectivity_sha256 for report in reports}) == 1
+
+
+def test_xde_unmapped_face_metadata_fails_before_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp_Explorer
+    from OCP.XCAFDoc import XCAFDoc_ShapeTool
+
+    path = tmp_path / "styled-box.step"
+    _write_styled_box(path)
+    unrelated_faces = TopExp_Explorer(
+        BRepPrimAPI_MakeBox(4.0, 5.0, 6.0).Shape(), TopAbs_FACE
+    )
+    unrelated_face = unrelated_faces.Current()
+    original_get_shape = XCAFDoc_ShapeTool.GetShape_s
+    replaced = False
+
+    def get_shape_with_unmapped_face(self: Any, label: Any) -> Any:
+        nonlocal replaced
+        shape = original_get_shape(label)
+        if not replaced and shape.ShapeType() == TopAbs_FACE:
+            replaced = True
+            return unrelated_face
+        return shape
+
+    monkeypatch.setattr(XCAFDoc_ShapeTool, "GetShape_s", get_shape_with_unmapped_face)
+    _assert_xde_rejection_preserves_legacy_arrays(
+        path, "XDE shape does not map to the B-Rep face stream"
+    )
+
+
+def test_conflicting_xde_face_layers_fail_before_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from OCP.TCollection import TCollection_ExtendedString
+    from OCP.XCAFDoc import XCAFDoc_LayerTool, XCAFDoc_ShapeTool
+
+    path = tmp_path / "styled-box.step"
+    _write_styled_box(path)
+    original_subshapes = XCAFDoc_ShapeTool.GetSubShapes_s
+    original_get_layer = XCAFDoc_LayerTool.GetLayer
+    recovered_layers = 0
+
+    def duplicate_first_subshape(self: Any, label: Any, labels: Any) -> bool:
+        result = original_subshapes(label, labels)
+        if labels.Length():
+            labels.Append(labels.Value(1))
+        return bool(result)
+
+    def get_conflicting_layer(self: Any, label: Any, value: Any) -> bool:
+        nonlocal recovered_layers
+        result = original_get_layer(self, label, value)
+        if result:
+            recovered_layers += 1
+            if recovered_layers == 7:
+                value.Clear()
+                value.AssignCat(TCollection_ExtendedString("conflicting-layer"))
+        return bool(result)
+
+    monkeypatch.setattr(XCAFDoc_ShapeTool, "GetSubShapes_s", duplicate_first_subshape)
+    monkeypatch.setattr(XCAFDoc_LayerTool, "GetLayer", get_conflicting_layer)
+    _assert_xde_rejection_preserves_legacy_arrays(path, "conflicting XDE face layers")
+
+
+def test_conflicting_xde_face_colors_fail_before_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from OCP.Quantity import Quantity_TOC_RGB
+    from OCP.XCAFDoc import XCAFDoc_ColorTool, XCAFDoc_ShapeTool
+
+    path = tmp_path / "styled-box.step"
+    _write_styled_box(path)
+    original_subshapes = XCAFDoc_ShapeTool.GetSubShapes_s
+    original_get_color = XCAFDoc_ColorTool.GetColor
+    recovered_colors = 0
+
+    def duplicate_first_subshape(self: Any, label: Any, labels: Any) -> bool:
+        result = original_subshapes(label, labels)
+        if labels.Length():
+            labels.Append(labels.Value(1))
+        return bool(result)
+
+    def get_conflicting_color(
+        self: Any, shape: Any, color_type: Any, color: Any
+    ) -> bool:
+        nonlocal recovered_colors
+        result = original_get_color(self, shape, color_type, color)
+        if result:
+            recovered_colors += 1
+            if recovered_colors == 7:
+                color.SetValues(0.9, 0.8, 0.7, Quantity_TOC_RGB)
+        return bool(result)
+
+    monkeypatch.setattr(XCAFDoc_ShapeTool, "GetSubShapes_s", duplicate_first_subshape)
+    monkeypatch.setattr(XCAFDoc_ColorTool, "GetColor", get_conflicting_color)
+    _assert_xde_rejection_preserves_legacy_arrays(path, "conflicting XDE surface colors")
+
+
+def test_ambiguous_xde_assembly_path_fails_before_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.XCAFDoc import XCAFDoc_ShapeTool
+
+    path = tmp_path / "named-assembly.step"
+    _write_named_assembly(path)
+    original_get_shape = XCAFDoc_ShapeTool.GetShape_s
+    first_component_shape: Any | None = None
+
+    def get_shape_with_ambiguous_component(self: Any, label: Any) -> Any:
+        nonlocal first_component_shape
+        shape = original_get_shape(label)
+        if not shape.IsNull() and shape.ShapeType() != TopAbs_FACE:
+            if first_component_shape is None:
+                first_component_shape = shape
+            else:
+                return first_component_shape
+        return shape
+
+    monkeypatch.setattr(
+        XCAFDoc_ShapeTool, "GetShape_s", get_shape_with_ambiguous_component
+    )
+    _assert_xde_rejection_preserves_legacy_arrays(
+        path, "ambiguous XDE assembly path for B-Rep face"
+    )
+
+
+def test_missing_xde_component_reference_fails_before_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from OCP.XCAFDoc import XCAFDoc_ShapeTool
+
+    path = tmp_path / "named-assembly.step"
+    _write_named_assembly(path)
+
+    def missing_reference(self: Any, component: Any, referred: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(XCAFDoc_ShapeTool, "GetReferredShape_s", missing_reference)
+    _assert_xde_rejection_preserves_legacy_arrays(
+        path, "XDE component has no referred shape"
+    )
 
 
 def test_blank_existing_step_corpus_remains_semantically_unknown() -> None:
