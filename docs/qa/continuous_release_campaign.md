@@ -3191,6 +3191,30 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 111 pre-merge checkpoint -- 2026-07-31
+
+### Strict-Quad actual transaction, dispatch, and replay evidence
+
+- The bounded strict-Quad transaction, dispatch, and writer-replay runners
+  passed at concurrency `1`: `3` tests in `5.66 s`, `6` tests in `4.11 s`, and
+  `4` tests in `3.86 s`.  This is focused contract evidence only.
+- The transaction remains default-off.  It requires full authoritative patch
+  and physical-group evidence; its artifact contains only strict-Quad arrays
+  and a manifest.  It does not create an independent released surface product.
+- A failed target or preflight preserves rollback.  Route/UI behavior remains
+  unchanged and `product_claimed=false`; no strict-Quad product or Gate claim
+  is inferred from these internal artifacts.
+
+### Release state
+
+- No independent strict-Quad release product is promoted and no Gate is
+  promoted to `PASS`.  Gate 4 remains `UNVERIFIED`; Gates 1--15 remain unmet.
+  No default, routing, UI, mesh, provenance, or `third_party/` behavior
+  changed.
+- Next action: retain fail-closed authoritative constraints and obtain the
+  separate product-level actual-output evidence before any product claim.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 110 pre-merge checkpoint -- 2026-07-31
 
 ### Gate-4 immutable actual-metric binding
