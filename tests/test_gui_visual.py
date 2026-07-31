@@ -33,7 +33,7 @@ def _compare_or_save(widget, name: str, size: tuple[int, int] = (1400, 900)) -> 
     if not baseline.exists():
         _BASELINE_DIR.mkdir(parents=True, exist_ok=True)
         assert pix.save(str(baseline), "PNG"), f"baseline 저장 실패: {baseline}"
-        pytest.skip(f"baseline 새로 생성: {baseline}")
+        pytest.skip("visual baseline missing: bootstrap artifact created; rerun required")
 
     a_img = QImage(str(actual)).convertToFormat(QImage.Format.Format_RGB32)
     b_img = QImage(str(baseline)).convertToFormat(QImage.Format.Format_RGB32)

@@ -15,11 +15,8 @@
     "test_ui*.py"
   ],
   "marker_count": 96,
-  "marker_sha256": "1c4a92f5dd4466984eb5052530ddf051ab0cf7f7ad7c70ca5cc28d9d8bb419b2",
+  "marker_sha256": "498c650a035970c9348b47741daeef24c46828f60410de48988527f8d614e007",
   "deferred": [
-    {"file": "tests/test_gui_visual.py", "line": 36, "marker": "pytest.skip", "reason": "<dynamic reason>"},
-    {"file": "tests/test_native_poly_facegeom.py", "line": 159, "marker": "pytest.skip", "reason": "<dynamic reason>"},
-    {"file": "tests/test_native_poly_facegeom.py", "line": 172, "marker": "pytest.skip", "reason": "<dynamic reason>"},
-    {"file": "tests/test_native_tet_phaseG.py", "line": 80, "marker": "pytest.skip", "reason": "<dynamic reason>"}
+    {"file": "tests/test_native_poly_facegeom.py", "line": 172, "marker": "pytest.skip", "reason": "<dynamic reason>"}
   ]
 }
