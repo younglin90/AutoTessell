@@ -41,6 +41,14 @@ class AuthoritativeTriQuadFeatureEdges:
 
 
 @dataclass(frozen=True, slots=True)
+class AuthoritativeTriQuadPatchIds:
+    """Explicit source-face patch IDs; inferred or bare payloads are forbidden."""
+
+    payloads: tuple[int | str, ...]
+    authoritative: bool
+
+
+@dataclass(frozen=True, slots=True)
 class TriQuadFixedPairPreflight:
     """Fail-closed source/topology/payload evidence for one pair plan."""
 
@@ -206,6 +214,12 @@ def _payloads(value: object, count: int) -> tuple[int | str, ...] | None:
     return tuple(out)
 
 
+def _patches(value: object, count: int) -> tuple[int | str, ...] | None:
+    if not isinstance(value, AuthoritativeTriQuadPatchIds) or not value.authoritative:
+        return None
+    return _payloads(value.payloads, count)
+
+
 def _payload_hash(values: tuple[int | str, ...] | tuple[str, ...]) -> str:
     return _hash_bytes(
         json.dumps(values, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
@@ -347,7 +361,7 @@ def materialize_tri_quad_fixed_pair_product_l0(
     plan = _pair_plan(pair_plan, len(triangles))
     if plan is None:
         return _rejected("partial_pair_plan_required")
-    source_patches = _payloads(source_patch_ids, len(triangles))
+    source_patches = _patches(source_patch_ids, len(triangles))
     source_groups = _physical_groups(source_physical_groups, len(triangles))
     if source_patches is None:
         return _rejected("source_patch_payload_required")
@@ -481,6 +495,7 @@ def materialize_tri_quad_fixed_pair_product_l0(
 
 __all__ = [
     "AuthoritativeTriQuadFeatureEdges",
+    "AuthoritativeTriQuadPatchIds",
     "TriQuadFixedPairPreflight",
     "TriQuadFixedPairProduct",
     "TriQuadFixedPairProductResult",

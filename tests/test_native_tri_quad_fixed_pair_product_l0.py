@@ -13,6 +13,7 @@ from core.evaluator.surface_physical_group_provenance import (
 )
 from core.preprocessor.native_quad.tri_quad_fixed_pair_product_l0 import (
     AuthoritativeTriQuadFeatureEdges,
+    AuthoritativeTriQuadPatchIds,
     materialize_tri_quad_fixed_pair_product_l0,
     tri_quad_fixed_pair_product_l0_enabled,
 )
@@ -37,7 +38,7 @@ def _fixture() -> tuple[np.ndarray, np.ndarray, np.ndarray, object, object, obje
     )
     plan = np.array(((0, 1),), dtype=np.int64)
     features = AuthoritativeTriQuadFeatureEdges((), True)
-    patches = ("wall", "wall", "outlet", "far")
+    patches = AuthoritativeTriQuadPatchIds(("wall", "wall", "outlet", "far"), True)
     groups = AuthoritativePhysicalGroupMapping(("inlet", "inlet", "outlet", "far"), True)
     return vertices, triangles, plan, features, patches, groups
 
@@ -125,6 +126,8 @@ def test_noop_full_or_malformed_pair_plan_rejects(plan: np.ndarray, reason: str)
     ),
 )
 def test_cross_pair_patch_or_physical_group_rejects(patches: object, groups: object, reason: str) -> None:
+    if isinstance(patches, tuple):
+        patches = AuthoritativeTriQuadPatchIds(patches, True)
     with patch.dict(os.environ, {_ENV: "1"}):
         result = _materialize(patches=patches, groups=groups)
 
@@ -142,6 +145,19 @@ def test_feature_removing_pair_and_non_authoritative_groups_reject() -> None:
     assert feature.preflight.rejection_reason == "mixed_source_contract_rejected"
     assert groups.accepted is False
     assert groups.preflight.rejection_reason == "authoritative_source_physical_groups_required"
+
+
+def test_bare_or_non_authoritative_patch_payload_rejects() -> None:
+    with patch.dict(os.environ, {_ENV: "1"}):
+        bare = _materialize(patches=("wall", "wall", "outlet", "far"))
+        non_authoritative = _materialize(
+            patches=AuthoritativeTriQuadPatchIds(("wall", "wall", "outlet", "far"), False)
+        )
+
+    for result in (bare, non_authoritative):
+        assert result.accepted is False
+        assert result.preflight.rejection_reason == "source_patch_payload_required"
+        assert result.product is None
 
 
 def test_nonmanifold_source_rejects_before_any_mixed_product() -> None:
