@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `89`
+- cycle: `90`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
-- next_action: `Run the same-side Tet transaction across a representative strict corpus before any release claim; keep source, topology, validity, provenance, and boundary layers ahead of target cells.`
+- next_action: `Isolate the missing strict-source predicate in the CVT-off cube same-side candidate; do not relax topology.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2827,6 +2827,25 @@ provenance gate.
 ### Release state
 
 - Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 90 pre-merge checkpoint -- 2026-07-31
+
+### Tet cube same-side bounded evidence
+
+- Selected cube `target_cells=2000` with BSP, edge recovery, Phase-B, and
+  Phase-C disabled.  Advisor runner concurrency `1`: CVT ON took `2.82 s`;
+  pre-CVT inversion was `34`, and candidate strict internal-face debt
+  increased, so fail-closed with no artifact.
+- CVT OFF with same-side opt-in took `2.93 s`; inversion was `0` and debt
+  reduced `4 -> 0`, but the strict source contract rejected the candidate.
+  The transaction rolled back and no artifact was written.
+
+### Release state
+
+- No code change and no Gate `PASS`.  Next action is to isolate the missing
+  strict-source predicate in the CVT-off candidate only if topology remains
+  unrelaxed.  Gates 1--15 remain unmet.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 89 pre-merge checkpoint -- 2026-07-31
