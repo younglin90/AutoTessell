@@ -3191,6 +3191,32 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 149 pre-merge checkpoint -- 2026-07-31
+
+### Actual strict native-Hex cube third-run corpus observation
+
+- The reconstructed strict native-Hex cube configuration is `draft`,
+  `hex_dominant`, `native_hex`, strict tier with no fallback, boundary layer
+  `0`, and `max_cells=target_cells=2000`.  The bounded third run passed at
+  concurrency `1` in `10.370 s`.
+- All three runs have `polyMesh` aggregate `4451...ef6f` and each quality
+  report records `negative_volumes=0`.  Each retains the same seven Gate-4
+  unverified fields: `distance.signed_mean`,
+  `topology.self_intersections`, `features.authoritative_ids`,
+  `features.critical_missing`, `patches.compared`,
+  `physical_groups.authoritative_mapping`, and
+  `provenance.source_to_output`.
+- Evidence paths are `/tmp/autotessell-c149-hex-cube-*-evidence.json`.  The
+  fail-closed corpus verifier is expected `ERROR`/`UNVERIFIED` because its CLI
+  exits `1` by design while evidence remains incomplete.
+
+### Release state
+
+- No Gate is promoted to `PASS`.  This bounded serial Hex observation does not
+  close Gate-4 authority/metric gaps, Gate-9 matrix coverage, or release
+  evidence; Gates 1--15 remain unmet.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 148 pre-merge checkpoint -- 2026-07-31
 
 ### Actual native-Tet cube three-run corpus observation
