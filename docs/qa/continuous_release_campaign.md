@@ -3191,6 +3191,41 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 106 pre-merge checkpoint -- 2026-07-31
+
+### Gate-4 topology and metric-completeness evidence binding
+
+- `882054ac` adds a fail-closed output-surface topology audit and
+  `6019c610` records the required Gate-4 metric fields without promoting a
+  verdict.  The Phase-A and Phase-B focused advisor runners passed at
+  concurrency `1` in `3.88 s` and `3.98 s`, respectively.
+- `d038dac1` binds both records to the existing immutable-source and output
+  evidence substrate.  The canonical output identity is now shared by the
+  substrate and topology audit; the pre-existing aggregate identity algorithm
+  and externally observable output hashes are unchanged.
+- The topology audit runs only after the source and output identities pass,
+  then the output is rehashed.  Any missing or changed artifact remains
+  `UNVERIFIED`.  It records structural boundary/component/loop/Euler/genus
+  evidence when parseable, but self-intersection remains
+  `unverified_not_checked`.
+- The metric-completeness record explicitly reports missing signed-distance,
+  normal, feature, integral, topology, patch, physical-group, and provenance
+  fields.  Both attached records and the enclosing evidence retain
+  `gate4_pass=false`; the legacy sampled metric remains incomplete.
+- The combined focused runner passed at concurrency `1` in `6.30 s`.  This is
+  implementation evidence only: it is neither an actual-output matrix nor a
+  Gate-4 or release PASS.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
+  remain unmet.  No routing, default, mesh-generation, topology-repair,
+  provenance, or `third_party/` behavior changed.
+- Next action: supply actual metric producers and bounded immutable-`S0`
+  output-matrix evidence, including self-intersection, feature, patch,
+  physical-group, and provenance authority checks.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 105 pre-merge checkpoint -- 2026-07-31
 
 ### Immutable Gate-4 source and artifact evidence substrate
