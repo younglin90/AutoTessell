@@ -144,6 +144,7 @@ def _run(tmp_path: Path, repeat: int) -> dict[str, object]:
         str(evidence),
     ]
     environment = dict(os.environ)
+    environment["AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION"] = "1"
     environment["PYTHONPATH"] = str(_ROOT) + (
         ":" + environment["PYTHONPATH"] if environment.get("PYTHONPATH") else ""
     )
