@@ -18,6 +18,7 @@ from core.generator.native_poly import (
     tet_to_poly_dual,
 )
 from core.generator.native_tet import generate_native_tet
+from core.preprocessor.native_repair.self_intersect import detect_self_intersections
 from core.utils.polymesh_reader import (
     parse_foam_boundary,
     parse_foam_faces,
@@ -182,7 +183,9 @@ def test_tet_to_poly_dual_preserves_a_valid_integer_tet_input(
     result = tet_to_poly_dual(vertices, tetrahedra, tmp_case_dir / "valid")
 
     assert result.success, result.message
-    assert (result.n_cells, result.n_points, result.n_faces) == (4, 15, 18)
+    # Six warped boundary-edge separators are now represented by twelve exact
+    # barycentric triangles.  Cell/point topology remains unchanged.
+    assert (result.n_cells, result.n_points, result.n_faces) == (4, 15, 24)
     assert np.array_equal(vertices, vertices_before)
     assert np.array_equal(tetrahedra, tetrahedra_before)
 
@@ -266,6 +269,20 @@ def test_tet_to_poly_dual_unclassified_caps_close_source_triangle_seams(
     assert len(actual_caps) == 3 * len(boundary_triangles)
     assert any(np.array_equal(point, vertices[4]) for point in points)
 
+    boundary_edges = {
+        tuple(sorted((first, second)))
+        for triangle in boundary_triangles
+        for first, second in zip(triangle, triangle[1:] + triangle[:1], strict=True)
+    }
+    boundary_edge_midpoints = {
+        point_id(0.5 * (vertices[first] + vertices[second])) for first, second in boundary_edges
+    }
+    separator_faces = [
+        face for face in faces[:n_internal] if boundary_edge_midpoints.intersection(face)
+    ]
+    assert separator_faces
+    assert all(len(face) == 3 for face in separator_faces)
+
     cell_faces: list[list[list[int]]] = [[] for _ in range(result.n_cells)]
     for face_id, face in enumerate(faces):
         cell_faces[int(owner[face_id])].append(face)
@@ -280,6 +297,20 @@ def test_tet_to_poly_dual_unclassified_caps_close_source_triangle_seams(
         )
         assert edge_incidence
         assert set(edge_incidence.values()) == {2}, (cell_id, edge_incidence)
+
+        triangles = np.asarray(
+            [
+                (face[0], face[index], face[index + 1])
+                for face in loops
+                for index in range(1, len(face) - 1)
+            ],
+            dtype=np.int64,
+        )
+        report = detect_self_intersections(points, triangles)
+        assert report.n_intersections == 0, (
+            cell_id,
+            report.intersecting_face_pairs,
+        )
 
     boundary = parse_foam_boundary(poly_dir / "boundary")
     assert [(entry["name"], entry["type"]) for entry in boundary] == [("defaultWall", "wall")]
@@ -478,8 +509,8 @@ def test_tet_to_poly_dual_star_validity_convex_and_nonmanifold(
     # its own (unrelated) invalid candidate for this fixture; the existing
     # centroid fallback absorbs it and the final result is fully valid.
     assert "candidate rejected" in after.message
-    assert "star_invalid_cells=6" in after.message
-    assert "star_invalid_subtets=23" in after.message
+    assert "star_invalid_cells=1" in after.message
+    assert "star_invalid_subtets=6" in after.message
 
 
 def test_tet_to_poly_dual_from_sphere(tmp_case_dir: Path) -> None:

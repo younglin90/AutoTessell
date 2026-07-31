@@ -2107,22 +2107,25 @@ def tet_to_poly_dual(
         nbr = cell_of_tet_vert.get((w, ring[0]))
         if own is None or nbr is None:
             continue
-        raw = (
-            [bface_pid[t_a]]
-            + [int(tet_point_id[ti]) for ti in ring]
-            + [bface_pid[t_b], bedge_pid[e]]
-        )
-        be_face: list[int] = []
-        for pid in raw:
-            if not be_face or be_face[-1] != pid:
-                be_face.append(pid)
-        if len(be_face) > 1 and be_face[0] == be_face[-1]:
-            be_face.pop()
-        if len(be_face) < 3:
-            continue
-        b_i_faces.append(be_face)
-        b_i_own.append(own)
-        b_i_nbr.append(nbr)
+        # The open tet fan is generally non-planar.  Emitting it as one
+        # polygon makes OpenFOAM's implicit triangulation ambiguous and can
+        # cut through an adjacent source cap.  Its topology already defines
+        # an exact barycentric fan: anchor every consecutive chain segment at
+        # the primal boundary-edge midpoint.  No point movement or diagonal
+        # heuristic is involved, and the shared owner/neighbour pair remains
+        # unchanged for every triangle.
+        raw_chain = [bface_pid[t_a]] + [int(tet_point_id[ti]) for ti in ring] + [bface_pid[t_b]]
+        chain: list[int] = []
+        for pid in raw_chain:
+            if not chain or chain[-1] != pid:
+                chain.append(pid)
+        anchor = bedge_pid[e]
+        for first, second in zip(chain, chain[1:]):
+            if anchor == first or anchor == second or first == second:
+                continue
+            b_i_faces.append([anchor, first, second])
+            b_i_own.append(own)
+            b_i_nbr.append(nbr)
 
     # 3c) Preserve the source planes for the before/after surface-area audit.
     # Boundary caps themselves are reconstructed from exact source-triangle
