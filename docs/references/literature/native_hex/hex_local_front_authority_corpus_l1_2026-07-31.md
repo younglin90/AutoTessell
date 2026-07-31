@@ -69,3 +69,29 @@ git diff --check
 This card establishes only L1 report correctness.  It does not claim a valid
 boundary layer, local-front shell, all-hex core, physical-group preservation,
 target-cell behavior, routing integration, or release readiness.
+
+## L2 corpus-metadata authority preflight
+
+`LocalFrontCorpusAuthorityMetadataL2` now owns only three declarative fields:
+an authority key, an explicit manifest order, and a source path label.  It
+does not read the path, parse a sidecar, run numeric clearance, or construct a
+candidate.  Its one hypothesis is narrower than the L1 geometry-adjacent
+checks: one authority key and one manifest-order position must each have one
+owner before downstream evidence is even eligible to run.
+
+The canonical cube, cylinder, and sphere fixture labels establish the L2
+baseline.  Reordering their caller-supplied tuple gives the same canonical
+order because the audit sorts by the declared manifest order.  Duplicating the
+cube key rejects `reject_duplicate_authority_key`; tying sphere's order to
+cylinder rejects `reject_manifest_order_ambiguity`.  Both cases are checked
+with the sidecar and numeric-preflight functions replaced by forbidden test
+sentinels, so no sidecar/numeric/candidate path can be reached accidentally.
+Runtime-invalid metadata is also fail-closed before any field operation:
+non-string key/path and non-integral or boolean manifest-order payloads return
+`reject_invalid_authority_corpus_metadata`, with every downstream flag false.
+
+This remains `L2_TARGET_PASS / CORRECTNESS_KEEP`: metadata ambiguity is the
+target-hard condition, not a geometry or target-cell claim.  Roll back if any
+duplicate reaches sidecar/preflight, a caller iteration order selects an
+authority, an artifact/candidate exists, production mesh state changes, or
+the card enters routing/default behavior.  `third_party/` remains unchanged.
