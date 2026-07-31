@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 197 checkpoint -- 2026-08-01
+
+### GNU13 first-party-native install proof
+
+- Clean exact head `ee4c17f4` GNU13 Release Makefiles first-party-native
+  install proof passed fresh c1 validation.  All eight native modules,
+  install manifest, and contract were imported/verified.
+- Configure `3.504694841 s`; serial build `59.805556290 s`; install
+  `0.016484930 s`; imports/manifest/contract `0.031636594 s`; contract
+  verification `0.065466772 s`.  Evidence:
+  `/tmp/autotessell-c197-native-install-runner-evidence.json`.
+
+### Release state
+
+- Gates 2 and 12 remain `UNVERIFIED` pending wheel CLI clean-install and
+  matrix evidence.  No code, Gate, or release claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 196 checkpoint -- 2026-08-01
 
 ### Clean GNU13 first-party-native build evidence
