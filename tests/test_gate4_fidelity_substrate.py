@@ -64,6 +64,43 @@ def _write_required_polymesh(case_dir: Path) -> None:
         (poly_mesh / name).write_text(name, encoding="utf-8")
 
 
+def _write_tetra_stl(path: Path) -> None:
+    path.write_text(
+        """solid tetra
+facet normal 0 0 -1
+ outer loop
+  vertex 0 0 0
+  vertex 0 1 0
+  vertex 1 0 0
+ endloop
+endfacet
+facet normal 0 -1 0
+ outer loop
+  vertex 0 0 0
+  vertex 1 0 0
+  vertex 0 0 1
+ endloop
+endfacet
+facet normal 1 1 1
+ outer loop
+  vertex 1 0 0
+  vertex 0 1 0
+  vertex 0 0 1
+ endloop
+endfacet
+facet normal -1 0 0
+ outer loop
+  vertex 0 1 0
+  vertex 0 0 0
+  vertex 0 0 1
+ endloop
+endfacet
+endsolid tetra
+""",
+        encoding="utf-8",
+    )
+
+
 def test_snapshot_preserves_original_bytes_after_source_path_changes(tmp_path: Path) -> None:
     source_path = tmp_path / "source.stl"
     source_path.write_bytes(b"original-source")
@@ -178,6 +215,43 @@ def test_bound_evidence_attaches_canonical_topology_and_completeness(
     assert evidence.metric_completeness is not None
     assert evidence.metric_completeness.output == evidence.output
     assert evidence.metric_completeness.gate4_pass is False
+    assert evidence.gate4_pass is False
+
+
+def test_actual_surface_metric_uses_snapshot_and_strict_polymesh_surface(
+    tmp_path: Path,
+) -> None:
+    from core.generator.polymesh_writer import write_generic_polymesh
+
+    source_path = tmp_path / "source.stl"
+    _write_tetra_stl(source_path)
+    source = capture_immutable_source(source_path, tmp_path / "snapshots")
+    points = np.asarray(
+        ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)),
+        dtype=np.float64,
+    )
+    faces = [[[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]]]
+    case_dir = tmp_path / "case"
+    write_generic_polymesh(points, faces, case_dir)
+
+    evidence = evaluate_gate4_fidelity_evidence(
+        source=source,
+        source_status="unverified_source_snapshot_missing",
+        case_dir=case_dir,
+        diagonal=1.0,
+        checker=_MissingMetricChecker(),  # type: ignore[arg-type]
+        exact_metric_sample_count=64,
+    )
+
+    assert evidence.status == "unverified_metric_missing"
+    assert evidence.actual_surface_metrics is not None
+    assert evidence.actual_surface_metrics.status == "unverified_authority_incomplete"
+    assert evidence.actual_surface_metrics.sample_count == 64
+    assert evidence.actual_surface_metrics.source_to_output is not None
+    assert evidence.actual_surface_metrics.output_to_source is not None
+    assert "distance.d_0_to_h.max" in evidence.actual_surface_metrics.available_fields
+    assert "distance.signed_mean" in evidence.actual_surface_metrics.unverified_fields
+    assert evidence.actual_surface_metrics.gate4_pass is False
     assert evidence.gate4_pass is False
 
 
