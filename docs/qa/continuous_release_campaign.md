@@ -4,11 +4,11 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `51`
+- cycle: `52`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
-- last_verified_master: `0a915eb0a52e1248acdaaa6c183ab35c107f1a31`
+- last_verified_master: `53f6b2dc197570112fa4ec4c4ce119e7e3ef09db`
 - allowed_to_stop: `false`
-- next_action: `Continue strict-quad C++23 preflight planning, Tet topology-calibration research, native-hex card selection, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
+- next_action: `Continue strict-quad route/evaluator planning, Tet ambiguity L1 evidence collection, native-hex authority-corpus expansion, and policy-bounded Poly feasibility. Keep target-cell work behind shape, topology, validity, provenance, and boundary layers.`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -2525,3 +2525,46 @@ is deliberately secondary.
   safely reclassified as diagnostics without weakening source semantics.  Run
   independent native-hex card selection.  Poly source-cap partition remains
   deferred pending a user policy.  Gate 1--15 remain unmet; continue.
+
+## Cycle 52 checkpoint -- 2026-07-31
+
+### Integrated safe foundations
+
+- `09988567` adds diagnostic-only Tet ambiguity classes.  Legacy ambiguity
+  count, strict `valid`, refusal, writer gate, source/provenance, and CVT
+  rollback remain unchanged.  Near/floor-only ambiguity still refuses output;
+  same-side overlap remains hard.  Post-merge focused tests pass `13/13` in
+  `54.89 s`.  Bundle SHA-256:
+  `7698921896faa6b393f26e85d1f469b818354a89e1e6f023170a2b82b91997a4`.
+- `799489c2` adds a default-OFF Hex local-front admission preflight.  Python
+  owns file/face/entity provenance, exact triangle-to-quad mapping, and
+  clearance; C++23 checks only bounded numeric rows.  Unknown authority,
+  duplicate/missing rows, wrong geometry, or insufficient clearance reject
+  before candidate construction.  It emits no shell/case/output.  Explicit
+  native post-merge tests pass `9/9`.  Bundle SHA-256:
+  `5521cd826e9e951e5f3d2c9b10508c8de744f72e2571ce7a0ef97e4fc5198825`.
+- `53f6b2dc` adds default-OFF strict-quad fixed-vertex two-triangle-pair
+  preflight.  It requires zero candidate triangles, degree-four quads,
+  byte-identical vertices, exact canonical pair provenance, topology/feature
+  preservation, and Python-only patch/physical-payload authority.  It is not
+  a general quad mesher and does not route or output a mesh.  Explicit native
+  post-merge tests pass `18/18`.  Bundle SHA-256:
+  `b2dcd9de0a0919a382f55f63d969a1499dca72697be16816d438de11cef9cef5`.
+
+### Cleanup and gate status
+
+- All three integrated worktrees/branches and their exact external review
+  builds were removed only after bundle verification.  Poly remains the sole
+  registered research worktree and is a protected DEFER stack.
+- No release gate changes to `PASS`: these cards are report-only/default-OFF
+  `CORRECTNESS_KEEP` infrastructure.  Gate 4, 5, 7, and all full-release gates
+  remain open.
+
+### Next automatic action
+
+- Start separate strict-quad route/evaluator planning only after a real
+  candidate can satisfy the fixed-pair certificate.  Use Tet ambiguity classes
+  to measure L1 cube/sphere stage distributions, never to suppress refusal.
+  Expand authoritative Hex source-front corpus without activating a shell.
+  Keep Poly deferred until owner semantics are explicitly authorized.  Gate
+  1--15 remain unmet; continue.
