@@ -15,8 +15,10 @@ from core.analyzer.readers.step import load_cad_native_with_provenance
 from core.generator.native_hex.local_front_authority_corpus_l1 import (
     LocalFrontCorpusAuthorityMetadataL2,
     LocalFrontCorpusSidecarL1,
+    LocalFrontCorpusSourceDigestL3,
     audit_local_front_authority_corpus_l1,
     audit_local_front_authority_manifest_l2,
+    audit_local_front_authority_source_digest_l3,
 )
 from core.generator.native_hex.source_feature_sidecar_l1 import (
     AuthoritativeSourceFeatureManifest,
@@ -372,3 +374,100 @@ def test_l2_runtime_invalid_metadata_rejects_before_sidecar_or_preflight(
     assert report.duplicate_authority_keys == ()
     assert report.duplicate_manifest_orders == ()
     _assert_no_mesh_path(report)
+
+
+def _cube_source_digest_l3() -> LocalFrontCorpusSourceDigestL3:
+    path = _ROOT / "tests" / "benchmarks" / "cube.stl"
+    return LocalFrontCorpusSourceDigestL3(
+        LocalFrontCorpusAuthorityMetadataL2("fixture:cube", 0, str(path)),
+        sha256(path.read_bytes()).hexdigest(),
+    )
+
+
+def _assert_no_l3_downstream_path(report: object) -> None:
+    assert getattr(report, "sidecar_invoked") is False
+    assert getattr(report, "numeric_preflight_invoked") is False
+    assert getattr(report, "candidate_constructed") is False
+    assert getattr(report, "production_mesh_changed") is False
+    assert getattr(report, "artifact_delta") == 0
+
+
+def test_l3_canonical_cube_source_digest_is_deterministic_before_sidecar_or_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.generator.native_hex.local_front_authority_corpus_l1 as authority
+
+    monkeypatch.setattr(authority, "audit_authoritative_source_feature_sidecar_l1", _forbidden)
+    monkeypatch.setattr(authority, "audit_local_front_admission_l0", _forbidden)
+    row = _cube_source_digest_l3()
+    monkeypatch.setattr(Path, "read_bytes", _forbidden)
+    reports = tuple(audit_local_front_authority_source_digest_l3((row,)) for _ in range(3))
+
+    assert reports == (reports[0],) * 3
+    report = reports[0]
+    assert report.status == "pass_immutable_source_digest_authority"
+    assert report.metadata_status == "pass_unambiguous_authority_corpus_metadata"
+    assert report.metadata_count == 1
+    assert report.canonical_authority_keys == ("fixture:cube",)
+    assert report.source_file_exists and report.source_digest_matches
+    _assert_no_l3_downstream_path(report)
+
+
+def test_l3_altered_cube_digest_rejects_before_sidecar_or_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.generator.native_hex.local_front_authority_corpus_l1 as authority
+
+    monkeypatch.setattr(authority, "audit_authoritative_source_feature_sidecar_l1", _forbidden)
+    monkeypatch.setattr(authority, "audit_local_front_admission_l0", _forbidden)
+    row = _cube_source_digest_l3()
+    report = audit_local_front_authority_source_digest_l3(
+        (replace(row, source_file_sha256="0" * 64),)
+    )
+
+    assert report.status == "reject_source_digest_mismatch"
+    assert report.metadata_status == "pass_unambiguous_authority_corpus_metadata"
+    assert report.source_file_exists and not report.source_digest_matches
+    _assert_no_l3_downstream_path(report)
+
+
+def test_l3_missing_cube_source_rejects_before_sidecar_or_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import core.generator.native_hex.local_front_authority_corpus_l1 as authority
+
+    monkeypatch.setattr(authority, "audit_authoritative_source_feature_sidecar_l1", _forbidden)
+    monkeypatch.setattr(authority, "audit_local_front_admission_l0", _forbidden)
+    row = _cube_source_digest_l3()
+    missing = replace(row.metadata, source_path=str(tmp_path / "cube_missing.stl"))
+    report = audit_local_front_authority_source_digest_l3((replace(row, metadata=missing),))
+
+    assert report.status == "reject_source_digest_file_not_found"
+    assert report.metadata_status == "pass_unambiguous_authority_corpus_metadata"
+    assert not report.source_file_exists and not report.source_digest_matches
+    _assert_no_l3_downstream_path(report)
+
+
+def test_l3_unreadable_cube_source_rejects_before_sidecar_or_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import core.generator.native_hex.local_front_authority_corpus_l1 as authority
+
+    monkeypatch.setattr(authority, "audit_authoritative_source_feature_sidecar_l1", _forbidden)
+    monkeypatch.setattr(authority, "audit_local_front_admission_l0", _forbidden)
+    row = _cube_source_digest_l3()
+    source_path = Path(row.metadata.source_path)
+    original_open = Path.open
+
+    def unreadable(path: Path, *args: object, **kwargs: object) -> object:
+        if path == source_path:
+            raise OSError("fixture read denied")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", unreadable)
+    report = audit_local_front_authority_source_digest_l3((row,))
+
+    assert report.status == "reject_source_digest_file_unreadable"
+    assert report.source_file_exists and not report.source_digest_matches
+    _assert_no_l3_downstream_path(report)

@@ -16,7 +16,9 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
+from hashlib import sha256
 from numbers import Integral
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
@@ -37,6 +39,7 @@ CorpusAuthorityKind = Literal[
     "synthetic",
 ]
 _CORPUS_AUTHORITY_KINDS = frozenset({"checked_in_fixture", "cad_brep", "unknown", "synthetic"})
+_SOURCE_DIGEST_CHUNK_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +81,31 @@ class LocalFrontAuthorityManifestAuditL2:
     canonical_authority_keys: tuple[str, ...]
     duplicate_authority_keys: tuple[str, ...]
     duplicate_manifest_orders: tuple[int, ...]
+    sidecar_invoked: bool
+    numeric_preflight_invoked: bool
+    candidate_constructed: bool
+    production_mesh_changed: bool
+    artifact_delta: int
+
+
+@dataclass(frozen=True, slots=True)
+class LocalFrontCorpusSourceDigestL3:
+    """Declared immutable byte identity for one already-unambiguous L2 row."""
+
+    metadata: LocalFrontCorpusAuthorityMetadataL2
+    source_file_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class LocalFrontAuthoritySourceDigestAuditL3:
+    """Read-only source-byte identity result before sidecar/numeric work."""
+
+    status: str
+    metadata_status: str
+    metadata_count: int
+    canonical_authority_keys: tuple[str, ...]
+    source_file_exists: bool
+    source_digest_matches: bool
     sidecar_invoked: bool
     numeric_preflight_invoked: bool
     candidate_constructed: bool
@@ -167,6 +195,124 @@ def audit_local_front_authority_manifest_l2(
         False,
         False,
         0,
+    )
+
+
+def _source_digest_report_l3(
+    *,
+    status: str,
+    metadata_audit: LocalFrontAuthorityManifestAuditL2,
+    source_file_exists: bool,
+    source_digest_matches: bool,
+) -> LocalFrontAuthoritySourceDigestAuditL3:
+    """Build a fixed-shape L3 report without invoking any mesh operation."""
+    return LocalFrontAuthoritySourceDigestAuditL3(
+        status,
+        metadata_audit.status,
+        metadata_audit.metadata_count,
+        metadata_audit.canonical_authority_keys,
+        source_file_exists,
+        source_digest_matches,
+        False,
+        False,
+        False,
+        False,
+        0,
+    )
+
+
+def _is_canonical_sha256(value: object) -> bool:
+    return bool(
+        isinstance(value, str)
+        and len(value) == 64
+        and value == value.lower()
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _source_file_sha256_l3(source_path: Path) -> str:
+    """Hash exact source bytes with bounded memory for large mesh fixtures."""
+    digest = sha256()
+    with source_path.open("rb") as source_file:
+        while chunk := source_file.read(_SOURCE_DIGEST_CHUNK_BYTES):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def audit_local_front_authority_source_digest_l3(
+    source_digests: Sequence[LocalFrontCorpusSourceDigestL3],
+) -> LocalFrontAuthoritySourceDigestAuditL3:
+    """Bind L2 metadata labels to immutable source bytes before sidecar work.
+
+    File bytes are hashed directly; this function does not call a surface
+    reader or parse source geometry.  A missing file, malformed declaration,
+    or digest mismatch is an explicit refusal before sidecar, numeric
+    preflight, or candidate construction can become eligible.
+    """
+    rows = tuple(source_digests)
+    invalid = not rows or any(
+        not isinstance(row, LocalFrontCorpusSourceDigestL3)
+        or not isinstance(row.metadata, LocalFrontCorpusAuthorityMetadataL2)
+        or not _is_canonical_sha256(row.source_file_sha256)
+        for row in rows
+    )
+    if invalid:
+        empty_audit = LocalFrontAuthorityManifestAuditL2(
+            "reject_invalid_authority_corpus_metadata",
+            0,
+            (),
+            (),
+            (),
+            False,
+            False,
+            False,
+            False,
+            0,
+        )
+        return _source_digest_report_l3(
+            status="reject_invalid_source_digest_metadata",
+            metadata_audit=empty_audit,
+            source_file_exists=False,
+            source_digest_matches=False,
+        )
+    metadata_audit = audit_local_front_authority_manifest_l2(tuple(row.metadata for row in rows))
+    if metadata_audit.status != "pass_unambiguous_authority_corpus_metadata":
+        return _source_digest_report_l3(
+            status="reject_authority_corpus_metadata",
+            metadata_audit=metadata_audit,
+            source_file_exists=False,
+            source_digest_matches=False,
+        )
+    for row in rows:
+        source_path = Path(row.metadata.source_path)
+        if not source_path.is_file():
+            return _source_digest_report_l3(
+                status="reject_source_digest_file_not_found",
+                metadata_audit=metadata_audit,
+                source_file_exists=False,
+                source_digest_matches=False,
+            )
+        try:
+            source_digest = _source_file_sha256_l3(source_path)
+        except OSError:
+            return _source_digest_report_l3(
+                status="reject_source_digest_file_unreadable",
+                metadata_audit=metadata_audit,
+                source_file_exists=True,
+                source_digest_matches=False,
+            )
+        if source_digest != row.source_file_sha256:
+            return _source_digest_report_l3(
+                status="reject_source_digest_mismatch",
+                metadata_audit=metadata_audit,
+                source_file_exists=True,
+                source_digest_matches=False,
+            )
+    return _source_digest_report_l3(
+        status="pass_immutable_source_digest_authority",
+        metadata_audit=metadata_audit,
+        source_file_exists=True,
+        source_digest_matches=True,
     )
 
 
