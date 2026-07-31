@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "scope_patterns": [
+    "test_native_tet*.py",
+    "test_native_hex*.py",
+    "test_native_poly*.py",
+    "test_native_tri*.py",
+    "test_native_quad*.py",
+    "test_native_surface*.py",
+    "test_*route*.py",
+    "test_cli*.py",
+    "test_desktop*.py",
+    "test_gui*.py",
+    "test_qt*.py",
+    "test_ui*.py"
+  ],
+  "marker_count": 96,
+  "marker_sha256": "69cddce26b513b0f1f84e992fc57aa41bca9b0cf9ecdad1deb71c4bd4a7bddd4",
+  "deferred": [
+    {"file": "tests/test_gui_visual.py", "line": 36, "marker": "pytest.skip", "reason": "<dynamic reason>"},
+    {"file": "tests/test_native_hex.py", "line": 34, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_hex.py", "line": 53, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_hex.py", "line": 71, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_hex.py", "line": 131, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_hex.py", "line": 142, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_hex.py", "line": 169, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_hex.py", "line": 196, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_hex.py", "line": 223, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly.py", "line": 38, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly.py", "line": 49, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly.py", "line": 62, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly.py", "line": 89, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly.py", "line": 101, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly_dual.py", "line": 388, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly_dual.py", "line": 418, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly_dual.py", "line": 440, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly_dual.py", "line": 465, "marker": "pytest.skip", "reason": "<no explicit reason>"},
+    {"file": "tests/test_native_poly_facegeom.py", "line": 159, "marker": "pytest.skip", "reason": "<dynamic reason>"},
+    {"file": "tests/test_native_poly_facegeom.py", "line": 172, "marker": "pytest.skip", "reason": "<dynamic reason>"},
+    {"file": "tests/test_native_tet_phaseG.py", "line": 80, "marker": "pytest.skip", "reason": "<dynamic reason>"}
+  ]
+}
