@@ -217,6 +217,30 @@ py::dict local_front_backtrack_steps(
     return report;
 }
 
+py::dict local_front_numeric_admission(
+    py::array_t<std::int64_t, py::array::c_style> source_face_ids,
+    long long source_face_count,
+    double requested_step,
+    double minimum_clearance)
+{
+    if (source_face_count <= 0) {
+        throw std::invalid_argument("source_face_count must be positive");
+    }
+    if (source_face_ids.ndim() != 1) {
+        throw std::invalid_argument("source_face_ids must have shape (Q,)");
+    }
+    const auto result = autotessell::native_hex::audit_local_front_numeric_admission(
+        std::span<const autotessell::native_hex::Label>(
+            source_face_ids.data(), static_cast<std::size_t>(source_face_ids.shape(0))),
+        static_cast<std::size_t>(source_face_count), requested_step, minimum_clearance);
+    py::dict output;
+    output["source_rows_complete"] = result.source_rows_complete;
+    output["clearance_sufficient"] = result.clearance_sufficient;
+    output["source_face_count"] = result.source_face_count;
+    output["quad_count"] = result.quad_count;
+    return output;
+}
+
 py::dict certify_oriented_box(
     py::array_t<double, py::array::c_style | py::array::forcecast> points_array,
     const std::vector<Face>& faces)
@@ -1060,6 +1084,13 @@ PYBIND11_MODULE(native_hex_quality, module)
         py::arg("geometry_tolerance"),
         py::arg("determinant_tolerance"),
         py::arg("maximum_iterations") = 32);
+    module.def(
+        "local_front_numeric_admission",
+        &local_front_numeric_admission,
+        py::arg("source_face_ids").noconvert(),
+        py::arg("source_face_count"),
+        py::arg("requested_step"),
+        py::arg("minimum_clearance"));
     module.def(
         "certify_oriented_box",
         &certify_oriented_box,
