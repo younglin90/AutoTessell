@@ -3191,6 +3191,27 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 122 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tet cube strict bounded observation
+
+- Strict native-Tet cube focused runner passed at concurrency `1` in `10.02 s`:
+  `1970` cells, `0` negative elements.  Immutable source identity
+  `e930...fbc81`, output identity `cb2f...f23f`.
+- Output topology reports components `1`, boundary loops `0`, Euler
+  characteristic `2`, genus `0`; bounded SI reports no intersections.  Exact
+  `10000`-sample metric maximum is `7.021666937153402e-16`; normal p95/p99 are
+  `0`, flips `0`.
+- Feature result is legacy diagnostic only.  Authority, signed and integral
+  measures, patches, physical groups, and provenance remain `UNVERIFIED`.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, all evidence
+  retains `gate4_pass=false`, and Gates 1--15 remain unmet.  No routing,
+  default, UI, mesh, provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 121 pre-merge checkpoint -- 2026-07-31
 
 ### CAD/STEP physical-group and provenance authority blocker
