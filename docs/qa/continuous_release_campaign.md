@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 135 pre-merge checkpoint -- 2026-07-31
+
+### Real native-Hex cube release-corpus observation
+
+- Real native-Hex cube manifest records source `e930...fbc81`, repeat
+  `polyMesh` aggregate `4451...ef6f`, native checker negative volumes `0`,
+  and the same seven Gate-4 `UNVERIFIED` fields across repeats.
+- The fail-closed verifier exits `1` intentionally, so the runner records
+  `ERROR` / overall `UNVERIFIED`.  This records incomplete release evidence;
+  it is not a release or Gate `PASS`.
+
+### Release state
+
+- Release remains incomplete and `UNVERIFIED`; no Gate is promoted to `PASS`.
+  Gates 1--15 remain unmet.  No routing, default, UI, mesh, provenance, or
+  `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 134 pre-merge checkpoint -- 2026-07-31
 
 ### Real native-Tet cube release-corpus observation
