@@ -37,9 +37,13 @@ def test_manifest_reports_pass_error_and_invalid_job_without_false_aggregate_pas
 
 @pytest.mark.parametrize("concurrency", (0, -1, 3, True, 1.5, "2"))
 def test_invalid_concurrency_is_deadlock_free_and_unverified(concurrency: object) -> None:
+    manifest = {
+        "concurrency": concurrency,
+        "jobs": [{"command": ["/bin/true"], "timeout_seconds": 1}],
+    }
     result = asyncio.run(
         asyncio.wait_for(
-            main({"concurrency": concurrency, "jobs": [{"command": ["/bin/true"], "timeout_seconds": 1}]}),
+            main(manifest),
             timeout=1,
         )
     )
@@ -56,7 +60,14 @@ def test_cli_writes_pass_and_timeout_evidence_with_required_timeout_fields(tmp_p
     pass_manifest = tmp_path / "pass.json"
     pass_evidence = tmp_path / "nested" / "pass-evidence.json"
     pass_manifest.write_text(
-        json.dumps({"concurrency": 1, "jobs": [{"name": "true", "command": ["/bin/true"], "timeout_seconds": 1}]}),
+        json.dumps(
+            {
+                "concurrency": 1,
+                "jobs": [
+                    {"name": "true", "command": ["/bin/true"], "timeout_seconds": 1}
+                ],
+            }
+        ),
         encoding="utf-8",
     )
     passed = subprocess.run(
@@ -105,7 +116,9 @@ def test_cli_writes_pass_and_timeout_evidence_with_required_timeout_fields(tmp_p
     assert isinstance(job["elapsed_seconds"], float) and job["elapsed_seconds"] > 0.0
 
 
-def test_cli_invalid_concurrency_writes_unverified_evidence_without_running_jobs(tmp_path: Path) -> None:
+def test_cli_invalid_concurrency_writes_unverified_evidence_without_running_jobs(
+    tmp_path: Path,
+) -> None:
     manifest = tmp_path / "invalid-concurrency.json"
     evidence_path = tmp_path / "invalid-concurrency-evidence.json"
     manifest.write_text(

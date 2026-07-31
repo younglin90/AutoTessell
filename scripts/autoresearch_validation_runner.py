@@ -10,9 +10,7 @@ import math
 import os
 import signal
 import time
-from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
 
 _MAX_CONCURRENCY = 2
 _TERMINATION_GRACE_SECONDS = 1.0
@@ -59,7 +57,7 @@ async def _terminate_process_group(process: asyncio.subprocess.Process) -> str:
     try:
         await asyncio.wait_for(process.wait(), timeout=_TERMINATION_GRACE_SECONDS)
         return "TERM"
-    except asyncio.TimeoutError:
+    except TimeoutError:
         os.killpg(process.pid, signal.SIGKILL)
         await process.wait()
         return "KILL"
@@ -72,7 +70,13 @@ async def run_job(item: object) -> dict[str, object]:
     timeout = _valid_timeout(raw_item.get("timeout_seconds"))
     if command is None or timeout is None:
         result = _base_result(raw_item, command=command)
-        result.update({"status": "UNVERIFIED", "result_status": "UNVERIFIED", "error": "invalid manifest item"})
+        result.update(
+            {
+                "status": "UNVERIFIED",
+                "result_status": "UNVERIFIED",
+                "error": "invalid manifest item",
+            }
+        )
         return result
 
     started_at = time.monotonic()
@@ -99,7 +103,7 @@ async def run_job(item: object) -> dict[str, object]:
             }
         )
         return result
-    except asyncio.TimeoutError:
+    except TimeoutError:
         termination = "TERM"
         if process is not None:
             termination = await _terminate_process_group(process)
