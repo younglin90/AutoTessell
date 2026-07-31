@@ -60,6 +60,12 @@ class InternalFaceSidednessAudit:
     n_opposite_side_internal_faces: int
     n_same_side_internal_faces: int
     n_ambiguous_internal_faces: int
+    # These three fields partition the legacy ambiguous count.  They are
+    # diagnostic-only: ``valid`` and every writer/refusal decision continue to
+    # use ``n_ambiguous_internal_faces`` unchanged.
+    n_predicate_zero_internal_faces: int = 0
+    n_floor_only_same_side_internal_faces: int = 0
+    n_floor_only_opposite_side_internal_faces: int = 0
 
     @property
     def valid(self) -> bool:
@@ -895,19 +901,58 @@ def audit_internal_face_sidedness(
         np.column_stack((shared, second_apex)),
         tol=volume_floor,
     )
-    ambiguous = (
-        (np.abs(first_volume6) <= volume_floor)
-        | (np.abs(second_volume6) <= volume_floor)
-        | (first_sign == 0)
-        | (second_sign == 0)
+    volume_floor_hit = (np.abs(first_volume6) <= volume_floor) | (
+        np.abs(second_volume6) <= volume_floor
     )
+    legacy_predicate_zero = (first_sign == 0) | (second_sign == 0)
+    # Keep this exact legacy expression as the public strict contract.  The
+    # categories below only expose why an already-ambiguous face was refused.
+    ambiguous = volume_floor_hit | legacy_predicate_zero
     same_side = (~ambiguous) & (first_sign == second_sign)
     opposite_side = (~ambiguous) & (first_sign == -second_sign)
+    if bool(np.any(ambiguous)):
+        # ``first_sign``/``second_sign`` deliberately retain their historical
+        # tolerance, because they define the public fail-closed contract.  A
+        # second zero-tolerance query is observation-only: the NumPy fallback
+        # can otherwise report a tolerance-induced zero that is
+        # indistinguishable from a predicate-zero face in the legacy
+        # aggregate.  Avoid this extra work on the common non-ambiguous path.
+        classification_first_sign = orientation_signs(
+            pts,
+            np.column_stack((shared, first_apex)),
+            tol=0.0,
+        )
+        classification_second_sign = orientation_signs(
+            pts,
+            np.column_stack((shared, second_apex)),
+            tol=0.0,
+        )
+        predicate_zero = (classification_first_sign == 0) | (
+            classification_second_sign == 0
+        )
+        floor_only = ambiguous & ~predicate_zero
+        floor_only_same_side = floor_only & (
+            classification_first_sign == classification_second_sign
+        )
+        floor_only_opposite_side = floor_only & (
+            classification_first_sign == -classification_second_sign
+        )
+    else:
+        predicate_zero = np.zeros(n_internal, dtype=bool)
+        floor_only_same_side = np.zeros(n_internal, dtype=bool)
+        floor_only_opposite_side = np.zeros(n_internal, dtype=bool)
     return InternalFaceSidednessAudit(
         n_internal_faces=n_internal,
         n_opposite_side_internal_faces=int(np.count_nonzero(opposite_side)),
         n_same_side_internal_faces=int(np.count_nonzero(same_side)),
         n_ambiguous_internal_faces=int(np.count_nonzero(ambiguous)),
+        n_predicate_zero_internal_faces=int(np.count_nonzero(predicate_zero)),
+        n_floor_only_same_side_internal_faces=int(
+            np.count_nonzero(floor_only_same_side)
+        ),
+        n_floor_only_opposite_side_internal_faces=int(
+            np.count_nonzero(floor_only_opposite_side)
+        ),
     )
 
 
