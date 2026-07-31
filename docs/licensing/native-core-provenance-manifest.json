@@ -58,17 +58,6 @@
       "tests": ["tests/test_native_hex_quality_extension.py", "tests/test_native_hex_local_front_cpp23.py"]
     },
     {
-      "path": "auto_tessell_core/native_hex_quality_local_front.hpp",
-      "module": "native_hex_quality",
-      "classification": "native_core",
-      "implementation_provenance": "Independent AutoTessell C++23 implementation of the frozen behavioral contract at commit 1b4850f3679e6c240a1a6751a3c8ca7d5721ae7f; prototype source and external engine source were not copied.",
-      "algorithm_source": "AutoTessell deterministic incident-hex backtracking contract, archived as bundle SHA-256 5182aab19a85548c4b3f1055b12dd56f057588b19d42068ef41a8e87ef560592; Reberol et al. DOI 10.1145/3577196 informs fixed-boundary acceptance only.",
-      "direct_dependencies": ["C++ standard library"],
-      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
-      "mit_core_eligible": true,
-      "tests": ["tests/test_native_hex_local_front_cpp23.py"]
-    },
-    {
       "path": "auto_tessell_core/native_metrics_bind.cpp",
       "module": "native_metrics",
       "classification": "native_core",
@@ -144,6 +133,30 @@
       "license_status": "external adapter; excluded pending complete upstream provenance audit",
       "mit_core_eligible": false,
       "tests": ["tests/test_native_hex.py"]
+    }
+  ],
+  "sources": [
+    {
+      "path": "auto_tessell_core/native_hex_quality_local_front.hpp",
+      "module": "native_hex_quality",
+      "classification": "native_core",
+      "implementation_provenance": "Independent AutoTessell C++23 implementation of the frozen behavioral contract at commit 1b4850f3679e6c240a1a6751a3c8ca7d5721ae7f; prototype source and external engine source were not copied.",
+      "algorithm_source": "AutoTessell deterministic incident-hex backtracking contract, archived as bundle SHA-256 5182aab19a85548c4b3f1055b12dd56f057588b19d42068ef41a8e87ef560592; Reberol et al. DOI 10.1145/3577196 informs fixed-boundary acceptance only.",
+      "direct_dependencies": ["C++ standard library"],
+      "license_status": "independent implementation candidate; future MIT promotion remains gated by file-level policy audit",
+      "mit_core_eligible": true,
+      "tests": ["tests/test_native_hex_local_front_cpp23.py"]
+    },
+    {
+      "path": "core/analyzer/readers/step.py",
+      "module": "cad_entity_ingress",
+      "classification": "excluded_adapter",
+      "implementation_provenance": "Independent AutoTessell metadata plumbing over public OCP APIs; no OpenCASCADE or external mesher implementation source copied.",
+      "algorithm_source": "OpenCASCADE B-Rep face orientation and polygon-on-triangulation APIs provide authority; AutoTessell only transports and validates their metadata.",
+      "direct_dependencies": ["NumPy (BSD-3-Clause)", "OCP/cadquery-ocp (LGPL-2.1-only OpenCASCADE binding distribution)"],
+      "license_status": "optional external CAD adapter; excluded from future dependency-free MIT native core",
+      "mit_core_eligible": false,
+      "tests": ["tests/test_cad_reader_native.py", "tests/test_native_hex_cad_front_contract.py"]
     }
   ]
 }
