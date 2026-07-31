@@ -55,6 +55,7 @@ def _worker(repeat: int, case_dir: Path) -> dict[str, object]:
         capture_initial_strict_overlap_source_l1,
     )
     from core.generator.native_tet.mesher import generate_native_tet
+    from core.generator.native_tet.rescue_gate import audit_internal_face_sidedness, audit_tet_boundary
 
     mesh = read_stl(_SPHERE)
     points = np.ascontiguousarray(mesh.vertices, dtype=np.float64)
@@ -82,6 +83,10 @@ def _worker(repeat: int, case_dir: Path) -> dict[str, object]:
         records.append(
             {
                 "stage": checkpoint.stage,
+                "strict": {
+                    "inverted": audit_tet_boundary(checkpoint.candidate_points, checkpoint.candidate_tets).n_inverted_tets,
+                    "same_side": audit_internal_face_sidedness(checkpoint.candidate_points, checkpoint.candidate_tets).n_same_side_internal_faces,
+                },
                 "record": capture_initial_strict_overlap_source_l1(
                     fixture="sphere",
                     repeat=repeat,
