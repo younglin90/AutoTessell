@@ -2805,6 +2805,198 @@ py::dict validate_triangle_surface_and_build_edge_faces(
     return result;
 }
 
+struct TriangleTopologyAuditEdge {
+    long long first;
+    long long second;
+    long long face;
+    signed char direction;
+};
+
+[[nodiscard]] bool triangle_topology_audit_edge_less(
+    const TriangleTopologyAuditEdge& left,
+    const TriangleTopologyAuditEdge& right) noexcept
+{
+    if (left.first != right.first) {
+        return left.first < right.first;
+    }
+    if (left.second != right.second) {
+        return left.second < right.second;
+    }
+    return left.face < right.face;
+}
+
+[[nodiscard]] size_t triangle_topology_audit_find(
+    std::vector<size_t>& parents,
+    size_t index) noexcept
+{
+    size_t root = index;
+    while (parents[root] != root) {
+        root = parents[root];
+    }
+    while (parents[index] != index) {
+        const size_t next = parents[index];
+        parents[index] = root;
+        index = next;
+    }
+    return root;
+}
+
+void triangle_topology_audit_union(
+    std::vector<size_t>& parents,
+    const size_t first,
+    const size_t second) noexcept
+{
+    const size_t first_root = triangle_topology_audit_find(parents, first);
+    const size_t second_root = triangle_topology_audit_find(parents, second);
+    if (first_root != second_root) {
+        parents[second_root] = first_root;
+    }
+}
+
+py::dict triangle_surface_topology_audit(
+    const py::array& vertices_input,
+    const py::array& faces_input)
+{
+    if (!vertices_input.dtype().is(py::dtype::of<double>())
+        || (vertices_input.flags() & py::array::c_style) == 0
+        || vertices_input.ndim() != 2 || vertices_input.shape(1) != 3) {
+        throw std::invalid_argument(
+            "vertices must be a C-contiguous float64 array with shape (N, 3)");
+    }
+    if (!faces_input.dtype().is(py::dtype::of<long long>())
+        || (faces_input.flags() & py::array::c_style) == 0
+        || faces_input.ndim() != 2 || faces_input.shape(1) != 3) {
+        throw std::invalid_argument(
+            "faces must be a C-contiguous int64 array with shape (F, 3)");
+    }
+
+    const auto vertices_array =
+        py::reinterpret_borrow<py::array_t<double>>(vertices_input);
+    const auto faces_array =
+        py::reinterpret_borrow<py::array_t<long long>>(faces_input);
+    const auto vertices = vertices_array.unchecked<2>();
+    const auto faces = faces_array.unchecked<2>();
+    const size_t vertex_count = static_cast<size_t>(vertices.shape(0));
+    const size_t face_count = static_cast<size_t>(faces.shape(0));
+
+    const auto invalid = [] {
+        py::dict result;
+        result["valid"] = false;
+        result["closed_oriented_manifold"] = false;
+        result["edge_count"] = 0;
+        result["component_count"] = 0;
+        result["euler_characteristic"] = py::none();
+        return result;
+    };
+    if (face_count == 0U) {
+        return invalid();
+    }
+
+    std::vector<TriangleTopologyAuditEdge> edges;
+    edges.reserve(face_count * 3U);
+    std::vector<size_t> parents(face_count);
+    std::iota(parents.begin(), parents.end(), 0U);
+    bool valid = true;
+    bool closed_oriented = false;
+    size_t edge_count = 0U;
+    size_t component_count = 0U;
+    {
+        py::gil_scoped_release release;
+        for (size_t vertex = 0; vertex < vertex_count && valid; ++vertex) {
+            for (size_t axis = 0; axis < 3U; ++axis) {
+                if (!std::isfinite(vertices(
+                        static_cast<py::ssize_t>(vertex),
+                        static_cast<py::ssize_t>(axis)))) {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+        for (size_t face = 0; face < face_count && valid; ++face) {
+            const long long a = faces(static_cast<py::ssize_t>(face), 0);
+            const long long b = faces(static_cast<py::ssize_t>(face), 1);
+            const long long c = faces(static_cast<py::ssize_t>(face), 2);
+            if (a < 0 || b < 0 || c < 0 || a >= static_cast<long long>(vertex_count)
+                || b >= static_cast<long long>(vertex_count)
+                || c >= static_cast<long long>(vertex_count)) {
+                valid = false;
+                break;
+            }
+            const auto coordinate = [&](const long long index, const size_t axis) {
+                return vertices(index, static_cast<py::ssize_t>(axis));
+            };
+            const double ab_x = coordinate(b, 0U) - coordinate(a, 0U);
+            const double ab_y = coordinate(b, 1U) - coordinate(a, 1U);
+            const double ab_z = coordinate(b, 2U) - coordinate(a, 2U);
+            const double ac_x = coordinate(c, 0U) - coordinate(a, 0U);
+            const double ac_y = coordinate(c, 1U) - coordinate(a, 1U);
+            const double ac_z = coordinate(c, 2U) - coordinate(a, 2U);
+            const double cross_x = ab_y * ac_z - ab_z * ac_y;
+            const double cross_y = ab_z * ac_x - ab_x * ac_z;
+            const double cross_z = ab_x * ac_y - ab_y * ac_x;
+            const double twice_area = std::sqrt(
+                cross_x * cross_x + cross_y * cross_y + cross_z * cross_z);
+            if (!std::isfinite(twice_area)
+                || twice_area <= std::numeric_limits<double>::min()) {
+                valid = false;
+                break;
+            }
+            const std::array<std::array<long long, 2>, 3> local_edges{{
+                {{a, b}}, {{b, c}}, {{c, a}},
+            }};
+            for (const auto& edge : local_edges) {
+                const long long first = std::min(edge[0], edge[1]);
+                const long long second = std::max(edge[0], edge[1]);
+                edges.push_back(TriangleTopologyAuditEdge{
+                    first,
+                    second,
+                    static_cast<long long>(face),
+                    static_cast<signed char>((edge[0] == first && edge[1] == second) ? 1 : -1),
+                });
+            }
+        }
+        if (valid) {
+            std::sort(edges.begin(), edges.end(), triangle_topology_audit_edge_less);
+            closed_oriented = true;
+            for (size_t first = 0U; first < edges.size();) {
+                size_t last = first + 1U;
+                while (last < edges.size() && edges[last].first == edges[first].first
+                       && edges[last].second == edges[first].second) {
+                    ++last;
+                }
+                ++edge_count;
+                if (last - first != 2U
+                    || edges[first].direction == edges[first + 1U].direction) {
+                    closed_oriented = false;
+                }
+                if (last - first == 2U) {
+                    triangle_topology_audit_union(
+                        parents,
+                        static_cast<size_t>(edges[first].face),
+                        static_cast<size_t>(edges[first + 1U].face));
+                }
+                first = last;
+            }
+            for (size_t face = 0U; face < face_count; ++face) {
+                if (triangle_topology_audit_find(parents, face) == face) {
+                    ++component_count;
+                }
+            }
+        }
+    }
+    if (!valid) {
+        return invalid();
+    }
+    py::dict result;
+    result["valid"] = true;
+    result["closed_oriented_manifold"] = closed_oriented;
+    result["edge_count"] = edge_count;
+    result["component_count"] = component_count;
+    result["euler_characteristic"] = static_cast<long long>(vertex_count)
+        - static_cast<long long>(edge_count) + static_cast<long long>(face_count);
+    return result;
+}
+
 struct QuadPreparationEdge {
     std::array<long long, 2> key;
     long long face;
@@ -4216,6 +4408,8 @@ PYBIND11_MODULE(native_metrics, m)
     m.def("validate_triangle_surface_and_build_edge_faces",
           &validate_triangle_surface_and_build_edge_faces,
           py::arg("vertices"), py::arg("triangles"));
+    m.def("triangle_surface_topology_audit", &triangle_surface_topology_audit,
+          py::arg("vertices").noconvert(), py::arg("faces").noconvert());
     m.def("prepare_quad_pairs", &prepare_quad_pairs,
           py::arg("vertices").noconvert(),
           py::arg("triangles").noconvert(),
