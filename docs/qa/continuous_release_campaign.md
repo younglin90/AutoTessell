@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 134 pre-merge checkpoint -- 2026-07-31
+
+### Real native-Tet cube release-corpus observation
+
+- Real native-Tet cube manifest records source `e930...fbc81`, repeat
+  `polyMesh` aggregate `cb2f...f23f`, native checker negative volumes `0`,
+  and the same seven Gate-4 `UNVERIFIED` fields across repeats.
+- The fail-closed verifier itself exits `1` by design.  The validation runner
+  therefore records `ERROR` / overall `UNVERIFIED`, not `PASS`; this is a
+  truthful release-incomplete result, not a test failure or release claim.
+
+### Release state
+
+- Release remains incomplete and `UNVERIFIED`; no Gate is promoted to `PASS`.
+  Gates 1--15 remain unmet.  No routing, default, UI, mesh, provenance, or
+  `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 133 pre-merge checkpoint -- 2026-07-31
 
 ### Actual Gate-4 inventory shape hardening
