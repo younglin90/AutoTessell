@@ -4,7 +4,7 @@
 
 - campaign_id: `native-release-20260730`
 - state: `CAMPAIGN_ACTIVE`
-- cycle: `85`
+- cycle: `86`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
 - allowed_to_stop: `false`
@@ -2827,6 +2827,27 @@ provenance gate.
 ### Release state
 
 - Gates 1--15 remain unmet; no gate changes to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
+## Cycle 86 pre-merge checkpoint -- 2026-07-31
+
+### Hex CAD/B-Rep source-front authority L0
+
+- `f07e284d` adds a default-OFF, runtime-disconnected report-only CAD/B-Rep
+  source-front authority audit.  It validates the caller declaration before
+  provenance, reader, candidate, or artifact access.
+- The audit requires strict B-Rep authority arrays, hashes, and face-ordinal
+  coverage.  Physical groups are accepted only as exactly unavailable; no
+  physical-group claim is inferred.  Every result remains `accepted=false`,
+  `candidate=false`, `mesh=false`, `artifact=0`.
+- Advisor validation runner: `PASS`, concurrency `1`, `6.06 s`, three suites.
+  Routing, defaults, C++, and `third_party/` remain unchanged.
+
+### Release state
+
+- Source-byte -> reader-payload and output-boundary -> B-Rep bindings remain
+  `DEFER`; no generated Hex source certificate or physical-group authority is
+  claimed.  Gates 1--15 remain unmet; no gate changes to `PASS`.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 85 pre-merge checkpoint -- 2026-07-31
