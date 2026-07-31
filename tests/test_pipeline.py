@@ -621,7 +621,8 @@ endsolid tetra
 
     def test_hard_fail_retries_up_to_max(self) -> None:
         """auto_retry=continue + max_iterations 까지 재시도한다 (mock 동일 결과)."""
-        cm = _make_checkmesh_result(max_non_orthogonality=75.0)  # hard fail for standard
+        # Retry policy needs an unconditional hard fail, not a tier-adjusted metric.
+        cm = _make_checkmesh_result(negative_volumes=1)
         result = self._run(
             checker_cm=cm,
             quality_level="standard",
@@ -634,7 +635,7 @@ endsolid tetra
 
     def test_auto_retry_off_single_iteration(self) -> None:
         """auto_retry=off (v0.4 기본) → Hard FAIL 이어도 1 회만 시도."""
-        cm = _make_checkmesh_result(max_non_orthogonality=75.0)
+        cm = _make_checkmesh_result(negative_volumes=1)
         result = self._run(
             checker_cm=cm,
             quality_level="standard",
@@ -646,7 +647,7 @@ endsolid tetra
 
     def test_auto_retry_once_stops_after_two(self) -> None:
         """auto_retry=once → FAIL 시 최대 2 회만 시도."""
-        cm = _make_checkmesh_result(max_non_orthogonality=75.0)
+        cm = _make_checkmesh_result(negative_volumes=1)
         result = self._run(
             checker_cm=cm,
             quality_level="standard",
