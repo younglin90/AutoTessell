@@ -3191,6 +3191,24 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 175 pre-merge checkpoint -- 2026-07-31
+
+### Native release Makefile fresh-build timeout
+
+- Fresh first-party-only, adapters-OFF serial `native_build_evidence` retained
+  internal config `3.499 s`, build `57.69522897 s`, contract `0.069 s`, and
+  clean postflight evidence.  Outer execution timed out at `64 s`, therefore
+  the overall result is `UNVERIFIED` by campaign rule.
+- Retained build directory:
+  `/tmp/autotessell-c175-native-release-make`; runner evidence:
+  `/tmp/autotessell-c175-native-release-current-runner-evidence.json`.  No
+  rerun was made and `third_party/` was unchanged.
+
+### Release state
+
+- No build, Gate, or release claim is promoted to `PASS`.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 174 pre-merge checkpoint -- 2026-07-31
 
 ### Native Tri strict-source ingress current validation
