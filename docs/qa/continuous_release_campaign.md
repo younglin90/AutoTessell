@@ -3191,6 +3191,27 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 120 pre-merge checkpoint -- 2026-07-31
+
+### Native-Tet sphere bounded SI rerun
+
+- Strict-route native-Tet sphere focused runner passed at concurrency `1` in
+  `15.75 s`: `2224` cells, `0` negative elements.  Earlier exact immutable
+  source/output metric identities remain unchanged; this card adds no metric
+  promotion.
+- Strictly topology-valid output passed bounded exhaustive native SI audit:
+  `measured_no_intersections`.  This is an output-only observation under the
+  Cycle-119 bounded predicate, not a general intersection proof.
+- Signed/integral measures, feature and patch continuity, physical groups, and
+  provenance remain `UNVERIFIED`.
+
+### Release state
+
+- Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and all evidence
+  retains `gate4_pass=false`.  Gates 1--15 remain unmet.  No routing, default,
+  UI, mesh, provenance, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 119 pre-merge checkpoint -- 2026-07-31
 
 ### Bounded native self-intersection observation
