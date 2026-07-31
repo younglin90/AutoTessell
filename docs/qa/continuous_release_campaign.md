@@ -3191,6 +3191,32 @@ provenance gate.
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
 
+## Cycle 178 checkpoint -- 2026-07-31
+
+### Clang20 native boundary-layer array-shape correction
+
+- Cycle 177's first-party clang20 Release Makefiles evidence exposed
+  `-Werror,-Wbraced-scalar-init` at `native_bl_bind.cpp` lines `566` and `671`.
+  Both one-dimensional result allocations now use explicit pybind shape
+  containers; values and one-dimensional shape semantics are unchanged.
+- Initial Cycle 178 fresh runner is `ERROR` / `UNVERIFIED` because the
+  pybind11 CMake package was unavailable:
+  `/tmp/autotessell-c178-native-build-evidence-runner-evidence.json`.
+  Corrected Cycle 178b configuration reached and built `native_bl`, but full
+  `native_build_evidence` remains `ERROR` / `UNVERIFIED` at seven unrelated
+  `native_tet_predicates_bind.cpp` clang20 warnings-as-errors:
+  `/tmp/autotessell-c178b-native-build-evidence-runner-evidence.json`.
+- Fresh targeted Cycle 178c c1 clang20 Release Makefiles clean compile for
+  `native_bl` passed in `8.558316639 s`:
+  `/tmp/autotessell-c178c-native-bl-clean-proof-runner-evidence.json`.
+
+### Release state
+
+- The full first-party build and Gate 2 remain `UNVERIFIED`; targeted module
+  compilation is not a full-build or release claim.  No product, route,
+  default, or `third_party/` behavior changed.
+- `allowed_to_stop: false` remains binding.
+
 ## Cycle 176 pre-merge checkpoint -- 2026-07-31
 
 ### Tet same-side broad current rerun
