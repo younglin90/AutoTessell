@@ -35,7 +35,7 @@ def tmp_case_dir():
 
 def test_native_poly_sphere_produces_cells(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-poly fixture precondition")
     m = read_stl(SPHERE_STL)
     res = generate_native_poly_voronoi(
         m.vertices, m.faces, tmp_case_dir, seed_density=10,
@@ -46,7 +46,7 @@ def test_native_poly_sphere_produces_cells(tmp_case_dir: Path) -> None:
 
 def test_native_poly_polymesh_files_exist(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-poly fixture precondition")
     m = read_stl(SPHERE_STL)
     res = generate_native_poly_voronoi(
         m.vertices, m.faces, tmp_case_dir, seed_density=8,
@@ -59,7 +59,7 @@ def test_native_poly_polymesh_files_exist(tmp_case_dir: Path) -> None:
 
 def test_native_poly_denser_seed_more_cells(tmp_case_dir: Path) -> None:
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-poly fixture precondition")
     m = read_stl(SPHERE_STL)
     r1 = generate_native_poly_voronoi(
         m.vertices, m.faces, tmp_case_dir / "coarse", seed_density=8,
@@ -86,7 +86,7 @@ def test_native_poly_empty_input_fails(tmp_case_dir: Path) -> None:
 def test_native_poly_lloyd_zero_same_as_default(tmp_case_dir: Path) -> None:
     """n_lloyd=0 은 Lloyd 정제 없이 기존 동작과 동일 — 성공해야 함."""
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-poly fixture precondition")
     m = read_stl(SPHERE_STL)
     res = generate_native_poly_voronoi(
         m.vertices, m.faces, tmp_case_dir, seed_density=8, n_lloyd=0,
@@ -98,7 +98,7 @@ def test_native_poly_lloyd_zero_same_as_default(tmp_case_dir: Path) -> None:
 def test_native_poly_lloyd_positive_succeeds(tmp_case_dir: Path) -> None:
     """n_lloyd=2 (기본값) 는 성공하고 cell 을 생성해야 함."""
     if not SPHERE_STL.exists():
-        pytest.skip()
+        pytest.skip("sphere.stl missing: deterministic native-poly fixture precondition")
     m = read_stl(SPHERE_STL)
     res = generate_native_poly_voronoi(
         m.vertices, m.faces, tmp_case_dir, seed_density=8, n_lloyd=2,
