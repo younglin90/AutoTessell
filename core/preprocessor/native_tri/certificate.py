@@ -163,11 +163,18 @@ def _normalise_patch_ids(
 def _normalise_feature_edges(
     feature_edges: Sequence[Sequence[int]] | None,
     *,
-    vertex_count: int,
+    source_faces: np.ndarray | None,
 ) -> tuple[set[tuple[int, int]], bool]:
     """Validate explicitly supplied feature ownership without inferring it."""
     if feature_edges is None:
         return set(), True
+    if source_faces is None:
+        return set(), False
+    source_edges = {
+        (min(int(first), int(second)), max(int(first), int(second)))
+        for face in source_faces.tolist()
+        for first, second in ((face[0], face[1]), (face[1], face[2]), (face[2], face[0]))
+    }
     normalized: set[tuple[int, int]] = set()
     for raw_edge in feature_edges:
         try:
@@ -180,7 +187,7 @@ def _normalise_feature_edges(
         ):
             return set(), False
         edge = (min(int(first), int(second)), max(int(first), int(second)))
-        if edge[0] == edge[1] or edge[0] < 0 or edge[1] >= vertex_count:
+        if edge[0] == edge[1] or edge not in source_edges:
             return set(), False
         normalized.add(edge)
     return normalized, True
@@ -384,20 +391,6 @@ def diagnose_native_tri_source_certificate(
         source_face_count=source_face_count,
     )
     patch_ids, patch_payload_valid = _normalise_patch_ids(source_patch_ids, source_face_count)
-    payload_hash = (
-        sha256(
-            json.dumps(
-                {
-                    "faces": source_f.tolist(),
-                    "patch_ids": patch_ids,
-                },
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
-        ).hexdigest()
-        if source_f is not None and patch_payload_valid
-        else None
-    )
     observed_features = (
         _sharp_feature_edges(source_v, source_f)
         if source_v is not None and source_f is not None and source_audit.valid
@@ -405,7 +398,24 @@ def diagnose_native_tri_source_certificate(
     )
     declared_features, feature_declaration_valid = _normalise_feature_edges(
         source_feature_edges,
-        vertex_count=len(source_v) if source_v is not None else 0,
+        source_faces=source_f,
+    )
+    payload_hash = (
+        sha256(
+            json.dumps(
+                {
+                    "faces": source_f.tolist(),
+                    "patch_ids": patch_ids,
+                    "declared_feature_edges": (
+                        None if source_feature_edges is None else sorted(declared_features)
+                    ),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
+        if source_f is not None and patch_payload_valid and feature_declaration_valid
+        else None
     )
     feature_ownership_explicit = (
         feature_declaration_valid

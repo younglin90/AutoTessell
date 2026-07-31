@@ -24,6 +24,18 @@ def _clone_provenance(face_count: int) -> tuple[tuple[int, ...], ...]:
     return tuple((index,) for index in range(face_count))
 
 
+def _source_edges(faces: np.ndarray) -> tuple[tuple[int, int], ...]:
+    return tuple(
+        sorted(
+            {
+                (min(int(first), int(second)), max(int(first), int(second)))
+                for face in faces.tolist()
+                for first, second in ((face[0], face[1]), (face[1], face[2]), (face[2], face[0]))
+            }
+        )
+    )
+
+
 def _cylinder_operator_candidate() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     mesh = read_stl(Path(__file__).parent / "benchmarks" / "cylinder.stl")
     vertices = np.ascontiguousarray(mesh.vertices, dtype=np.float64)
@@ -260,3 +272,49 @@ def test_source_certificate_rejects_ambiguous_or_missing_nonclone_provenance() -
         assert report.certifiable_candidate_faces == 0
         assert reason in report.rejection_reasons
         assert "nonclone_runtime_certificate_unavailable" in report.rejection_reasons
+
+
+def test_source_certificate_rejects_declared_feature_diagonal_not_in_source_mesh() -> None:
+    vertices, faces = _cube()
+    report = diagnose_native_tri_source_certificate(
+        vertices,
+        faces,
+        vertices.copy(),
+        faces.copy(),
+        face_provenance=_clone_provenance(len(faces)),
+        source_feature_edges=((0, 6),),
+    )
+
+    assert report.accepted is False
+    assert report.source_payload_hash is None
+    assert report.feature_ownership_explicit is False
+    assert "source_feature_ownership_invalid" in report.rejection_reasons
+
+
+def test_source_certificate_feature_ownership_changes_evidence_hash_deterministically() -> None:
+    vertices, faces = _cube()
+    all_source_edges = _source_edges(faces)
+    common = dict(
+        source_vertices=vertices,
+        source_faces=faces,
+        candidate_vertices=vertices.copy(),
+        candidate_faces=faces.copy(),
+        face_provenance=_clone_provenance(len(faces)),
+    )
+    no_features = diagnose_native_tri_source_certificate(
+        **common,
+        source_feature_edges=(),
+    )
+    all_edges_first = diagnose_native_tri_source_certificate(
+        **common,
+        source_feature_edges=all_source_edges,
+    )
+    all_edges_second = diagnose_native_tri_source_certificate(
+        **common,
+        source_feature_edges=tuple(reversed(all_source_edges)),
+    )
+
+    assert no_features.source_payload_hash != all_edges_first.source_payload_hash
+    assert all_edges_first.source_payload_hash == all_edges_second.source_payload_hash
+    assert all_edges_first.feature_ownership_explicit is True
+    assert all_edges_first.accepted is True

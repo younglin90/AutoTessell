@@ -15,7 +15,8 @@ exact L0 source clone with one ordered source-face reference per output face.
 The diagnostic freezes the minimum evidence that a later runtime certificate
 must provide:
 
-1. immutable source vertex/face and source-payload hashes;
+1. immutable source vertex/face and source-payload hashes, including the
+   canonical declared feature-edge ownership set;
 2. finite, nondegenerate, closed, orientable two-manifold source/candidate
    audits plus component and Euler comparisons;
 3. explicit feature-edge ownership whenever observed sharp source edges exist;
@@ -29,6 +30,12 @@ They cannot authorize a route, a local edit, feature transfer, boundary
 transfer, target-face behavior, or boundary-layer behavior.  An exact
 Wang-2020 C1/C2/C3 envelope plus explicit feature-path transfer remains a
 separate C++23-first card.
+
+Declared feature ownership is valid only when every declared pair is a
+canonical undirected edge of the immutable source mesh.  A non-source
+diagonal is rejected rather than retained as detached metadata.  Reordering a
+valid declaration leaves its evidence hash unchanged; changing its ownership
+set changes the hash.
 
 ## Cylinder adverse result
 
