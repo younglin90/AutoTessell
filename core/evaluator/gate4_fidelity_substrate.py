@@ -215,6 +215,8 @@ def _as_actual_metric_evidence(record) -> Gate4ActualSurfaceMetricEvidence:
         signed_status=record.signed_status,
         signed_mean_source_to_output=record.signed_mean_source_to_output,
         signed_mean_output_to_source=record.signed_mean_output_to_source,
+        source_integral_admissibility=record.source_integral_admissibility,
+        output_integral_admissibility=record.output_integral_admissibility,
         integral_status=record.integral_status,
         source_signed_volume=record.source_signed_volume,
         output_signed_volume=record.output_signed_volume,
