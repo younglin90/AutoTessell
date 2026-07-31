@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+
 from core.evaluator.gate4_surface_topology import audit_polymesh_surface
 
 
@@ -72,6 +74,28 @@ def test_closed_tetrahedron_reports_combinatorial_topology_without_si_claim(
     assert audit.nonmanifold_edge_count == 0
     assert audit.nonmanifold_vertex_count == 0
     assert audit.artifact is not None
+
+
+def test_closed_tetrahedron_records_native_exact_no_intersection_result(
+    tmp_path: Path, monkeypatch
+) -> None:
+    class _NativeExact:
+        @staticmethod
+        def aabb_overlap_pairs(_mins, _maxs, _eps):
+            return np.empty((0, 2), dtype=np.int64)
+
+        @staticmethod
+        def triangle_intersections_segment(_points, _faces, _pairs, _eps):
+            return 0, np.empty((0, 2), dtype=np.int64)
+
+    monkeypatch.setattr("core.utils.native_extensions.load_native_metrics", lambda: _NativeExact())
+    _write_polymesh(tmp_path, points=_TET_POINTS, faces=_TET_FACES, patches=[("wall", 4, 0)])
+
+    audit = audit_polymesh_surface(tmp_path)
+
+    assert audit.topology_valid
+    assert audit.status == "unverified_surface_topology_self_intersection_measured"
+    assert audit.self_intersection_status == "measured_no_intersections"
 
 
 def test_disconnected_closed_tetrahedra_preserve_two_components(tmp_path: Path) -> None:

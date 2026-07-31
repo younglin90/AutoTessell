@@ -21,6 +21,8 @@ from core.utils.polymesh_reader import (
     parse_foam_points_array,
 )
 
+_MAX_EXACT_SI_TRIANGLES = 5_000
+
 PolyMeshArtifactIdentity = Gate4OutputArtifactIdentity
 Gate4SurfaceTopologyAudit = Gate4SurfaceTopologyEvidence
 
@@ -167,6 +169,45 @@ def _boundary_loop_count(open_edges: list[tuple[int, int]]) -> int | None:
     return loops
 
 
+def _exact_self_intersection_status(points: np.ndarray, faces: list[list[int]]) -> str:
+    """Use only the native exhaustive non-adjacent triangle predicate.
+
+    Adjacent triangles (shared vertex or edge) are intentionally excluded by
+    the primitive.  Coplanar/touch semantics are those of that native predicate;
+    an unavailable primitive, size cap, or any exception remains unverified.
+    """
+    triangles = np.asarray(
+        [
+            (face[0], face[index], face[index + 1])
+            for face in faces
+            for index in range(1, len(face) - 1)
+        ],
+        dtype=np.int64,
+    )
+    if not len(triangles) or len(triangles) > _MAX_EXACT_SI_TRIANGLES:
+        return "unverified_not_checked"
+    try:
+        from core.utils.native_extensions import load_native_metrics  # noqa: PLC0415
+
+        native = load_native_metrics()
+        if (
+            native is None
+            or not hasattr(native, "aabb_overlap_pairs")
+            or not hasattr(native, "triangle_intersections_segment")
+        ):
+            return "unverified_not_checked"
+        tri_points = points[triangles]
+        candidate_pairs = native.aabb_overlap_pairs(
+            tri_points.min(axis=1), tri_points.max(axis=1), 1.0e-12
+        )
+        _tested, pairs = native.triangle_intersections_segment(
+            points, triangles, candidate_pairs, 1.0e-12
+        )
+        return "measured_no_intersections" if len(pairs) == 0 else "measured_intersections_present"
+    except Exception:  # noqa: BLE001
+        return "unverified_not_checked"
+
+
 def audit_polymesh_surface(case_dir: Path) -> Gate4SurfaceTopologyEvidence:
     """Audit one explicit polyMesh boundary surface without a Gate verdict."""
     artifact = inspect_gate4_output_artifact(case_dir)
@@ -255,15 +296,24 @@ def audit_polymesh_surface(case_dir: Path) -> Gate4SurfaceTopologyEvidence:
         else:
             valid = False
 
+    si_status = (
+        _exact_self_intersection_status(points, boundary_faces)
+        if valid and loop_count == 0
+        else "unverified_not_checked"
+    )
     return Gate4SurfaceTopologyAudit(
         status=(
-            "unverified_self_intersection_not_checked"
-            if valid
-            else "unverified_surface_topology_invalid"
+            "unverified_surface_topology_self_intersection_measured"
+            if si_status.startswith("measured_")
+            else (
+                "unverified_self_intersection_not_checked"
+                if valid
+                else "unverified_surface_topology_invalid"
+            )
         ),
         artifact=artifact,
         topology_valid=valid,
-        self_intersection_status="unverified_not_checked",
+        self_intersection_status=si_status,
         boundary_face_count=len(boundary_faces),
         component_count=component_count,
         boundary_loop_count=loop_count,
