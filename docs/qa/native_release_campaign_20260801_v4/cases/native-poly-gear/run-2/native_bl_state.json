@@ -1,0 +1,42 @@
+{
+  "actual_layers": 1,
+  "input_polymesh_sha256": {
+    "boundary": "0627ced56955f61e1ea76858b049917fb9d01f8c856fd6dc607caad2e124ef01",
+    "faces": "4590df8d06882a47057dd1391b59d84b34d48d8eeae897b3073f19197dfbe1af",
+    "neighbour": "1eea585d79da5e0cc9c8b859f8821bd92fe3cbae15e67eef64970bb7f7eccc58",
+    "owner": "490ac6b3b59c2facf7d24e0aac0f40ad60d9094a82f15e2fb51a2f6c065d1a71",
+    "points": "ea66836afcb8895a7351338cfbfe2b4e0857012e99b5984ee25917edcdea5424"
+  },
+  "last_transform": "poly_bl_transition",
+  "n_prism_cells": 1040,
+  "output_polymesh_sha256": {
+    "boundary": "d4b8bc2e2826c0f460d198f73c227392a54428f0f50a60db7c763731c1b04fae",
+    "faces": "301f295ef244d211827c837e34dbf57f332a67987887f499b4b555ad938e9d64",
+    "neighbour": "881824abfaef608654feec730e267d806def702c7b2c5e9420d9d9a27e18545a",
+    "owner": "b629095df456155488f1dc077d8e0c8f6d064e3176903518d57692fc8b75774c",
+    "points": "1091db616d0636979b731ead2f7138ce6662b6ff3ccf29abd4adadf8cc36dc7c"
+  },
+  "producer": "core.layers.native_bl.generate_native_bl",
+  "request": {
+    "collision_safety": true,
+    "collision_safety_factor": 0.5,
+    "engine_tag": "generic",
+    "feature_angle_deg": 45.0,
+    "feature_lock": true,
+    "feature_reduction_ratio": 0.5,
+    "first_thickness": 0.0001,
+    "growth_ratio": 1.2,
+    "ignore_faces": null,
+    "ignore_patch_names": null,
+    "ignore_patch_prefixes": null,
+    "max_total_ratio": 0.3,
+    "requested_layers": 1,
+    "set_faces": null,
+    "wall_patch_names": [
+      "source_0_04_extreme_gear"
+    ]
+  },
+  "requested_layers": 1,
+  "schema": 1,
+  "state": "completed"
+}

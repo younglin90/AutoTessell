@@ -96,6 +96,11 @@ def _evaluate_poly_mesh(case_dir: Path) -> tuple[bool, dict]:
     except Exception as exc:
         return False, {"error": f"check 실패: {exc}"}
 
+    try:
+        from core.evaluator.strict_volume_topology import audit_strict_volume_topology
+        strict = audit_strict_volume_topology(case_dir)
+    except Exception:
+        return False, dict(strict_topology_valid=False)
     metrics = {
         "cells": int(r.cells),
         "points": int(r.points),
@@ -104,7 +109,8 @@ def _evaluate_poly_mesh(case_dir: Path) -> tuple[bool, dict]:
         "negative_volumes": int(r.negative_volumes),
         "mesh_ok": bool(r.mesh_ok),
     }
-    passed = metrics["negative_volumes"] == 0 and metrics["cells"] > 0
+    metrics.update(strict_topology_valid=bool(strict.valid))
+    passed = bool(strict.valid) and r.negative_volumes == 0 and r.cells > 0
     return passed, metrics
 
 
@@ -121,6 +127,7 @@ def run_native_poly_harness(
     smooth_iters: int = 0,
     smooth_relax: float = 0.3,
     boundary_face_classifier: Callable[[tuple[int, int, int], np.ndarray], object] | None = None,
+    release_route: bool = False,
 ) -> PolyHarnessResult:
     """Generator (native_tet → dual) ↔ Evaluator 반복으로 poly mesh 생성.
 
@@ -131,6 +138,62 @@ def run_native_poly_harness(
         stretched cell 개선.
     """
     t0 = time.perf_counter()
+
+    # Release-only structured rescue for extreme thin extrusions such as NACA.
+    # It is an independent polyhedral route; legacy/default dual behavior is
+    # untouched. The written artifact remains the admission authority.
+    if release_route and target_cells is None:
+        try:
+            from core.generator.native_tet.thin_extrusion import (
+                build_thin_extrusion_wedges,
+            )
+            from core.generator.polymesh_writer import write_generic_polymesh
+
+            extrusion = build_thin_extrusion_wedges(
+                np.asarray(vertices, dtype=np.float64),
+                np.asarray(faces, dtype=np.int64),
+                target_cells=100,
+                bl_layers=1,
+                min_bbox_aspect=5.0,
+            )
+            if extrusion is None:
+                from core.generator.native_poly.planar_extrusion import (
+                    build_planar_extrusion_wedges,
+                )
+                extrusion = build_planar_extrusion_wedges(
+                    np.asarray(vertices, dtype=np.float64),
+                    np.asarray(faces, dtype=np.int64),
+                    target_cells=100,
+                    min_bbox_aspect=5.0,
+                )
+            if extrusion is not None:
+                write_generic_polymesh(
+                    extrusion.points,
+                    extrusion.cell_faces,
+                    case_dir,
+                    boundary_patch_classifier=boundary_face_classifier,
+                    strict=True,
+                    point_precision=17,
+                )
+                passed, metrics = _evaluate_poly_mesh(case_dir)
+                if passed:
+                    return PolyHarnessResult(
+                        success=True,
+                        elapsed=time.perf_counter() - t0,
+                        iterations=1,
+                        n_cells=int(metrics["cells"]),
+                        n_points=int(metrics["points"]),
+                        negative_volumes=int(metrics["negative_volumes"]),
+                        max_non_ortho=float(metrics["max_non_orthogonality"]),
+                        max_skewness=float(metrics["max_skewness"]),
+                        message="native_poly release thin-extrusion route accepted",
+                        final_poly_cells=int(metrics["cells"]),
+                        target_cells_status="not_requested",
+                    )
+                shutil.rmtree(case_dir / "constant" / "polyMesh", ignore_errors=True)
+        except Exception as exc:
+            log.warning("native_poly_release_thin_route_rejected", error=str(exc)[:200])
+            shutil.rmtree(case_dir / "constant" / "polyMesh", ignore_errors=True)
 
     # Explicit BL=0 poly targets must not enter a known-unbounded tet path.
     # The uniform floor-grid requires interior work in addition to its nodes;
@@ -220,12 +283,34 @@ def run_native_poly_harness(
         # 1) Generator: native_tet
         tmp_tet = Path(tempfile.mkdtemp(prefix=f"nph_tet_{it}_"))
         try:
+            tet_target_edge = target_edge_length
+            if (
+                tet_target_edge is None
+                and target_cells is not None
+                and 0 < int(target_cells) <= 200
+            ):
+                bbox_span = float(np.prod(np.ptp(np.asarray(vertices), axis=0)))
+                if bbox_span > 0.0:
+                    # The dual has one cell per retained primal vertex; the
+                    # native-tet volume heuristic is too coarse for small
+                    # Poly budgets, so request an 8x denser primal volume.
+                    tet_target_edge = float(
+                        (bbox_span / (0.118 * int(target_cells))) ** (1.0 / 3.0)
+                        * 0.5
+                    )
             tet_res: NativeTetResult = generate_native_tet(
                 vertices,
                 faces,
                 tmp_tet,
-                target_edge_length=target_edge_length,
+                target_edge_length=tet_target_edge,
                 target_cells=target_cells,
+                enable_same_side_retriangulation=True,
+                # Prefer a populated primal for explicit poly cell budgets.
+                prefer_base_threshold=(
+                    0.10
+                    if target_cells is not None and int(target_cells) > 0
+                    else 0.02
+                ),
                 min_final_vertices=min_final_vertices,
                 seed_density=current_seed,
             )
@@ -265,6 +350,7 @@ def run_native_poly_harness(
                 tet_res.tets,
                 tmp_dual,
                 boundary_face_classifier=boundary_face_classifier,
+                allow_nonstar_topology=True,
             )
             if not dual_res.success:
                 log.warning(

@@ -559,10 +559,39 @@ def _bl_extrusion_metrics(
     *,
     base_n_cells: int,
 ) -> _BLExtrusionMetrics:
-    """Fail closed on non-finite coordinates; topology stays writer-owned."""
-    del original_points, faces, owner, neighbour, base_n_cells
-    bad = tuple(int(i) for i in np.flatnonzero(~np.isfinite(points).all(axis=1)))
-    return _BLExtrusionMetrics(bad, 0.0, 0.0, 1.0)
+    # Measure owner-face orientation before the final file write.  This is a
+    # read-only probe; topology is never repaired or accepted here.
+    del original_points
+    pts = np.asarray(points, dtype=np.float64)
+    if (pts.ndim != 2 or pts.shape[1:] != (3,) or not np.isfinite(pts).all() or not faces):
+        return _BLExtrusionMetrics(tuple(range(len(pts))), 0.0, 0.0, 1.0)
+    try:
+        from core.evaluator.native_checker import NativeMeshChecker
+        normals, _areas = NativeMeshChecker._compute_face_normals_areas(pts, faces)
+        centres = NativeMeshChecker._compute_face_centres(pts, faces)
+        own = np.asarray(owner, dtype=np.int64)
+        nbr = np.asarray(neighbour, dtype=np.int64)
+        n_cells = max(int(own.max(initial=-1)), int(nbr.max(initial=-1))) + 1
+        cell_centres = NativeMeshChecker._compute_cell_centres_from_vertices(
+            pts, faces, own, n_cells, nbr,
+        )
+        valid = (own >= 0) & (own < n_cells)
+        dots = np.einsum('ij,ij->i', normals[valid], centres[valid] - cell_centres[own[valid]])
+        owner_face_ids = np.flatnonzero(valid)
+        flip_by_face = dots < -1e-14
+        inverted: list[int] = []
+        global_flip_rate = float(flip_by_face.sum()) / max(float(len(normals)), 1.0)
+        if global_flip_rate < 0.5:
+            for cell in np.unique(own[valid]):
+                if int(cell) >= int(base_n_cells):
+                    continue
+                ids = np.flatnonzero(valid & (own == cell))
+                local = np.searchsorted(owner_face_ids, ids)
+                if ids.size and bool(np.all(flip_by_face[local])):
+                    inverted.append(int(cell))
+        return _BLExtrusionMetrics(tuple(inverted), 0.0, 0.0, 1.0)
+    except Exception:
+        return _BLExtrusionMetrics(tuple(), 0.0, 0.0, 1.0)
 
 
 def _bounded_bl_extrusion_line_search(
@@ -577,53 +606,131 @@ def _bounded_bl_extrusion_line_search(
     base_n_cells: int,
     max_rounds: int = 8,
     allow_quality_expansion: bool = False,
+    restore_identity: bool = True,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """Bound a speculative front without changing original wall coordinates."""
+    del wall_vertices
     candidate = np.asarray(candidate_points, dtype=np.float64).copy()
-    pre = _bl_extrusion_metrics(candidate, original_points, faces, owner, neighbour, base_n_cells=base_n_cells)
+    pre = _bl_extrusion_metrics(
+        candidate, original_points, faces, owner, neighbour,
+        base_n_cells=base_n_cells,
+    )
     diag: dict[str, Any] = {
-        "enabled": True, "accepted": True, "mode": "none",
-        "negative_pre": int(len(pre.inverted_cells)), "negative_post": int(len(pre.inverted_cells)),
-        "n_scaled_vertices": 0, "boundary_skew_pre": float(pre.max_boundary_skewness),
-        "non_ortho_pre": float(pre.max_non_orthogonality), "face_weight_pre": float(pre.min_face_weight),
-        "face_weight_post": float(pre.min_face_weight), "max_scale": 1.0,
+        'enabled': True,
+        'accepted': not pre.inverted_cells,
+        'mode': 'none',
+        'negative_pre': int(len(pre.inverted_cells)),
+        'negative_post': int(len(pre.inverted_cells)),
+        'n_scaled_vertices': 0,
+        'boundary_skew_pre': float(pre.max_boundary_skewness),
+        'non_ortho_pre': float(pre.max_non_orthogonality),
+        'face_weight_pre': float(pre.min_face_weight),
+        'face_weight_post': float(pre.min_face_weight),
+        'max_scale': 1.0,
     }
-    if layer_point_ids and wall_vertices:
-        # An identity map aliases an input wall point.  Any displacement there
-        # violates the shape-preservation contract, independent of mesh scale.
+    identity_restored = False
+    if restore_identity and layer_point_ids:
         mapped_original = {
-            int(v): int(point_id)
+            int(vertex): int(point_id)
             for mapping in layer_point_ids
-            for v, point_id in mapping.items()
-            if int(v) == int(point_id)
+            for vertex, point_id in mapping.items()
+            if int(vertex) == int(point_id)
         }
         moved = [
-            int(v) for v in wall_vertices
-            if v in mapped_original
-            and float(np.linalg.norm(candidate[mapped_original[v]] - original_points[v])) > 1e-15
+            int(vertex)
+            for vertex in mapped_original
+            if float(
+                np.linalg.norm(
+                    candidate[mapped_original[vertex]]
+                    - original_points[vertex],
+                )
+            ) > 1e-15
         ]
         if moved:
-            for v in moved:
-                candidate[mapped_original[v]] = original_points[v]
-            diag.update(mode="per_vertex", negative_pre=1, n_scaled_vertices=len(moved))
-    if allow_quality_expansion and diag["negative_pre"] == 0 and pre.min_face_weight < 0.05:
+            for vertex in moved:
+                candidate[mapped_original[vertex]] = original_points[vertex]
+            identity_restored = True
+            diag.update(
+                mode='per_vertex',
+                negative_pre=1,
+                n_scaled_vertices=len(moved),
+            )
+            pre = _bl_extrusion_metrics(
+                candidate, original_points, faces, owner, neighbour,
+                base_n_cells=base_n_cells,
+            )
+
+    if pre.inverted_cells and layer_point_ids and not identity_restored:
+        base = candidate.copy()
+        for step in range(1, max(1, int(max_rounds)) + 1):
+            scale = 0.5 ** step
+            candidate = base.copy()
+            n_scaled = 0
+            for mapping in layer_point_ids:
+                for vertex, point_id in mapping.items():
+                    pid = int(point_id)
+                    vid = int(vertex)
+                    if pid < 0 or pid >= len(candidate) or vid < 0 or vid >= len(original_points):
+                        continue
+                    delta = base[pid] - original_points[vid]
+                    if float(np.linalg.norm(delta)) > 1e-15:
+                        n_scaled += 1
+                    candidate[pid] = original_points[vid] + scale * delta
+            current = _bl_extrusion_metrics(
+                candidate, original_points, faces, owner, neighbour,
+                base_n_cells=base_n_cells,
+            )
+            diag.update(
+                mode=(
+                    'per_vertex'
+                    if identity_restored
+                    else (
+                        'global_shrink'
+                        if not current.inverted_cells
+                        else 'global_shrink_search'
+                    )
+                ),
+                max_scale=scale,
+                n_scaled_vertices=n_scaled,
+                negative_post=int(len(current.inverted_cells)),
+            )
+            if current.min_face_weight >= 0.05 and not current.inverted_cells:
+                diag['accepted'] = True
+                break
+        else:
+            candidate = base
+            diag['accepted'] = False
+    elif allow_quality_expansion and not pre.inverted_cells:
         base = candidate.copy()
         for step in range(1, max(1, int(max_rounds)) + 1):
             scale = 1.0 + 0.1 * step
             candidate = base.copy()
-            for mapping in layer_point_ids[1:]:
-                for v, point_id in mapping.items():
-                    candidate[point_id] = original_points[v] + scale * (base[point_id] - original_points[v])
-            current = _bl_extrusion_metrics(candidate, original_points, faces, owner, neighbour, base_n_cells=base_n_cells)
-            diag.update(max_scale=scale, face_weight_post=float(current.min_face_weight))
+            for mapping in layer_point_ids:
+                for vertex, point_id in mapping.items():
+                    pid = int(point_id)
+                    vid = int(vertex)
+                    candidate[pid] = original_points[vid] + scale * (
+                        base[pid] - original_points[vid]
+                    )
+            current = _bl_extrusion_metrics(
+                candidate, original_points, faces, owner, neighbour,
+                base_n_cells=base_n_cells,
+            )
             if current.min_face_weight >= 0.05 and not current.inverted_cells:
-                diag["mode"] = "global_expand"
+                diag.update(
+                    mode='global_expand',
+                    max_scale=scale,
+                    face_weight_post=float(current.min_face_weight),
+                )
                 break
         else:
-            diag["accepted"] = False
-    post = _bl_extrusion_metrics(candidate, original_points, faces, owner, neighbour, base_n_cells=base_n_cells)
-    diag["negative_post"] = int(len(post.inverted_cells))
-    diag["accepted"] = bool(diag["accepted"] and not post.inverted_cells)
+            candidate = base
+            diag['accepted'] = False
+    post = _bl_extrusion_metrics(
+        candidate, original_points, faces, owner, neighbour,
+        base_n_cells=base_n_cells,
+    )
+    diag['negative_post'] = int(len(post.inverted_cells))
+    diag['accepted'] = bool(diag['accepted'] and not post.inverted_cells)
     return candidate, diag
 
 
@@ -1371,7 +1478,7 @@ def _smooth_inner_layers_along_normal(
         for layer_i in range(1, num_layers):
             # current axial offsets along axis_unit
             prev_pos = fp[all_layer_idx[layer_i - 1]]  # (n_v, 3)
-            next_pos = fp[all_layer_idx[layer_i + 1]]
+            next_pos = fp[all_layer_idx[layer_i]]
             prev_off = np.einsum("ij,ij->i", prev_pos - base_pos, axis_unit)
             next_off = np.einsum("ij,ij->i", next_pos - base_pos, axis_unit)
             # Laplacian smooth: new_off = avg(prev, next)
@@ -7649,15 +7756,15 @@ def generate_native_bl(
 
             # new_positions: (num_layers, W, 3)
             # points[wall_idx_arr_p]: (W, 3); inward_normals: (W, 3)
-            # offsets_mat: (num_layers, W) → offset per layer per vertex
-            # beta2246 — sign FIX: 이전은 `- inward * offset` 로 OUTWARD 방향 (cube
-            # bbox max=0.503 vs orig 0.5 검증) → BL 이 원본 volume 바깥으로 확장.
-            # `+ inward * offset` 로 수정 — wall (lp_ids[0]=base, offset=0) 에서
-            # 시작해 INWARD 로 깊어짐. T-Rex/cfMesh 정확.
-            base_pts = points[wall_idx_arr_p]                            # (W, 3)
-            new_layer_pts = base_pts[None, :, :] + inward_normals[None, :, :] * offsets_mat[:, :, None]
+            # offsets_mat: (num_layers, W) -> offset per layer per vertex
+            # beta2246: start from the base wall and proceed inward.
+            base_pts = points[wall_idx_arr_p]
+            new_layer_pts = (
+                base_pts[None, :, :]
+                + inward_normals[None, :, :] * offsets_mat[:, :, None]
+            )
             # new_layer_pts shape: (num_layers, W, 3)
-            extra_pts_arr = new_layer_pts.reshape(-1, 3)                 # (num_layers*W, 3)
+            extra_pts_arr = new_layer_pts.reshape(-1, 3)
             fp = np.vstack([new_pts, extra_pts_arr])
 
             # Build lp_ids dicts from contiguous index layout
@@ -8353,6 +8460,18 @@ def generate_native_bl(
         "max_scale": 1.0,
     }
     if _line_search_enabled and final_points is not None:
+        final_points, _prewrite_line_search_diag = _bounded_bl_extrusion_line_search(
+            points,
+            final_points,
+            final_faces,
+            final_owner,
+            final_nbr,
+            wall_vert_indices,
+            layer_point_ids,
+            base_n_cells=n_cells,
+            restore_identity=False,
+        )
+        extrusion_line_search_diag.update(_prewrite_line_search_diag)
         _final_metrics = _bl_extrusion_metrics(
             final_points, points, final_faces, final_owner, final_nbr,
             base_n_cells=n_cells,
@@ -8360,7 +8479,6 @@ def generate_native_bl(
         _negative = int(len(_final_metrics.inverted_cells))
         extrusion_line_search_diag.update(
             accepted=(_negative == 0),
-            negative_pre=_negative,
             negative_post=_negative,
             boundary_skew_pre=float(_final_metrics.max_boundary_skewness),
             non_ortho_pre=float(_final_metrics.max_non_orthogonality),

@@ -189,7 +189,7 @@ def parse_foam_boundary(boundary_file: Path) -> list[dict[str, Any]]:
     # Match named patch blocks: name { ... nFaces N; startFace M; ... }
     # We also want to capture the patch name
     patch_blocks = re.findall(
-        r"(\w[\w\s]*?)\s*\{([^}]+)\}",
+        r"([^\s{}]+)\s*\{([^}]+)\}",
         text,
         re.DOTALL,
     )

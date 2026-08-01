@@ -1546,6 +1546,7 @@ def tet_to_poly_dual(
     boundary_face_entities: Mapping[tuple[int, int, int], Any] | Sequence[Any] | None = None,
     boundary_face_classifier: Callable[[tuple[int, int, int], np.ndarray], Any] | None = None,
     _dual_point_mode: str = "garimella",
+    allow_nonstar_topology: bool = False,
 ) -> PolyDualResult:
     """tet mesh (V, T) 를 polyhedral dual 로 변환 후 OpenFOAM polyMesh 로 저장.
 
@@ -2181,7 +2182,13 @@ def tet_to_poly_dual(
     pre_on, pre_off = _area_split(dual_points, a_b_faces, surface_planes)
     post_on, post_off = _area_split(dual_points, b_b_faces, surface_planes)
     use_topo = (
-        len(b_i_faces) > 0 and post_off <= pre_off and pre_on * 0.95 <= post_on <= pre_on * 1.05
+        bool(allow_nonstar_topology) and len(b_i_faces) > 0 and len(b_b_faces) > 0
+        or (
+            not allow_nonstar_topology
+            and len(b_i_faces) > 0
+            and post_off <= pre_off
+            and pre_on * 0.95 <= post_on <= pre_on * 1.05
+        )
     )
     if classification_active:
         # The classified cap subcomplex is the source-surface partition. Its
@@ -2243,8 +2250,9 @@ def tet_to_poly_dual(
         final_owner,
         final_nbr,
         len(cell_face_lists),
+        tolerance=(-1e-5 if use_topo and allow_nonstar_topology else 1e-12),
     )
-    if invalid_star_cells:
+    if invalid_star_cells and not (use_topo and allow_nonstar_topology):
         log.warning(
             "native_poly_dual_star_invalid",
             invalid_cells=invalid_star_cells,
@@ -2259,6 +2267,7 @@ def tet_to_poly_dual(
                 min_cell_verts=min_cell_verts,
                 boundary_face_labels=boundary_face_labels,
                 boundary_face_entities=boundary_face_entities,
+                allow_nonstar_topology=allow_nonstar_topology,
                 boundary_face_classifier=boundary_face_classifier,
                 _dual_point_mode="centroid",
             )

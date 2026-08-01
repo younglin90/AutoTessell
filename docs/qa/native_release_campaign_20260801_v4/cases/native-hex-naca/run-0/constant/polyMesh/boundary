@@ -1,0 +1,130 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     |
+    \\  /    A nd           | Version: 13
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       polyBoundaryMesh;
+    location    "constant/polyMesh";
+    object      boundary;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+18
+(
+    naca0012-face-99
+    {
+        type            wall;
+        nFaces          7;
+        startFace       218;
+    }
+    naca0012-face-52
+    {
+        type            wall;
+        nFaces          3;
+        startFace       225;
+    }
+    naca0012-face-45
+    {
+        type            wall;
+        nFaces          3;
+        startFace       228;
+    }
+    naca0012-face-48
+    {
+        type            wall;
+        nFaces          3;
+        startFace       231;
+    }
+    naca0012-face-100
+    {
+        type            wall;
+        nFaces          7;
+        startFace       234;
+    }
+    naca0012-face-59
+    {
+        type            wall;
+        nFaces          3;
+        startFace       241;
+    }
+    naca0012-face-38
+    {
+        type            wall;
+        nFaces          3;
+        startFace       244;
+    }
+    naca0012-face-66
+    {
+        type            wall;
+        nFaces          3;
+        startFace       247;
+    }
+    naca0012-face-31
+    {
+        type            wall;
+        nFaces          3;
+        startFace       250;
+    }
+    naca0012-face-73
+    {
+        type            wall;
+        nFaces          3;
+        startFace       253;
+    }
+    naca0012-face-24
+    {
+        type            wall;
+        nFaces          3;
+        startFace       256;
+    }
+    naca0012-face-80
+    {
+        type            wall;
+        nFaces          3;
+        startFace       259;
+    }
+    naca0012-face-17
+    {
+        type            wall;
+        nFaces          3;
+        startFace       262;
+    }
+    naca0012-face-87
+    {
+        type            wall;
+        nFaces          3;
+        startFace       265;
+    }
+    naca0012-face-10
+    {
+        type            wall;
+        nFaces          3;
+        startFace       268;
+    }
+    naca0012-face-94
+    {
+        type            wall;
+        nFaces          3;
+        startFace       271;
+    }
+    naca0012-face-3
+    {
+        type            wall;
+        nFaces          3;
+        startFace       274;
+    }
+    naca0012-face-98
+    {
+        type            wall;
+        nFaces          3;
+        startFace       277;
+    }
+)
+
+// ************************************************************************* //

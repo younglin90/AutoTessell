@@ -1,0 +1,358 @@
+{
+  "campaign": "native_release_campaign_20260801_v4",
+  "rows": [
+    {
+      "byte_identical": true,
+      "engine": "tet",
+      "fixture": "cube.stl",
+      "id": "native-tet-cube",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 0.6666666666666665,
+        "mesh_ok": true,
+        "min_cell_volume": 0.020833333333333332,
+        "n_cells": 17,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "tet",
+      "fixture": "sphere_watertight.stl",
+      "id": "native-tet-sphere",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 1.4117452997809703,
+        "mesh_ok": true,
+        "min_cell_volume": 0.000553851990197439,
+        "n_cells": 1624,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "tet",
+      "fixture": "naca0012.stl",
+      "id": "native-tet-naca",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 168.70627112624484,
+        "mesh_ok": true,
+        "min_cell_volume": 1.6602517056893017e-08,
+        "n_cells": 455,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "tet",
+      "fixture": "trimesh_duct.stl",
+      "id": "native-tet-complex",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 3.969581901561025,
+        "mesh_ok": true,
+        "min_cell_volume": 0.02113478232947398,
+        "n_cells": 192,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "hex",
+      "fixture": "box.step",
+      "id": "native-hex-cube",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 0.6072065010424629,
+        "mesh_ok": true,
+        "min_cell_volume": 4.672949894402672e-06,
+        "n_cells": 160,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "hex",
+      "fixture": "sphere.step",
+      "id": "native-hex-sphere",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 0.3473535372756836,
+        "mesh_ok": true,
+        "min_cell_volume": 7.230878263267227e-06,
+        "n_cells": 207,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "hex",
+      "fixture": "naca0012.step",
+      "id": "native-hex-naca",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 0.6067410834534283,
+        "mesh_ok": true,
+        "min_cell_volume": 9.799560644660147e-09,
+        "n_cells": 83,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "hex",
+      "fixture": "gear.step",
+      "id": "native-hex-gear",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 0.9422182396671475,
+        "mesh_ok": true,
+        "min_cell_volume": 2.218702753050247e-06,
+        "n_cells": 49,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "poly",
+      "fixture": "cube.stl",
+      "id": "native-poly-cube",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 1.0422680848752046,
+        "mesh_ok": true,
+        "min_cell_volume": 0.003259163598162754,
+        "n_cells": 87,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "poly",
+      "fixture": "sphere_watertight.stl",
+      "id": "native-poly-sphere",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 1.081608321474112,
+        "mesh_ok": true,
+        "min_cell_volume": 9.115836663420751e-06,
+        "n_cells": 8349,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "poly",
+      "fixture": "naca0012.stl",
+      "id": "native-poly-naca",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 1.903100650322168,
+        "mesh_ok": true,
+        "min_cell_volume": 4.8447767690348766e-11,
+        "n_cells": 795,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "poly",
+      "fixture": "04_extreme_gear.stl",
+      "id": "native-poly-gear",
+      "independent_route": true,
+      "quality": {
+        "inverted_owner_cells": 0,
+        "max_non_ortho": 0.0,
+        "max_skewness": 133.8373321286204,
+        "mesh_ok": true,
+        "min_cell_volume": 3.7875116796364704e-08,
+        "n_cells": 1302,
+        "negative_volumes": 0,
+        "strict_zero": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "tri",
+      "fixture": "cube.stl",
+      "id": "native-tri-cube",
+      "independent_route": true,
+      "quality": {
+        "mesh_ok": true,
+        "n_duplicate_faces": 0,
+        "n_faces": 48,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "strict_zero": true,
+        "surface_valid": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "tri",
+      "fixture": "sphere_watertight.stl",
+      "id": "native-tri-sphere",
+      "independent_route": true,
+      "quality": {
+        "mesh_ok": true,
+        "n_duplicate_faces": 0,
+        "n_faces": 172,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "strict_zero": true,
+        "surface_valid": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "tri",
+      "fixture": "naca0012.stl",
+      "id": "native-tri-naca",
+      "independent_route": true,
+      "quality": {
+        "mesh_ok": true,
+        "n_duplicate_faces": 0,
+        "n_faces": 40,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "strict_zero": true,
+        "surface_valid": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "tri",
+      "fixture": "box.step",
+      "id": "native-tri-cad",
+      "independent_route": true,
+      "quality": {
+        "mesh_ok": true,
+        "n_duplicate_faces": 0,
+        "n_faces": 48,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "strict_zero": true,
+        "surface_valid": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "strict-quad",
+      "fixture": "cube",
+      "id": "strict-quad-cube",
+      "independent_route": true,
+      "quality": {
+        "mesh_ok": true,
+        "n_duplicate_faces": 0,
+        "n_faces": 12,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "strict_zero": true,
+        "surface_valid": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "strict-quad",
+      "fixture": "complex",
+      "id": "strict-quad-complex",
+      "independent_route": true,
+      "quality": {
+        "mesh_ok": true,
+        "n_duplicate_faces": 0,
+        "n_faces": 20,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "strict_zero": true,
+        "surface_valid": true
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "tri-quad",
+      "fixture": "cube",
+      "id": "tri-quad-cube",
+      "independent_route": true,
+      "quality": {
+        "mesh_ok": false,
+        "n_duplicate_faces": 0,
+        "n_faces": 10,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 4,
+        "strict_zero": false,
+        "surface_valid": false
+      },
+      "run_count": 3
+    },
+    {
+      "byte_identical": true,
+      "engine": "tri-quad",
+      "fixture": "complex",
+      "id": "tri-quad-complex",
+      "independent_route": true,
+      "quality": {
+        "mesh_ok": false,
+        "n_duplicate_faces": 0,
+        "n_faces": 14,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 10,
+        "strict_zero": false,
+        "surface_valid": false
+      },
+      "run_count": 3
+    }
+  ],
+  "schema": "autotessell/native-release-quality-matrix/v1"
+}

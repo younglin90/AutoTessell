@@ -41,6 +41,14 @@ def _runner(
         seed_density=forwarded_seed_density,
         **kwargs,
     )
+    if "source_provenance" in kwargs:
+        binding = getattr(result, "source_output_binding", None)
+        if binding is None or not bool(getattr(binding, "strict_binding_complete", False)):
+            result.success = False
+            result.message = (
+                "native_hex CAD release rejected: measured output source binding "
+                "and physical-group evidence are incomplete"
+            )
     setattr(result, "route", "hex_uniform_grid")
     setattr(result, "contract", "native_hex")
     setattr(result, "contract_details", {"seed_density": forwarded_seed_density})

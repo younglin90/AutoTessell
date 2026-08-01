@@ -1,0 +1,15 @@
+{
+  "invalid_cases": [],
+  "matrix": {
+    "extra_cases": [],
+    "invalid_cases": [],
+    "missing_cases": [],
+    "reasons": [],
+    "required_case_count": 20,
+    "status": "measured_complete",
+    "valid": true
+  },
+  "reasons": [],
+  "status": "measured_authority_complete",
+  "valid": true
+}

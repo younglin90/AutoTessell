@@ -1,0 +1,703 @@
+{
+  "requested_layers": 1,
+  "used_layers": 1,
+  "n_wall_faces": 72,
+  "n_wall_verts": 38,
+  "n_prism_cells": 72,
+  "n_feature_edge_merged": 0,
+  "n_new_points": 38,
+  "total_thickness": 0.0005025307419619272,
+  "bbox_diag": 1.7320508075688772,
+  "thickness_to_bbox_ratio": 0.000290136259147781,
+  "n_degenerate_prisms": 0,
+  "max_aspect_ratio": 5.807137554334359,
+  "wall_preserve": {
+    "max_diff": 0.0,
+    "max_diff_rel": 0.0,
+    "n_drift": 0,
+    "within_envelope": true,
+    "envelope_eps_rel": 1e-06
+  },
+  "force_snap": {
+    "n_applied": 0,
+    "max_diff": 0.0
+  },
+  "lcr": {
+    "n_reduced_verts": 0,
+    "max_reduction": 0,
+    "min_layers_used": 1,
+    "n_safe_full_layers": 0
+  },
+  "feature_size": {
+    "enabled": false,
+    "n_limited": 0,
+    "gradient_limit": 0.0
+  },
+  "extrusion_line_search": {
+    "enabled": true,
+    "accepted": true,
+    "mode": "none",
+    "negative_pre": 0,
+    "negative_post": 0,
+    "n_scaled_vertices": 0,
+    "boundary_skew_pre": 0.0,
+    "non_ortho_pre": 0.0,
+    "face_weight_pre": 1.0,
+    "face_weight_post": 1.0,
+    "max_scale": 1.0
+  },
+  "aniso_split": {
+    "n_examined": 0,
+    "n_would_split": 0,
+    "max_aspect_in": 0.0
+  },
+  "bad_internal_faces": {
+    "thresholds": {
+      "max_non_ortho_deg": 65.0,
+      "min_face_weight": 0.05
+    },
+    "n_internal_faces": 336,
+    "n_bad_faces": 42,
+    "n_components_total": 1,
+    "n_components_analyzed": 1,
+    "total_by_class": {
+      "bulk-bulk": 120,
+      "bulk-prism": 72,
+      "prism-prism": 144,
+      "bulk-other": 0,
+      "prism-other": 0,
+      "other-other": 0
+    },
+    "bad_by_class": {
+      "bulk-bulk": 24,
+      "bulk-prism": 18,
+      "prism-prism": 0,
+      "bulk-other": 0,
+      "prism-other": 0,
+      "other-other": 0
+    },
+    "bad_by_reason": {
+      "non_ortho": 42,
+      "face_weight": 0,
+      "degenerate": 0
+    },
+    "components": [
+      {
+        "n_faces": 42,
+        "n_cells": 32,
+        "classes": {
+          "bulk-bulk": 24,
+          "bulk-prism": 18
+        },
+        "n_inside_internal_faces": 132,
+        "n_cavity_boundary_faces": 162,
+        "boundary_by_class": {
+          "bulk-bulk": 6,
+          "prism-prism": 84,
+          "bulk-prism": 54
+        },
+        "n_physical_boundary_faces": 18,
+        "ids_truncated": false,
+        "sample_faces": [
+          21,
+          22,
+          23,
+          35,
+          38,
+          39,
+          52,
+          53,
+          54,
+          60,
+          62,
+          64
+        ],
+        "sample_cells": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          9,
+          10,
+          11,
+          12
+        ],
+        "faces": [
+          21,
+          22,
+          23,
+          35,
+          38,
+          39,
+          52,
+          53,
+          54,
+          60,
+          62,
+          64,
+          76,
+          77,
+          80,
+          86,
+          87,
+          89,
+          95,
+          97,
+          98,
+          99,
+          100,
+          101,
+          120,
+          144,
+          151,
+          165,
+          178,
+          199,
+          212,
+          223,
+          237,
+          240,
+          253,
+          275,
+          279,
+          292,
+          306,
+          313,
+          326,
+          332
+        ],
+        "cells": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          21,
+          23,
+          27,
+          31,
+          37,
+          41,
+          44,
+          50,
+          51,
+          55,
+          62,
+          64,
+          68,
+          74,
+          76,
+          82,
+          84
+        ],
+        "cavity_shell": {
+          "n_cells": 32,
+          "cell_kinds": {
+            "bulk": 14,
+            "prism": 18
+          },
+          "n_boundary_faces": 162,
+          "n_internal_faces": 132,
+          "n_physical_boundary_faces": 18,
+          "boundary_by_class": {
+            "bulk-bulk": 6,
+            "prism-prism": 84,
+            "bulk-prism": 54,
+            "prism-physical": 18
+          },
+          "n_boundary_vertices": 78,
+          "n_boundary_edges": 236,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 20,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.018525972519662835,
+          "total_boundary_area": 9.079852747907971,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 144,
+            "n_bad_interface_faces": 90,
+            "max_non_ortho_deg": 86.87352033076122,
+            "min_face_weight": -2006770472566.6167,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 125,
+                "outside_cell": 16,
+                "non_ortho_deg": 86.87352033076122,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 155,
+                "outside_cell": 24,
+                "non_ortho_deg": 86.87352033076122,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 182,
+                "outside_cell": 32,
+                "non_ortho_deg": 86.87352033076122,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 216,
+                "outside_cell": 42,
+                "non_ortho_deg": 86.87352033076122,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 148,
+                "outside_cell": 22,
+                "non_ortho_deg": 86.87352033076121,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 257,
+                "outside_cell": 56,
+                "non_ortho_deg": 86.87352033076121,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 274,
+                "outside_cell": 61,
+                "non_ortho_deg": 86.87352033076121,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 291,
+                "outside_cell": 67,
+                "non_ortho_deg": 86.87352033076121,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 312,
+                "outside_cell": 75,
+                "non_ortho_deg": 86.87352033076121,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 325,
+                "outside_cell": 81,
+                "non_ortho_deg": 86.87352033076121,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 331,
+                "outside_cell": 83,
+                "non_ortho_deg": 86.87352033076121,
+                "face_weight": -0.32103595927600237,
+                "bad": true
+              },
+              {
+                "face": 222,
+                "outside_cell": 43,
+                "non_ortho_deg": 86.87352033076121,
+                "face_weight": -0.32103595927600215,
+                "bad": true
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            102,
+            103,
+            104,
+            105,
+            106,
+            107,
+            121,
+            122,
+            123,
+            124,
+            125,
+            126
+          ]
+        }
+      }
+    ],
+    "worst_faces": [
+      {
+        "face": 86,
+        "owner": 5,
+        "neighbour": 9,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.8575083744896,
+        "face_weight": 0.431221872944932
+      },
+      {
+        "face": 52,
+        "owner": 2,
+        "neighbour": 10,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.8575083744896,
+        "face_weight": 0.43122187294493214
+      },
+      {
+        "face": 38,
+        "owner": 1,
+        "neighbour": 12,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.85750837448958,
+        "face_weight": 0.43122187294493197
+      },
+      {
+        "face": 64,
+        "owner": 3,
+        "neighbour": 13,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.85750837448958,
+        "face_weight": 0.43122187294493197
+      },
+      {
+        "face": 97,
+        "owner": 6,
+        "neighbour": 11,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.85750837448958,
+        "face_weight": 0.43122187294493197
+      },
+      {
+        "face": 80,
+        "owner": 4,
+        "neighbour": 14,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.85750837448958,
+        "face_weight": 0.4312218729449321
+      },
+      {
+        "face": 89,
+        "owner": 5,
+        "neighbour": 13,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.29215089401676,
+        "face_weight": 0.41946666462470444
+      },
+      {
+        "face": 95,
+        "owner": 6,
+        "neighbour": 9,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.29215089401676,
+        "face_weight": 0.41946666462470444
+      },
+      {
+        "face": 54,
+        "owner": 2,
+        "neighbour": 14,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.29215089401674,
+        "face_weight": 0.4194666646247043
+      },
+      {
+        "face": 62,
+        "owner": 3,
+        "neighbour": 11,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.29215089401674,
+        "face_weight": 0.4194666646247043
+      },
+      {
+        "face": 77,
+        "owner": 4,
+        "neighbour": 12,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.29215089401674,
+        "face_weight": 0.4194666646247043
+      },
+      {
+        "face": 35,
+        "owner": 1,
+        "neighbour": 10,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 89.29215089401674,
+        "face_weight": 0.4194666646247044
+      }
+    ]
+  },
+  "pre_bl_bad_internal_faces": {
+    "thresholds": {
+      "max_non_ortho_deg": 65.0,
+      "min_face_weight": 0.05
+    },
+    "n_internal_faces": 108,
+    "n_bad_faces": 48,
+    "n_components_total": 0,
+    "n_components_analyzed": 0,
+    "total_by_class": {
+      "bulk-bulk": 108,
+      "bulk-prism": 0,
+      "prism-prism": 0,
+      "bulk-other": 0,
+      "prism-other": 0,
+      "other-other": 0
+    },
+    "bad_by_class": {
+      "bulk-bulk": 48,
+      "bulk-prism": 0,
+      "prism-prism": 0,
+      "bulk-other": 0,
+      "prism-other": 0,
+      "other-other": 0
+    },
+    "bad_by_reason": {
+      "non_ortho": 48,
+      "face_weight": 18,
+      "degenerate": 18
+    },
+    "components": [],
+    "worst_faces": [
+      {
+        "face": 8,
+        "owner": 0,
+        "neighbour": 3,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 9,
+        "owner": 0,
+        "neighbour": 3,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 10,
+        "owner": 0,
+        "neighbour": 3,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 15,
+        "owner": 0,
+        "neighbour": 5,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 16,
+        "owner": 0,
+        "neighbour": 5,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 17,
+        "owner": 0,
+        "neighbour": 5,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 18,
+        "owner": 0,
+        "neighbour": 6,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 19,
+        "owner": 0,
+        "neighbour": 6,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 20,
+        "owner": 0,
+        "neighbour": 6,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 32,
+        "owner": 1,
+        "neighbour": 7,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 33,
+        "owner": 1,
+        "neighbour": 7,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      },
+      {
+        "face": 34,
+        "owner": 1,
+        "neighbour": 7,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 180.0,
+        "face_weight": 0.0
+      }
+    ]
+  },
+  "tet_wall_cavity": {
+    "n_cells": 15,
+    "n_wall_faces": 72,
+    "n_wall_owner_cells": 8,
+    "n_single_wall_owner_cells": 0,
+    "n_single_wall_tet_owner_cells": 0,
+    "n_multi_wall_owner_cells": 8,
+    "n_non_tet_owner_cells": 0,
+    "coverage_single_wall_tet": 0.0,
+    "sample_single_wall_tet_cells": [],
+    "single_wall_tet_cells": [],
+    "sample_blocked_cells": [
+      {
+        "cell": 0,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 23,
+        "n_faces": 42
+      },
+      {
+        "cell": 1,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 8,
+        "n_vertices": 17,
+        "n_faces": 30
+      },
+      {
+        "cell": 2,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 8,
+        "n_vertices": 17,
+        "n_faces": 30
+      },
+      {
+        "cell": 3,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 8,
+        "n_vertices": 17,
+        "n_faces": 30
+      },
+      {
+        "cell": 4,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 8,
+        "n_vertices": 17,
+        "n_faces": 30
+      },
+      {
+        "cell": 5,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 8,
+        "n_vertices": 17,
+        "n_faces": 30
+      },
+      {
+        "cell": 6,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 8,
+        "n_vertices": 17,
+        "n_faces": 30
+      },
+      {
+        "cell": 7,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 23,
+        "n_faces": 42
+      }
+    ],
+    "n_stale_wall_faces": 0
+  },
+  "owner_centre_motion": {
+    "enabled": false,
+    "n_eligible": 0,
+    "n_moved": 0,
+    "mean_motion": 0.0,
+    "max_motion": 0.0,
+    "n_rejected_orientation": 0,
+    "n_eligible_owner_cells": 0
+  },
+  "tet_cavity_probe": {
+    "enabled": false,
+    "n_candidates": 0,
+    "n_quality_pass": 0,
+    "n_quality_fail_det": 0,
+    "n_quality_fail_topology": 0,
+    "mean_predicted_det": 0.0,
+    "min_predicted_det": 0.0,
+    "max_predicted_det": 0.0
+  },
+  "tet_cavity_replace": {
+    "enabled": false,
+    "wired_to_writer": false,
+    "n_planned": 0,
+    "n_replaced": 0,
+    "n_rejected_topology": 0,
+    "n_rejected_det": 0,
+    "n_rejected_neighbour_internal": 0,
+    "n_cells_before": 0,
+    "n_cells_after": 0,
+    "n_new_points_total": 0
+  },
+  "tet_cavity_eval": {
+    "enabled": false,
+    "n_components": 0,
+    "n_accepted": 0,
+    "n_rejected_uncovered_shell": 0,
+    "n_rejected_bad_det": 0,
+    "n_rejected_bad_shape": 0,
+    "n_rejected_bad_non_ortho": 0,
+    "n_rejected_bad_skewness": 0
+  },
+  "anti_invert_cap": {
+    "enabled": false,
+    "n_capped": 0,
+    "max_reduction": 0.0,
+    "n_wall_verts": 38
+  },
+  "pre_bl_self_intersect": 0,
+  "config": {
+    "num_layers": 1,
+    "growth_ratio": 1.2,
+    "first_thickness": 0.0001,
+    "wall_patch_names": [
+      "source_0_cube"
+    ],
+    "set_faces": null,
+    "ignore_faces": null,
+    "ignore_patch_names": null,
+    "ignore_patch_prefixes": null,
+    "target_y_plus": null,
+    "flow_fluid_preset": null
+  }
+}

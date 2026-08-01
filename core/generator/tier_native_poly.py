@@ -5,6 +5,8 @@ harness (tet→poly dual + Evaluator) 기본, 실패 시 scipy Voronoi fallback.
 
 from __future__ import annotations
 
+import os
+
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -79,6 +81,8 @@ def _runner(
     max_cells=None,
     bl_layers=0,
     post_layers_num_layers=0,
+    release_route=False,
+    source_path: str | Path | None = None,
     boolean_input_paths: Sequence[str] | None = None,
     boolean_union_input_paths: Sequence[str] | None = None,
     **_unused,
@@ -90,6 +94,7 @@ def _runner(
     beta2294: voronoi fallback 의 n_lloyd / auto_escalate / auto_escalate_max
     파라미터를 명시 forward (이전엔 **_unused 로 silently dropped).
     """
+    _release_requested = bool(release_route) or os.environ.get("AUTO_TESSELL_NATIVE_POLY_RELEASE") == "1"
     _cell_budget = int(max_cells or target_cells or 0)
     _n_layers = int(post_layers_num_layers or bl_layers or 0)
     if _cell_budget > 0 and _n_layers > 0:
@@ -128,7 +133,13 @@ def _runner(
 
     boundary_face_classifier = None
     ordered_source_paths = boolean_input_paths or boolean_union_input_paths
-    if ordered_source_paths and len(ordered_source_paths) >= 2:
+    if (
+        _release_requested
+        and not ordered_source_paths
+        and source_path is not None
+    ):
+        ordered_source_paths = [str(source_path)]
+    if ordered_source_paths and len(ordered_source_paths) >= 1:
         try:
             from core.utils.boundary_provenance import (  # noqa: PLC0415
                 SourceSurfacePatchClassifier,
@@ -150,17 +161,30 @@ def _runner(
         seed_density=int(seed_density),
         max_iter=int(max_iter),
         boundary_face_classifier=boundary_face_classifier,
+        release_route=_release_requested,
     )
     if hres.success:
         return _attach_metadata(
             hres,
-            route="poly_harness",
+            route="poly_harness_release" if _release_requested else "poly_harness",
             contract_details=_details_with_optional_budget(
                 mode="harness",
                 seed_density=int(seed_density),
                 target_cells=target_cells,
                 boundary_provenance=boundary_face_classifier is not None,
             ),
+        )
+    if _release_requested:
+        return _attach_metadata(
+            hres,
+            route="poly_harness_release",
+            contract_details=_details_with_optional_budget(
+                mode="release_rejected_no_fallback",
+                seed_density=int(seed_density),
+                target_cells=target_cells,
+                boundary_provenance=boundary_face_classifier is not None,
+            ),
+            fallback_reason="release_route_fallback_forbidden",
         )
     if hres.message.startswith((
         "target_primal_vertex_floor_unmet:",
@@ -172,7 +196,7 @@ def _runner(
         )
         return _attach_metadata(
             hres,
-            route="poly_harness",
+            route="poly_harness_release" if _release_requested else "poly_harness",
             contract_details=_details_with_optional_budget(
                 mode="harness_refusal",
                 seed_density=int(seed_density),

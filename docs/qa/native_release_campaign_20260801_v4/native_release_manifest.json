@@ -1,0 +1,1681 @@
+{
+  "cases": [
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tet",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "cube.stl",
+      "id": "native-tet-cube",
+      "repeatability": {
+        "artifact_sha256": [
+          "e203122961911b2ca80d2dd90eb3654730d9300d9008b747efc05b088472aee3",
+          "e203122961911b2ca80d2dd90eb3654730d9300d9008b747efc05b088472aee3",
+          "e203122961911b2ca80d2dd90eb3654730d9300d9008b747efc05b088472aee3"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_tet_independent_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "contract": "autotessell/volume-source-output-certificate/v1",
+        "feature_preserved": true,
+        "feature_sha256": "4418a53a855da8c1f8ec3f3188f2b7174f23686e3b368b8b70a9365b904709ae",
+        "output_cell_count": 17,
+        "output_point_count": 11,
+        "output_shape_sha256": "3ab8017d44aa2f24613cf0eb78b123f00f325e6656cdf3905961f95460ecffcc",
+        "patch_preserved": true,
+        "patch_sha256": "39e42ba3ba9d51da9ae864e4d5cd9fb0726ed2b900ffc6493b3e1968be9bc9a5",
+        "physical_group_sha256": "39e42ba3ba9d51da9ae864e4d5cd9fb0726ed2b900ffc6493b3e1968be9bc9a5",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "7a479a9e4633136ee6df65c5256697a97bf82afd14909817ebdd0f48980692eb",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_count": 12,
+        "source_faces_preserved": true,
+        "source_sha256": "e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81",
+        "source_shape_sha256": "50c1ecb8b8cde8281de13dd7c37dcad4eb9f8c7f2b44c5218953bb36fa059136",
+        "source_vertex_count": 8,
+        "source_vertices_preserved": true,
+        "status": "measured_authoritative_volume_source_output"
+      },
+      "strict_topology": {
+        "artifact_sha256": "e203122961911b2ca80d2dd90eb3654730d9300d9008b747efc05b088472aee3",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 0.020833333333333332,
+        "n_cells": 17,
+        "n_duplicate_faces": 0,
+        "n_faces": 42,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 11,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "e203122961911b2ca80d2dd90eb3654730d9300d9008b747efc05b088472aee3",
+        "source_sha256": "e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tet",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "sphere_watertight.stl",
+      "id": "native-tet-sphere",
+      "repeatability": {
+        "artifact_sha256": [
+          "efd54e5cbecc3b1f898e7d8176a353c9840a2707e97997dd8572d5a88a9b9368",
+          "efd54e5cbecc3b1f898e7d8176a353c9840a2707e97997dd8572d5a88a9b9368",
+          "efd54e5cbecc3b1f898e7d8176a353c9840a2707e97997dd8572d5a88a9b9368"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_tet_independent_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "b44c7c37f9338682ead3a23ca966591ab3301383adee6a3dc0b95171403f7ac4"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "contract": "autotessell/volume-source-output-certificate/v1",
+        "feature_preserved": true,
+        "feature_sha256": "20bb7ee68ce05e9b609c42d78ea0523c0f63a266ab9737ecfe19a57901e483c6",
+        "output_cell_count": 1624,
+        "output_point_count": 669,
+        "output_shape_sha256": "940228f2a269cf32827a32c4c0b4382814ee42c57ab5c8c2ae2e142e194dadec",
+        "patch_preserved": true,
+        "patch_sha256": "7ed928353b46d4c0c0bc15094bac2b5dee462ab4b1d71ed24b54a3180428ca7e",
+        "physical_group_sha256": "7ed928353b46d4c0c0bc15094bac2b5dee462ab4b1d71ed24b54a3180428ca7e",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "16bf986caaca7b3ce95e6fa9f7fde6ad49804c845c9f988e0a7dc1a22bc36f0b",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_count": 1280,
+        "source_faces_preserved": true,
+        "source_sha256": "b44c7c37f9338682ead3a23ca966591ab3301383adee6a3dc0b95171403f7ac4",
+        "source_shape_sha256": "7c27cbef9db57b4e6fcf6c82d734e04dc4694c6a3c2df46d3a2fc2ea5c562409",
+        "source_vertex_count": 642,
+        "source_vertices_preserved": true,
+        "status": "measured_authoritative_volume_source_output"
+      },
+      "strict_topology": {
+        "artifact_sha256": "efd54e5cbecc3b1f898e7d8176a353c9840a2707e97997dd8572d5a88a9b9368",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 0.000553851990197439,
+        "n_cells": 1624,
+        "n_duplicate_faces": 0,
+        "n_faces": 3888,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 669,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "efd54e5cbecc3b1f898e7d8176a353c9840a2707e97997dd8572d5a88a9b9368",
+        "source_sha256": "b44c7c37f9338682ead3a23ca966591ab3301383adee6a3dc0b95171403f7ac4",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tet",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "naca0012.stl",
+      "id": "native-tet-naca",
+      "repeatability": {
+        "artifact_sha256": [
+          "0bd38d317b435cdd2b38aa9324c0943eef6962d55640c75dbb8adc173b938e25",
+          "0bd38d317b435cdd2b38aa9324c0943eef6962d55640c75dbb8adc173b938e25",
+          "0bd38d317b435cdd2b38aa9324c0943eef6962d55640c75dbb8adc173b938e25"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_tet_independent_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "contract": "autotessell/volume-source-output-certificate/v1",
+        "feature_preserved": true,
+        "feature_sha256": "8b42557f2ad2b33ece1819054f9c686c2ac2e27dec822b1c2e90bf2d86c4cbeb",
+        "output_cell_count": 455,
+        "output_point_count": 320,
+        "output_shape_sha256": "bcc68cf4d3a7e03b93d2617402db3905acee64911f5debf71394bb0a300bb585",
+        "patch_preserved": true,
+        "patch_sha256": "51eddcd65f819a3e676aba47cbbea3dcc5fca058bfd96ec413a7353580f0e823",
+        "physical_group_sha256": "51eddcd65f819a3e676aba47cbbea3dcc5fca058bfd96ec413a7353580f0e823",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "7239006274daadd57f662f60d27d66f55475b3e7fc41bf5fc6bf203391845487",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_count": 636,
+        "source_faces_preserved": true,
+        "source_sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119",
+        "source_shape_sha256": "bbcc3d90386864b4ab6a57cb63f17089e31fee4d05b489a3a17d4e923ee6fc4b",
+        "source_vertex_count": 320,
+        "source_vertices_preserved": true,
+        "status": "measured_authoritative_volume_source_output"
+      },
+      "strict_topology": {
+        "artifact_sha256": "0bd38d317b435cdd2b38aa9324c0943eef6962d55640c75dbb8adc173b938e25",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 1.6602517056893017e-08,
+        "n_cells": 455,
+        "n_duplicate_faces": 0,
+        "n_faces": 1228,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 320,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "0bd38d317b435cdd2b38aa9324c0943eef6962d55640c75dbb8adc173b938e25",
+        "source_sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tet",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "trimesh_duct.stl",
+      "id": "native-tet-complex",
+      "repeatability": {
+        "artifact_sha256": [
+          "796bf26fad768cbee18340e3080ebafa3c093f25e733d2ddebf4fee4622d3c64",
+          "796bf26fad768cbee18340e3080ebafa3c093f25e733d2ddebf4fee4622d3c64",
+          "796bf26fad768cbee18340e3080ebafa3c093f25e733d2ddebf4fee4622d3c64"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_tet_independent_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "61805d140cb50b2fdc0aeb851cd49f683e4f2b7bb5b7ca5605039bc23f94a1e3"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "contract": "autotessell/volume-source-output-certificate/v1",
+        "feature_preserved": true,
+        "feature_sha256": "f29cde5e515d1528f094db542788af535a6216d7df1ee8123bad518609419578",
+        "output_cell_count": 192,
+        "output_point_count": 69,
+        "output_shape_sha256": "739d5599f9036ee9619c09ef5a65bef14640e248d069059b65fd442f5acc803b",
+        "patch_preserved": true,
+        "patch_sha256": "0303eb96999cbe890a4d3eff02616dd13055545ee5b19d431198abb32716fc92",
+        "physical_group_sha256": "0303eb96999cbe890a4d3eff02616dd13055545ee5b19d431198abb32716fc92",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "a0151850e2b485c60e8f38c12de0319ea299d96fb7de7acf93b37b1f3d679177",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_count": 128,
+        "source_faces_preserved": true,
+        "source_sha256": "61805d140cb50b2fdc0aeb851cd49f683e4f2b7bb5b7ca5605039bc23f94a1e3",
+        "source_shape_sha256": "759bb103cde9b0d3c95f5202e853b3dc2e5f3d8add6f407fc0d0a7d5610f73f4",
+        "source_vertex_count": 66,
+        "source_vertices_preserved": true,
+        "status": "measured_authoritative_volume_source_output"
+      },
+      "strict_topology": {
+        "artifact_sha256": "796bf26fad768cbee18340e3080ebafa3c093f25e733d2ddebf4fee4622d3c64",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 0.02113478232947398,
+        "n_cells": 192,
+        "n_duplicate_faces": 0,
+        "n_faces": 448,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 69,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "796bf26fad768cbee18340e3080ebafa3c093f25e733d2ddebf4fee4622d3c64",
+        "source_sha256": "61805d140cb50b2fdc0aeb851cd49f683e4f2b7bb5b7ca5605039bc23f94a1e3",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 1,
+        "positive_cell_count": 96,
+        "positive_first_layer_height": 0.0001
+      },
+      "engine": "hex",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "box.step",
+      "id": "native-hex-cube",
+      "repeatability": {
+        "artifact_sha256": [
+          "6e586e4feded887e67c31418e9307ae7701ddd518b8853737481710fa381194c",
+          "6e586e4feded887e67c31418e9307ae7701ddd518b8853737481710fa381194c",
+          "6e586e4feded887e67c31418e9307ae7701ddd518b8853737481710fa381194c"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_hex_cad_brep_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "9684df55d70088a56e4417e2c8d0b0972d27ff161e83192bb3a0a57207a420bd"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "9b9d9664ae157dd7e838e8b1bd2114880515ae699517c8985c9862e594f05082",
+        "output_shape_sha256": "ad5c17fda181581bb8bc8599eb9656ddfafcd1890dbf170f74e28321e94de96f",
+        "patch_preserved": true,
+        "patch_sha256": "dc7c6184772a5a69c067b9485a1f1f7f1bba0ad71b4ce7093e4f78bb5564d8b5",
+        "physical_group_sha256": "dc7c6184772a5a69c067b9485a1f1f7f1bba0ad71b4ce7093e4f78bb5564d8b5",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "f7347bb36f22b26192c023846f11ce9f4cd79eff9f4ebc9a1c80c2d401ec3444",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": true,
+        "source_sha256": "9684df55d70088a56e4417e2c8d0b0972d27ff161e83192bb3a0a57207a420bd",
+        "source_shape_sha256": "6efd71d804198d84f0e11685be6e84446f5f909450c4c030f4c0f19221dd4b57",
+        "source_vertices_preserved": false,
+        "status": "measured_authoritative_native_hex"
+      },
+      "strict_topology": {
+        "artifact_sha256": "6e586e4feded887e67c31418e9307ae7701ddd518b8853737481710fa381194c",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 4.672949894402672e-06,
+        "n_cells": 160,
+        "n_duplicate_faces": 0,
+        "n_faces": 528,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 223,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "6e586e4feded887e67c31418e9307ae7701ddd518b8853737481710fa381194c",
+        "source_sha256": "9684df55d70088a56e4417e2c8d0b0972d27ff161e83192bb3a0a57207a420bd",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 1,
+        "positive_cell_count": 126,
+        "positive_first_layer_height": 0.0001
+      },
+      "engine": "hex",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "sphere.step",
+      "id": "native-hex-sphere",
+      "repeatability": {
+        "artifact_sha256": [
+          "a133f6024814b54e17a661f10befef15b840e811f92d2bedf6e88dbf40aab01f",
+          "a133f6024814b54e17a661f10befef15b840e811f92d2bedf6e88dbf40aab01f",
+          "a133f6024814b54e17a661f10befef15b840e811f92d2bedf6e88dbf40aab01f"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_hex_cad_brep_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "e34421b733b4f2a1d1f16fe6c93c82c096ad2bd5ceca821bd5949a245764c700"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "7b8ca08cc13ec860997d7bbc1f726adadc61a94f5b3e542fb0aeac4be28cf11a",
+        "output_shape_sha256": "e94766a3501375464cc7c02b77a7881862120f5fa5e9deb80a3c4505c266e540",
+        "patch_preserved": true,
+        "patch_sha256": "f53d7018f8e940f26c318e652f38dae917daa0e492bfcc7288796ac0db624e63",
+        "physical_group_sha256": "f53d7018f8e940f26c318e652f38dae917daa0e492bfcc7288796ac0db624e63",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "619dd26f23df2f475fb78528dbccf915b18968bf502007a871ff009aad2d5c42",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": true,
+        "source_sha256": "e34421b733b4f2a1d1f16fe6c93c82c096ad2bd5ceca821bd5949a245764c700",
+        "source_shape_sha256": "ba4983856a5e3819d8dddd515607cef216cf79be4ad282a36b7166da30ed445d",
+        "source_vertices_preserved": false,
+        "status": "measured_authoritative_native_hex"
+      },
+      "strict_topology": {
+        "artifact_sha256": "a133f6024814b54e17a661f10befef15b840e811f92d2bedf6e88dbf40aab01f",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 7.230878263267227e-06,
+        "n_cells": 207,
+        "n_duplicate_faces": 0,
+        "n_faces": 684,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 288,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "a133f6024814b54e17a661f10befef15b840e811f92d2bedf6e88dbf40aab01f",
+        "source_sha256": "e34421b733b4f2a1d1f16fe6c93c82c096ad2bd5ceca821bd5949a245764c700",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 1,
+        "positive_cell_count": 62,
+        "positive_first_layer_height": 0.0001
+      },
+      "engine": "hex",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "naca0012.step",
+      "id": "native-hex-naca",
+      "repeatability": {
+        "artifact_sha256": [
+          "334d0648d552741b0d66814e72c76d367bb1a948fe592b32f55efb282d5b899f",
+          "334d0648d552741b0d66814e72c76d367bb1a948fe592b32f55efb282d5b899f",
+          "334d0648d552741b0d66814e72c76d367bb1a948fe592b32f55efb282d5b899f"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_hex_cad_brep_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "839e753705188c039a5edfa2abafa6c69274ef6c8c253b19abf925581810a4f9"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "35879067c36bce9f171ad7573a9da4480f625b30eda4d7e31068e97b116f3348",
+        "output_shape_sha256": "6971c2dab494806c5a358e651efbe1a3fc571e665a1f6a9fb2a1c24a86e17678",
+        "patch_preserved": true,
+        "patch_sha256": "fd122ea3552fab98b370f95aaaac68331c3a4aec2aaa8b4361fa0495ed7503cb",
+        "physical_group_sha256": "fd122ea3552fab98b370f95aaaac68331c3a4aec2aaa8b4361fa0495ed7503cb",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "87cbe1f363db92c9cf18ce980118159e69a7538ba6f62abce702698dea3823e9",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": true,
+        "source_sha256": "839e753705188c039a5edfa2abafa6c69274ef6c8c253b19abf925581810a4f9",
+        "source_shape_sha256": "f01f260a5718c9940fc505a5b8cf2a0f23e7cb5e57bcf06809c68a32840cd41c",
+        "source_vertices_preserved": false,
+        "status": "measured_authoritative_native_hex"
+      },
+      "strict_topology": {
+        "artifact_sha256": "334d0648d552741b0d66814e72c76d367bb1a948fe592b32f55efb282d5b899f",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 9.799560644660147e-09,
+        "n_cells": 83,
+        "n_duplicate_faces": 0,
+        "n_faces": 280,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 128,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "334d0648d552741b0d66814e72c76d367bb1a948fe592b32f55efb282d5b899f",
+        "source_sha256": "839e753705188c039a5edfa2abafa6c69274ef6c8c253b19abf925581810a4f9",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 1,
+        "positive_cell_count": 38,
+        "positive_first_layer_height": 0.0001
+      },
+      "engine": "hex",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "gear.step",
+      "id": "native-hex-gear",
+      "repeatability": {
+        "artifact_sha256": [
+          "6cc178246bb9ebb46f9eac27f756ac746c265a6636f5d950a13a5bd32c468e76",
+          "6cc178246bb9ebb46f9eac27f756ac746c265a6636f5d950a13a5bd32c468e76",
+          "6cc178246bb9ebb46f9eac27f756ac746c265a6636f5d950a13a5bd32c468e76"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_hex_cad_brep_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "0c306985bd7cf0a0e562097f8dd9d1a69591fb876cbf28187861e36353099487"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "7a1246d787e4c8043b1864849497499efb9757a7b21ebcf5db323d1e0018ca5e",
+        "output_shape_sha256": "0060b2c7894297891330be9e1e88719646deb814a1f4e75657ecfc00302b97f6",
+        "patch_preserved": true,
+        "patch_sha256": "60f0007782fdff9270e790f458f266b79756c28b3827f41b1c7e08e0ab3c5644",
+        "physical_group_sha256": "60f0007782fdff9270e790f458f266b79756c28b3827f41b1c7e08e0ab3c5644",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "3f3f2dd43ebacdc5cb595c176f0d154993249ed777de09e86037ca54487f7609",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": true,
+        "source_sha256": "0c306985bd7cf0a0e562097f8dd9d1a69591fb876cbf28187861e36353099487",
+        "source_shape_sha256": "7cf97db408df7f243a76dd9f1b98f3009dcb54e92e83603d9bf9ee9bd515159f",
+        "source_vertices_preserved": false,
+        "status": "measured_authoritative_native_hex"
+      },
+      "strict_topology": {
+        "artifact_sha256": "6cc178246bb9ebb46f9eac27f756ac746c265a6636f5d950a13a5bd32c468e76",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 2.218702753050247e-06,
+        "n_cells": 49,
+        "n_duplicate_faces": 0,
+        "n_faces": 166,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 80,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "6cc178246bb9ebb46f9eac27f756ac746c265a6636f5d950a13a5bd32c468e76",
+        "source_sha256": "0c306985bd7cf0a0e562097f8dd9d1a69591fb876cbf28187861e36353099487",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 1,
+        "positive_cell_count": 72,
+        "positive_first_layer_height": 0.0001
+      },
+      "engine": "poly",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "cube.stl",
+      "id": "native-poly-cube",
+      "repeatability": {
+        "artifact_sha256": [
+          "2db649cc889d0faef7d0f8337d9344bfb477262749449becd01eeb38b118b55c",
+          "2db649cc889d0faef7d0f8337d9344bfb477262749449becd01eeb38b118b55c",
+          "2db649cc889d0faef7d0f8337d9344bfb477262749449becd01eeb38b118b55c"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_poly_release_with_strict_bl",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "9b9d9664ae157dd7e838e8b1bd2114880515ae699517c8985c9862e594f05082",
+        "output_shape_sha256": "00a06ae7a9ab15c071cb242eb67bf57612cad191f83ebca3b756e4500aab28dc",
+        "patch_preserved": true,
+        "patch_sha256": "39e42ba3ba9d51da9ae864e4d5cd9fb0726ed2b900ffc6493b3e1968be9bc9a5",
+        "physical_group_sha256": "39e42ba3ba9d51da9ae864e4d5cd9fb0726ed2b900ffc6493b3e1968be9bc9a5",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "f70a76c9b0ae3d39c53c10243dc0cf3802fd836d9a7cb0be0f66ab8c7c2d7d3f",
+        "shape_preserved": true,
+        "source_faces_preserved": true,
+        "source_sha256": "e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81",
+        "source_shape_sha256": "9997448ec040c7d1b8e8037129d999a59b45080213ab3d4a1bc53d00efa52bc5",
+        "source_vertices_preserved": false
+      },
+      "strict_topology": {
+        "artifact_sha256": "2db649cc889d0faef7d0f8337d9344bfb477262749449becd01eeb38b118b55c",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 0.003259163598162754,
+        "n_cells": 87,
+        "n_duplicate_faces": 0,
+        "n_faces": 408,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 116,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "2db649cc889d0faef7d0f8337d9344bfb477262749449becd01eeb38b118b55c",
+        "source_sha256": "e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 1,
+        "positive_cell_count": 7680,
+        "positive_first_layer_height": 0.0001
+      },
+      "engine": "poly",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "sphere_watertight.stl",
+      "id": "native-poly-sphere",
+      "repeatability": {
+        "artifact_sha256": [
+          "b895cc90c24070a5ab32661f023b48c326a60c60068532eac1836912ea90ea31",
+          "b895cc90c24070a5ab32661f023b48c326a60c60068532eac1836912ea90ea31",
+          "b895cc90c24070a5ab32661f023b48c326a60c60068532eac1836912ea90ea31"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_poly_release_with_strict_bl",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "b44c7c37f9338682ead3a23ca966591ab3301383adee6a3dc0b95171403f7ac4"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "c1becd0a92cd663d301fe941796cfa61831c4e86b45f474c1901e43262dfe0e1",
+        "output_shape_sha256": "4324db57d35452f8ba00ea8c935ccc985bc84ed453c70cd2de09b6f8d5c6aea4",
+        "patch_preserved": true,
+        "patch_sha256": "7ed928353b46d4c0c0bc15094bac2b5dee462ab4b1d71ed24b54a3180428ca7e",
+        "physical_group_sha256": "7ed928353b46d4c0c0bc15094bac2b5dee462ab4b1d71ed24b54a3180428ca7e",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "15d2c9c6e1bb697bfb0a66ac18d4b63c1d6802aee3d4bbf5b15db844e0e38bd8",
+        "shape_preserved": true,
+        "source_faces_preserved": true,
+        "source_sha256": "b44c7c37f9338682ead3a23ca966591ab3301383adee6a3dc0b95171403f7ac4",
+        "source_shape_sha256": "8500b16e39a80846d501929c219902cf36281922f275db1ba88e6f4d93bf81c6",
+        "source_vertices_preserved": false
+      },
+      "strict_topology": {
+        "artifact_sha256": "b895cc90c24070a5ab32661f023b48c326a60c60068532eac1836912ea90ea31",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 9.115836663420751e-06,
+        "n_cells": 8349,
+        "n_duplicate_faces": 0,
+        "n_faces": 43904,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 9336,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "b895cc90c24070a5ab32661f023b48c326a60c60068532eac1836912ea90ea31",
+        "source_sha256": "b44c7c37f9338682ead3a23ca966591ab3301383adee6a3dc0b95171403f7ac4",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 1,
+        "positive_cell_count": 636,
+        "positive_first_layer_height": 0.0001
+      },
+      "engine": "poly",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "naca0012.stl",
+      "id": "native-poly-naca",
+      "repeatability": {
+        "artifact_sha256": [
+          "b234e44594848ae45d6b80f3bc262b81a9b805dd9dbd1c84abdf265496bc2104",
+          "b234e44594848ae45d6b80f3bc262b81a9b805dd9dbd1c84abdf265496bc2104",
+          "b234e44594848ae45d6b80f3bc262b81a9b805dd9dbd1c84abdf265496bc2104"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_poly_release_with_strict_bl",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "be789d3012fde4118e2bff0db096438d087f6dd39bc471a4ae8576a5d5fce5c8",
+        "output_shape_sha256": "3401ac98a0b3eb389e3a62a62fb8f2b6576f68883e72500138f91465d9f1563d",
+        "patch_preserved": true,
+        "patch_sha256": "51eddcd65f819a3e676aba47cbbea3dcc5fca058bfd96ec413a7353580f0e823",
+        "physical_group_sha256": "51eddcd65f819a3e676aba47cbbea3dcc5fca058bfd96ec413a7353580f0e823",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "801dcedf24af9a2d77269cd6274d84d797ebfb35ae6b0ccc3641bedf8d0c2e05",
+        "shape_preserved": true,
+        "source_faces_preserved": true,
+        "source_sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119",
+        "source_shape_sha256": "43dc340f676d98adaef8b58c8a7114961899ab6d8e3b087c815b9db98b2064a4",
+        "source_vertices_preserved": false
+      },
+      "strict_topology": {
+        "artifact_sha256": "b234e44594848ae45d6b80f3bc262b81a9b805dd9dbd1c84abdf265496bc2104",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 4.8447767690348766e-11,
+        "n_cells": 795,
+        "n_duplicate_faces": 0,
+        "n_faces": 2818,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 640,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "b234e44594848ae45d6b80f3bc262b81a9b805dd9dbd1c84abdf265496bc2104",
+        "source_sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 1,
+        "positive_cell_count": 1040,
+        "positive_first_layer_height": 0.0001
+      },
+      "engine": "poly",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "04_extreme_gear.stl",
+      "id": "native-poly-gear",
+      "repeatability": {
+        "artifact_sha256": [
+          "391487e52f2b8514f370735f01195307926a1a2d93de67bbf4842f8630e13065",
+          "391487e52f2b8514f370735f01195307926a1a2d93de67bbf4842f8630e13065",
+          "391487e52f2b8514f370735f01195307926a1a2d93de67bbf4842f8630e13065"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_poly_release_with_strict_bl",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "9c2c8b2ebe597332e2f1852d9fd9ee3cdf94ebb74aeb138a2acc2bb3e75050f6"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "767b3061f6f11497d9edf35b0e0bbf5336ab9e03c376f19bf9924bb025322a42",
+        "output_shape_sha256": "dd4d4bebc500ec653a01b836bc4bef59517d4ad5977e70778cfd7740d80075de",
+        "patch_preserved": true,
+        "patch_sha256": "ffc687a554f67b5f5968654076788150724b7f32ff528b064b8cbff30eb57930",
+        "physical_group_sha256": "ffc687a554f67b5f5968654076788150724b7f32ff528b064b8cbff30eb57930",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "9d5711a203bd33ec63a6acfd64d6ce403f1c47e1df14d3640e4bb9b96a41d9cb",
+        "shape_preserved": true,
+        "source_faces_preserved": true,
+        "source_sha256": "9c2c8b2ebe597332e2f1852d9fd9ee3cdf94ebb74aeb138a2acc2bb3e75050f6",
+        "source_shape_sha256": "3bd0f3e4400caee799232fbf76d570e7a63372e040b3f6b340c5f8ebd49c8c10",
+        "source_vertices_preserved": false
+      },
+      "strict_topology": {
+        "artifact_sha256": "391487e52f2b8514f370735f01195307926a1a2d93de67bbf4842f8630e13065",
+        "boundary_duplicate_faces": 0,
+        "boundary_nonmanifold_edges": 0,
+        "boundary_nonmanifold_vertices": 0,
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-volume-topology/v1",
+        "malformed_reason": null,
+        "min_cell_volume": 3.7875116796364704e-08,
+        "n_cells": 1302,
+        "n_duplicate_faces": 0,
+        "n_faces": 4814,
+        "n_inverted_cells": 0,
+        "n_nonmanifold_cell_edges": 0,
+        "n_nonmanifold_faces": 0,
+        "n_open_cell_edges": 0,
+        "n_points": 1024,
+        "status": "measured",
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "391487e52f2b8514f370735f01195307926a1a2d93de67bbf4842f8630e13065",
+        "source_sha256": "9c2c8b2ebe597332e2f1852d9fd9ee3cdf94ebb74aeb138a2acc2bb3e75050f6",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tri",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "cube.stl",
+      "id": "native-tri-cube",
+      "repeatability": {
+        "artifact_sha256": [
+          "05859d4715c2c539c464ade6d4442ce4b92c3c353819ffd79d6e7dd67c304e95",
+          "05859d4715c2c539c464ade6d4442ce4b92c3c353819ffd79d6e7dd67c304e95",
+          "05859d4715c2c539c464ade6d4442ce4b92c3c353819ffd79d6e7dd67c304e95"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_tri_independent_transaction_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "2e38e77b22c314a449e91fafed92a43826ac6aa403ae6a8acb6cf58239fbaf5d",
+        "output_shape_sha256": "128cf6323fc37d8d12617438cded25a8b008f6d53d34d6910e67b6b2c47b0bd4",
+        "patch_preserved": true,
+        "patch_sha256": "b66d496ce38c293cc3a5011d6e28c8c49861529ee6e2e4039b0eb64bd02b3cf5",
+        "physical_group_sha256": "b66d496ce38c293cc3a5011d6e28c8c49861529ee6e2e4039b0eb64bd02b3cf5",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "55feedf5d810f2bafc623ea8328c72084ec8ae68ff98a4afec6f4aaf12182768",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": false,
+        "source_sha256": "e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81",
+        "source_shape_sha256": "39b70e8480a030b3da2d97001584b2124254be8a17fb12a9019f47bce2a2be1f",
+        "source_vertices_preserved": false,
+        "status": "measured_authoritative_native_tri_surface",
+        "surface_topology": {
+          "artifact_sha256": "05859d4715c2c539c464ade6d4442ce4b92c3c353819ffd79d6e7dd67c304e95",
+          "boundary_surface_valid": true,
+          "contract": "autotessell/strict-surface-topology/v1",
+          "kind": "surface",
+          "malformed_reason": null,
+          "n_degenerate_faces": 0,
+          "n_duplicate_faces": 0,
+          "n_faces": 48,
+          "n_inverted_faces": 0,
+          "n_nonmanifold_edges": 0,
+          "n_open_edges": 0,
+          "n_vertices": 26,
+          "status": "measured",
+          "surface_topology_valid": true,
+          "valid": true
+        }
+      },
+      "strict_topology": {
+        "artifact_sha256": "05859d4715c2c539c464ade6d4442ce4b92c3c353819ffd79d6e7dd67c304e95",
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-surface-topology/v1",
+        "kind": "surface",
+        "malformed_reason": null,
+        "n_degenerate_faces": 0,
+        "n_duplicate_faces": 0,
+        "n_faces": 48,
+        "n_inverted_faces": 0,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "n_vertices": 26,
+        "status": "measured",
+        "surface_topology_valid": true,
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "05859d4715c2c539c464ade6d4442ce4b92c3c353819ffd79d6e7dd67c304e95",
+        "source_sha256": "e930f60a32009db799542620bcb492895dbc86c172fdb3c2f39a0445f63fbc81",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tri",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "sphere_watertight.stl",
+      "id": "native-tri-sphere",
+      "repeatability": {
+        "artifact_sha256": [
+          "b2695b188f5bec318f9538f9eda99372e3fe776aa00bf5c1ca83309599b5a84b",
+          "b2695b188f5bec318f9538f9eda99372e3fe776aa00bf5c1ca83309599b5a84b",
+          "b2695b188f5bec318f9538f9eda99372e3fe776aa00bf5c1ca83309599b5a84b"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_tri_independent_transaction_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "b44c7c37f9338682ead3a23ca966591ab3301383adee6a3dc0b95171403f7ac4"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "2e38e77b22c314a449e91fafed92a43826ac6aa403ae6a8acb6cf58239fbaf5d",
+        "output_shape_sha256": "fff27703e4aa7528c1b07197f7012681430c326c9b85bd50b5b1ddb7c519b668",
+        "patch_preserved": true,
+        "patch_sha256": "446335175830c77312d0836c2694f56b41f386530a9d2b5291cd3de9849f884c",
+        "physical_group_sha256": "446335175830c77312d0836c2694f56b41f386530a9d2b5291cd3de9849f884c",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "e70ea4f4a12dbe16db381e90a89f7bbb0d7a200bc9838b6048574cf76a36c60e",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": false,
+        "source_sha256": "b44c7c37f9338682ead3a23ca966591ab3301383adee6a3dc0b95171403f7ac4",
+        "source_shape_sha256": "44ff63646026ad2bacc2701dd94d7c71cc6ec3191f1e308eb9856d0c56a3a8f6",
+        "source_vertices_preserved": false,
+        "status": "measured_authoritative_native_tri_surface",
+        "surface_topology": {
+          "artifact_sha256": "b2695b188f5bec318f9538f9eda99372e3fe776aa00bf5c1ca83309599b5a84b",
+          "boundary_surface_valid": true,
+          "contract": "autotessell/strict-surface-topology/v1",
+          "kind": "surface",
+          "malformed_reason": null,
+          "n_degenerate_faces": 0,
+          "n_duplicate_faces": 0,
+          "n_faces": 172,
+          "n_inverted_faces": 0,
+          "n_nonmanifold_edges": 0,
+          "n_open_edges": 0,
+          "n_vertices": 88,
+          "status": "measured",
+          "surface_topology_valid": true,
+          "valid": true
+        }
+      },
+      "strict_topology": {
+        "artifact_sha256": "b2695b188f5bec318f9538f9eda99372e3fe776aa00bf5c1ca83309599b5a84b",
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-surface-topology/v1",
+        "kind": "surface",
+        "malformed_reason": null,
+        "n_degenerate_faces": 0,
+        "n_duplicate_faces": 0,
+        "n_faces": 172,
+        "n_inverted_faces": 0,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "n_vertices": 88,
+        "status": "measured",
+        "surface_topology_valid": true,
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "b2695b188f5bec318f9538f9eda99372e3fe776aa00bf5c1ca83309599b5a84b",
+        "source_sha256": "b44c7c37f9338682ead3a23ca966591ab3301383adee6a3dc0b95171403f7ac4",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tri",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "naca0012.stl",
+      "id": "native-tri-naca",
+      "repeatability": {
+        "artifact_sha256": [
+          "ff4ddad8a38e949d6560e51b3004036e0fd1d898b700a8263a68b25393d1229a",
+          "ff4ddad8a38e949d6560e51b3004036e0fd1d898b700a8263a68b25393d1229a",
+          "ff4ddad8a38e949d6560e51b3004036e0fd1d898b700a8263a68b25393d1229a"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_tri_independent_transaction_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "2e38e77b22c314a449e91fafed92a43826ac6aa403ae6a8acb6cf58239fbaf5d",
+        "output_shape_sha256": "8793b43e09d234a9c5f4b01b1b74e895e4fc0c6777e5e911faee0c02fbad6232",
+        "patch_preserved": true,
+        "patch_sha256": "d27c0d057e03f7c297f0dd2b939a591355c98e6c9f7f424309bbd607c4d06608",
+        "physical_group_sha256": "d27c0d057e03f7c297f0dd2b939a591355c98e6c9f7f424309bbd607c4d06608",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "32ab96bcc69422376853867106b6fbcf3e28d10ecfa5b0ec7f6b8b85d35014b7",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": false,
+        "source_sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119",
+        "source_shape_sha256": "905dad2e928b876f90fbead15b1006a7b7de1f18b06b86b1227c2847632de0a3",
+        "source_vertices_preserved": false,
+        "status": "measured_authoritative_native_tri_surface",
+        "surface_topology": {
+          "artifact_sha256": "ff4ddad8a38e949d6560e51b3004036e0fd1d898b700a8263a68b25393d1229a",
+          "boundary_surface_valid": true,
+          "contract": "autotessell/strict-surface-topology/v1",
+          "kind": "surface",
+          "malformed_reason": null,
+          "n_degenerate_faces": 0,
+          "n_duplicate_faces": 0,
+          "n_faces": 40,
+          "n_inverted_faces": 0,
+          "n_nonmanifold_edges": 0,
+          "n_open_edges": 0,
+          "n_vertices": 22,
+          "status": "measured",
+          "surface_topology_valid": true,
+          "valid": true
+        }
+      },
+      "strict_topology": {
+        "artifact_sha256": "ff4ddad8a38e949d6560e51b3004036e0fd1d898b700a8263a68b25393d1229a",
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-surface-topology/v1",
+        "kind": "surface",
+        "malformed_reason": null,
+        "n_degenerate_faces": 0,
+        "n_duplicate_faces": 0,
+        "n_faces": 40,
+        "n_inverted_faces": 0,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "n_vertices": 22,
+        "status": "measured",
+        "surface_topology_valid": true,
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "ff4ddad8a38e949d6560e51b3004036e0fd1d898b700a8263a68b25393d1229a",
+        "source_sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tri",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "box.step",
+      "id": "native-tri-cad",
+      "repeatability": {
+        "artifact_sha256": [
+          "0150d5d0f76811dfbd63e2f4d72267809f0827685ac527960db1c28c7b96df53",
+          "0150d5d0f76811dfbd63e2f4d72267809f0827685ac527960db1c28c7b96df53",
+          "0150d5d0f76811dfbd63e2f4d72267809f0827685ac527960db1c28c7b96df53"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "native_tri_independent_transaction_release",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "9684df55d70088a56e4417e2c8d0b0972d27ff161e83192bb3a0a57207a420bd"
+      },
+      "source_output_authority": {
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "2e38e77b22c314a449e91fafed92a43826ac6aa403ae6a8acb6cf58239fbaf5d",
+        "output_shape_sha256": "f33ff69d933f1068bd2aedd886ff5fb292beb7bc15095771c1ac5a9133c9e5b4",
+        "patch_preserved": true,
+        "patch_sha256": "0546faf09df6ccf3244554450331b3f68421720a52546cb0364bca106aefe9e9",
+        "physical_group_sha256": "0546faf09df6ccf3244554450331b3f68421720a52546cb0364bca106aefe9e9",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "c1652d6dc331cde398e70221fe41304b821b20b0845b43aae95680314448886c",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": false,
+        "source_sha256": "9684df55d70088a56e4417e2c8d0b0972d27ff161e83192bb3a0a57207a420bd",
+        "source_shape_sha256": "a2bcefa353665e30eb260b0295a5b56673c0135f99faa43c487dc708c78e8dad",
+        "source_vertices_preserved": false,
+        "status": "measured_authoritative_native_tri_surface",
+        "surface_topology": {
+          "artifact_sha256": "0150d5d0f76811dfbd63e2f4d72267809f0827685ac527960db1c28c7b96df53",
+          "boundary_surface_valid": true,
+          "contract": "autotessell/strict-surface-topology/v1",
+          "kind": "surface",
+          "malformed_reason": null,
+          "n_degenerate_faces": 0,
+          "n_duplicate_faces": 0,
+          "n_faces": 48,
+          "n_inverted_faces": 0,
+          "n_nonmanifold_edges": 0,
+          "n_open_edges": 0,
+          "n_vertices": 26,
+          "status": "measured",
+          "surface_topology_valid": true,
+          "valid": true
+        }
+      },
+      "strict_topology": {
+        "artifact_sha256": "0150d5d0f76811dfbd63e2f4d72267809f0827685ac527960db1c28c7b96df53",
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-surface-topology/v1",
+        "kind": "surface",
+        "malformed_reason": null,
+        "n_degenerate_faces": 0,
+        "n_duplicate_faces": 0,
+        "n_faces": 48,
+        "n_inverted_faces": 0,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "n_vertices": 26,
+        "status": "measured",
+        "surface_topology_valid": true,
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "0150d5d0f76811dfbd63e2f4d72267809f0827685ac527960db1c28c7b96df53",
+        "source_sha256": "9684df55d70088a56e4417e2c8d0b0972d27ff161e83192bb3a0a57207a420bd",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "strict-quad",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "cube",
+      "id": "strict-quad-cube",
+      "repeatability": {
+        "artifact_sha256": [
+          "8e402cd486fd51936943c9dfe064001881dd81b3abeaa492ee0f07d828b4c272",
+          "8e402cd486fd51936943c9dfe064001881dd81b3abeaa492ee0f07d828b4c272",
+          "8e402cd486fd51936943c9dfe064001881dd81b3abeaa492ee0f07d828b4c272"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "independent_fixed_pair_surface_writer",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "8a35494386fbe62aa9f4746f5cca77418e663ec895a0e25eea1a88f58035e57d"
+      },
+      "source_output_authority": {
+        "artifact_sha256": "8e402cd486fd51936943c9dfe064001881dd81b3abeaa492ee0f07d828b4c272",
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "d738a93b176e77c878426ae8b1f5f78b4f2f33136cfda7bccdf30b6b295b2114",
+        "output_shape_sha256": "dad3cc340db537612f1d236c1ffc714422de4fccb46223058024ad5124f8a43c",
+        "patch_preserved": true,
+        "patch_sha256": "6bb3b5077c695bb8a564add59793ab01ab51a6ec1bcb2349d50c128d25450626",
+        "physical_group_sha256": "39e42ba3ba9d51da9ae864e4d5cd9fb0726ed2b900ffc6493b3e1968be9bc9a5",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "e38aaf374181611e64da993c4ebc08290c8fb050609a3a9b5f174a206c39a293",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": true,
+        "source_sha256": "8a35494386fbe62aa9f4746f5cca77418e663ec895a0e25eea1a88f58035e57d",
+        "source_shape_sha256": "85207bea843f02112b1e8b99970d19b102aadea40f01229a582df48766c90857",
+        "source_vertices_preserved": true,
+        "status": "measured_authoritative_fixed_pair_surface",
+        "surface_topology": {
+          "artifact_sha256": "8e402cd486fd51936943c9dfe064001881dd81b3abeaa492ee0f07d828b4c272",
+          "boundary_surface_valid": true,
+          "contract": "autotessell/strict-surface-topology/v1",
+          "kind": "surface",
+          "malformed_reason": null,
+          "n_degenerate_faces": 0,
+          "n_duplicate_faces": 0,
+          "n_faces": 12,
+          "n_inverted_faces": 0,
+          "n_nonmanifold_edges": 0,
+          "n_open_edges": 0,
+          "n_vertices": 8,
+          "status": "measured",
+          "surface_topology_valid": true,
+          "valid": true
+        }
+      },
+      "strict_topology": {
+        "artifact_sha256": "8e402cd486fd51936943c9dfe064001881dd81b3abeaa492ee0f07d828b4c272",
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-surface-topology/v1",
+        "kind": "surface",
+        "malformed_reason": null,
+        "n_degenerate_faces": 0,
+        "n_duplicate_faces": 0,
+        "n_faces": 12,
+        "n_inverted_faces": 0,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "n_vertices": 8,
+        "status": "measured",
+        "surface_topology_valid": true,
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "8e402cd486fd51936943c9dfe064001881dd81b3abeaa492ee0f07d828b4c272",
+        "source_sha256": "8a35494386fbe62aa9f4746f5cca77418e663ec895a0e25eea1a88f58035e57d",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "strict-quad",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "complex",
+      "id": "strict-quad-complex",
+      "repeatability": {
+        "artifact_sha256": [
+          "599db65334866b9b85ebbc278400f3e3a99b7e07ca193d84dae12e9ef5e15490",
+          "599db65334866b9b85ebbc278400f3e3a99b7e07ca193d84dae12e9ef5e15490",
+          "599db65334866b9b85ebbc278400f3e3a99b7e07ca193d84dae12e9ef5e15490"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "independent_fixed_pair_surface_writer",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "1d66da712c956c15f642a50988241c7706138666e5191f042876fd9cd0b409c1"
+      },
+      "source_output_authority": {
+        "artifact_sha256": "599db65334866b9b85ebbc278400f3e3a99b7e07ca193d84dae12e9ef5e15490",
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "b4c5fa343859c7e3ec1015bf32dc68ff6ae6beeb325f358d19aa32caff9b73ea",
+        "output_shape_sha256": "38b81db2128dc4e0cfda3b9fe5aba5f54884357452afb03b3b82b56de0f387ed",
+        "patch_preserved": true,
+        "patch_sha256": "1cb299bb10ccc191e69f5a02c44b8bbb0712863da60f734c6673344b0e2568f6",
+        "physical_group_sha256": "250706296de7abee968eb577f8e8845d59d23de60aedd1823a55d867e38a9de2",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "19aa56e8e060d5604b5ee54a8e6bf71380d23f48108223a166d7a86d01aecbac",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": true,
+        "source_sha256": "1d66da712c956c15f642a50988241c7706138666e5191f042876fd9cd0b409c1",
+        "source_shape_sha256": "f43d7d05eb977e3cd597411faa661254b78d5e13e4c962fec3f736b5ffae8baf",
+        "source_vertices_preserved": true,
+        "status": "measured_authoritative_fixed_pair_surface",
+        "surface_topology": {
+          "artifact_sha256": "599db65334866b9b85ebbc278400f3e3a99b7e07ca193d84dae12e9ef5e15490",
+          "boundary_surface_valid": true,
+          "contract": "autotessell/strict-surface-topology/v1",
+          "kind": "surface",
+          "malformed_reason": null,
+          "n_degenerate_faces": 0,
+          "n_duplicate_faces": 0,
+          "n_faces": 20,
+          "n_inverted_faces": 0,
+          "n_nonmanifold_edges": 0,
+          "n_open_edges": 0,
+          "n_vertices": 12,
+          "status": "measured",
+          "surface_topology_valid": true,
+          "valid": true
+        }
+      },
+      "strict_topology": {
+        "artifact_sha256": "599db65334866b9b85ebbc278400f3e3a99b7e07ca193d84dae12e9ef5e15490",
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-surface-topology/v1",
+        "kind": "surface",
+        "malformed_reason": null,
+        "n_degenerate_faces": 0,
+        "n_duplicate_faces": 0,
+        "n_faces": 20,
+        "n_inverted_faces": 0,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "n_vertices": 12,
+        "status": "measured",
+        "surface_topology_valid": true,
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "599db65334866b9b85ebbc278400f3e3a99b7e07ca193d84dae12e9ef5e15490",
+        "source_sha256": "1d66da712c956c15f642a50988241c7706138666e5191f042876fd9cd0b409c1",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tri-quad",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "cube",
+      "id": "tri-quad-cube",
+      "repeatability": {
+        "artifact_sha256": [
+          "dc98f5d76521e6aa391d7f428134811761e6be9ff62340de40f61f753cc6abbe",
+          "dc98f5d76521e6aa391d7f428134811761e6be9ff62340de40f61f753cc6abbe",
+          "dc98f5d76521e6aa391d7f428134811761e6be9ff62340de40f61f753cc6abbe"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "independent_fixed_pair_surface_writer",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "8a35494386fbe62aa9f4746f5cca77418e663ec895a0e25eea1a88f58035e57d"
+      },
+      "source_output_authority": {
+        "artifact_sha256": "dc98f5d76521e6aa391d7f428134811761e6be9ff62340de40f61f753cc6abbe",
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "77d8f70323492cd00c9ee6d386841d52fd0bd8e0e6feab0174da0cc019207e84",
+        "output_shape_sha256": "a6176f944c674fefffd6b99f68a307ce0ef18752aa7ebfea51d964b37085503f",
+        "patch_preserved": true,
+        "patch_sha256": "6bb3b5077c695bb8a564add59793ab01ab51a6ec1bcb2349d50c128d25450626",
+        "physical_group_sha256": "39e42ba3ba9d51da9ae864e4d5cd9fb0726ed2b900ffc6493b3e1968be9bc9a5",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "3c6b3453a41890f3e54a030dad1fc8655a4ce253f6d0e96f513201af37a7859f",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": true,
+        "source_sha256": "8a35494386fbe62aa9f4746f5cca77418e663ec895a0e25eea1a88f58035e57d",
+        "source_shape_sha256": "85207bea843f02112b1e8b99970d19b102aadea40f01229a582df48766c90857",
+        "source_vertices_preserved": true,
+        "status": "measured_authoritative_fixed_pair_surface",
+        "surface_topology": {
+          "artifact_sha256": "dc98f5d76521e6aa391d7f428134811761e6be9ff62340de40f61f753cc6abbe",
+          "boundary_surface_valid": true,
+          "contract": "autotessell/strict-surface-topology/v1",
+          "kind": "surface",
+          "malformed_reason": null,
+          "n_degenerate_faces": 0,
+          "n_duplicate_faces": 0,
+          "n_faces": 12,
+          "n_inverted_faces": 0,
+          "n_nonmanifold_edges": 0,
+          "n_open_edges": 0,
+          "n_vertices": 8,
+          "status": "measured",
+          "surface_topology_valid": true,
+          "valid": true
+        }
+      },
+      "strict_topology": {
+        "artifact_sha256": "dc98f5d76521e6aa391d7f428134811761e6be9ff62340de40f61f753cc6abbe",
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-surface-topology/v1",
+        "kind": "surface",
+        "malformed_reason": null,
+        "n_degenerate_faces": 0,
+        "n_duplicate_faces": 0,
+        "n_faces": 12,
+        "n_inverted_faces": 0,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "n_vertices": 8,
+        "status": "measured",
+        "surface_topology_valid": true,
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "dc98f5d76521e6aa391d7f428134811761e6be9ff62340de40f61f753cc6abbe",
+        "source_sha256": "8a35494386fbe62aa9f4746f5cca77418e663ec895a0e25eea1a88f58035e57d",
+        "valid": true
+      }
+    },
+    {
+      "boundary_layer": {
+        "layers": 0
+      },
+      "engine": "tri-quad",
+      "features": {
+        "authoritative": true,
+        "component_bijection": true,
+        "critical_missing": 0,
+        "patch_mapping_complete": true,
+        "physical_groups_authoritative": true,
+        "provenance_complete": true
+      },
+      "fixture": "complex",
+      "id": "tri-quad-complex",
+      "repeatability": {
+        "artifact_sha256": [
+          "db7b58aeffa10839941a641ab8eabe39fa90a32d89c91c9710f12436d873fa47",
+          "db7b58aeffa10839941a641ab8eabe39fa90a32d89c91c9710f12436d873fa47",
+          "db7b58aeffa10839941a641ab8eabe39fa90a32d89c91c9710f12436d873fa47"
+        ],
+        "byte_identical": true,
+        "independent_route": true,
+        "run_count": 3
+      },
+      "route": "independent_fixed_pair_surface_writer",
+      "source_authority": {
+        "authoritative": true,
+        "sha256": "1d66da712c956c15f642a50988241c7706138666e5191f042876fd9cd0b409c1"
+      },
+      "source_output_authority": {
+        "artifact_sha256": "db7b58aeffa10839941a641ab8eabe39fa90a32d89c91c9710f12436d873fa47",
+        "authoritative": true,
+        "component_bijection": true,
+        "feature_preserved": true,
+        "feature_sha256": "34443c538ea5ae51bb1bfae13c3d7293d311716e3426a481ced83093493635d0",
+        "output_shape_sha256": "44bbc9831c4feccd9051d337d6bafa465e7b0a62acffd3b3ec8131cf33ad5010",
+        "patch_preserved": true,
+        "patch_sha256": "1cb299bb10ccc191e69f5a02c44b8bbb0712863da60f734c6673344b0e2568f6",
+        "physical_group_sha256": "250706296de7abee968eb577f8e8845d59d23de60aedd1823a55d867e38a9de2",
+        "physical_groups_preserved": true,
+        "provenance_complete": true,
+        "provenance_sha256": "b4138f6f08dfec25bed3a7408c948ca496bab758e3c6c3a0df37f4c91a03c294",
+        "rejection_reason": null,
+        "shape_preserved": true,
+        "source_face_provenance": true,
+        "source_faces_preserved": true,
+        "source_sha256": "1d66da712c956c15f642a50988241c7706138666e5191f042876fd9cd0b409c1",
+        "source_shape_sha256": "f43d7d05eb977e3cd597411faa661254b78d5e13e4c962fec3f736b5ffae8baf",
+        "source_vertices_preserved": true,
+        "status": "measured_authoritative_fixed_pair_surface",
+        "surface_topology": {
+          "artifact_sha256": "db7b58aeffa10839941a641ab8eabe39fa90a32d89c91c9710f12436d873fa47",
+          "boundary_surface_valid": true,
+          "contract": "autotessell/strict-surface-topology/v1",
+          "kind": "surface",
+          "malformed_reason": null,
+          "n_degenerate_faces": 0,
+          "n_duplicate_faces": 0,
+          "n_faces": 20,
+          "n_inverted_faces": 0,
+          "n_nonmanifold_edges": 0,
+          "n_open_edges": 0,
+          "n_vertices": 12,
+          "status": "measured",
+          "surface_topology_valid": true,
+          "valid": true
+        }
+      },
+      "strict_topology": {
+        "artifact_sha256": "db7b58aeffa10839941a641ab8eabe39fa90a32d89c91c9710f12436d873fa47",
+        "boundary_surface_valid": true,
+        "contract": "autotessell/strict-surface-topology/v1",
+        "kind": "surface",
+        "malformed_reason": null,
+        "n_degenerate_faces": 0,
+        "n_duplicate_faces": 0,
+        "n_faces": 20,
+        "n_inverted_faces": 0,
+        "n_nonmanifold_edges": 0,
+        "n_open_edges": 0,
+        "n_vertices": 12,
+        "status": "measured",
+        "surface_topology_valid": true,
+        "valid": true
+      },
+      "surface": {
+        "output_sha256": "db7b58aeffa10839941a641ab8eabe39fa90a32d89c91c9710f12436d873fa47",
+        "source_sha256": "1d66da712c956c15f642a50988241c7706138666e5191f042876fd9cd0b409c1",
+        "valid": true
+      }
+    }
+  ],
+  "schema": "autotessell/native-release-matrix/v1"
+}

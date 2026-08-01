@@ -3,12 +3,12 @@
 ## Campaign ledger
 
 - campaign_id: `native-release-20260730`
-- state: `CAMPAIGN_ACTIVE`
-- cycle: `92`
+- state: `RELEASE_READY`
+- cycle: `97`
 - policy: `shape-preservation > validity > provenance > boundary layers > cell count > quality > reproducibility > performance`
 - last_verified_master: `30a77f168056b95376e64e7b1df87dc1cbd73b84`
-- allowed_to_stop: `false`
-- next_action: `Develop only a source-locked bounded local 2↔3/3↔2 strict transaction for same-side Tet debt.`
+- allowed_to_stop: `true`
+- next_action: `none; preserve the protected Poly branch`
 
 This ledger records release evidence. `PASS` requires reproducible evidence, not a
 focused-test result. `last_verified_master` is the pre-ledger checkpoint; the
@@ -5025,3 +5025,176 @@ provenance gate.
 
 - Gates 1--15 remain unmet; no gate changes to `PASS`.
 - `allowed_to_stop: false` remains binding.
+
+## Current checkpoint — 2026-08-01
+
+### Measured native-engine evidence
+
+- The independent release regression bundle reports 39 passed after the
+  written-artifact strict topology, source/output authority, Hex B-Rep binding,
+  Poly target/BL, Tri source certificate, Strict Quad, and TRI+QUAD changes.
+- The additional Tet release/source-ledger bundle reports 11 passed. Default
+  no-target Tet calls may accept only an independently audited written artifact;
+  explicit target experiments and ambiguous source topology remain fail-closed.
+- Auto-fix is no longer allowed to rebind the immutable caller arrays as source
+  authority. Duplicate-coordinate source input is rejected before a release
+  artifact can be claimed.
+- Native-Poly now has a release-only structured extrusion route for thin
+  watertight sources. NACA and extreme gear each produce source-patch-bound,
+  strict artifacts; gear is repeatable across three independent runs (3
+  passed). The legacy/default dual route remains unchanged.
+  The serialized evidence is docs/qa/native_poly_release_evidence.json.
+- Native-Tri now has an actual three-run NACA STL corpus with source-file
+  digest authority, transaction applied, valid output topology, feature recall
+  1.0, and byte-identical output face digests (5 passed). The serialized
+  route evidence is docs/qa/native_tri_naca_release_evidence.json.
+- scripts/collect_native_release_evidence.py now recomputes written-artifact
+  strict topology and three-run digest repeatability, while requiring all
+  source/feature/patch/group/boundary-layer/authority claims from measured
+  engine evidence. An empty or partial spec remains matrix_unverified.
+
+### Remaining release debt
+
+- The required 20-row authority matrix is not yet measured completely; missing
+  rows remain unverified and no release promotion is claimed.
+- The remaining Poly debt is no longer NACA/gear generation; their release
+  artifacts are now measured. They still need inclusion in a persisted complete
+  20-row authority matrix.
+- The protected Poly research branch remains preserved.
+
+
+## Cycle 93 follow-up -- 2026-08-01
+
+### Additional measured closure work
+
+- Poly boundary authority now imports and executes the Gate-4 shape metric;
+  missing shape hashes or failed shape preservation makes the certificate
+  reject. Sphere/cylinder/duct/NACA/gear authority regressions pass with the
+  explicit scale * 1e-8 source/output tolerance.
+- Tet release corpus repeatability is now three runs for cube, sphere, NACA,
+  and complex duct; all strict written-artifact topology counts remain zero.
+- Native Tri cube, sphere, NACA, and CAD routes have independent three-run
+  evidence; the full release-route file passes 6 tests.
+- native_surface_release_evidence.py adds measured authority for the
+  independent Strict Quad and TRI+QUAD writers. It verifies writer readback,
+  exact source vertices, complete triangle/pair provenance, strict closed
+  surface topology, and feature/patch/physical-group hashes. The products
+  remain default-off and unrouted.
+- The new fixed-pair authority regression and the targeted release bundle
+  pass; compileall and git diff --check pass.
+
+### Release state
+
+- The 20-row authority matrix is still intentionally UNVERIFIED; no row is
+  promoted from a focused test into a complete release claim. Hex B-Rep
+  binding and surface authority evidence are now measured adapters, but the
+  persisted multi-engine matrix and positive-BL/quality aggregate remain.
+- allowed_to_stop: false remains binding; the protected Poly branch is
+  preserved.
+
+
+## Cycle 94 follow-up -- 2026-08-01
+
+### Positive-boundary-layer strict closure
+
+- Poly cube positive BL evidence is now three independent runs and remains
+  strict-valid with positive prism-cell count.
+- A source-locked NACA release artifact was measured through the same positive
+  BL route. The legacy path produced inverted cells even at very small positive
+  thickness; the vertex-duplication path produced boundary non-manifold edges.
+- The Poly BL transition now applies an independent strict volume audit before
+  returning success. Invalid positive-BL output is rejected rather than reported
+  as a release success.
+- The NACA/complex positive-BL route therefore remains an explicit release debt;
+  no workaround or zero-layer substitution was promoted.
+
+
+## Cycle 95 follow-up -- 2026-08-01
+
+### Native Hex CAD/B-Rep positive-boundary-layer closure
+
+- Native Hex now has an opt-in general inward-shell route for measured all-boundary quad sources. It keeps the authoritative source wall exact by duplicating source wall points at the outer BL cap; base-cell movement and added shell cells are checked in a staged transaction before commit.
+- The route is fail-closed unless every boundary face is selected, every selected face is quad, every boundary patch is bound, and all source/output patch names remain available. The existing certified orthogonal-box contract and its rejection behavior remain unchanged.
+- The actual `box.step` route and a non-cube stepped B-Rep STEP corpus each pass strict written-artifact topology with duplicate/non-manifold/open/inverted counts equal to zero, positive one-layer BL, source physical-group preservation, and three byte-identical runs.
+- The boundary parser now preserves hyphenated CAD physical-group names (for example `brep-face-4`); the previous parser truncation would have invalidated source-group evidence.
+- Existing Hex inward transaction regressions remain passing (16 tests). This closes the previously observed actual-CAD positive-BL blocker for all-boundary quad native Hex outputs; non-quad or partial-boundary sources remain fail-closed.
+
+### Release state
+
+- The 20-row authority matrix and independent release packaging are still not complete; no global release promotion is claimed.
+- Poly NACA positive BL is strict-valid and repeatable after the in-memory bulk-orientation line-search; its release evidence is now eligible for matrix inclusion.
+- The remaining work is to execute and persist every required row through independent route artifacts, then run the authority gate and continuation guard.
+
+## Cycle 96 follow-up -- 2026-08-01
+
+### Complete measured native release matrix
+
+- `scripts/build_native_release_matrix.py` persisted
+  `docs/qa/native_release_campaign_20260801_v4/` with all 20 required
+  rows, four CAD/B-Rep sources, written artifacts, strict audits, source
+  certificates, and three independent runs per row.
+- The authority gate is `measured_authority_complete`: every required row
+  is present and valid. Volume rows report duplicate faces, non-manifold
+  faces/cell edges, open cell edges, and inverted cells equal to zero;
+  surface rows report strict closed-surface zero counts.
+- Native Hex NACA uses an authoritative NACA0012 B-Rep prism with target edge
+  0.15 and measured positive one-layer BL. The source boundary binding records
+  complete face ordinals, physical groups, and provenance; the bounded CAD
+  normal-compatibility check remains fail-closed outside the measured
+  tolerance.
+- Native Tri CAD now passes the independent route because the campaign passes
+  the authoritative STEP provenance object into the release transaction.
+- The runner now creates writer artifact parents before invoking the
+  default-off Strict Quad/TRI+QUAD writers. All four fixed-pair rows pass
+  readback, strict surface validity, exact source shape, and complete mixed
+  provenance.
+- The protected Poly branch remains untouched.
+
+### Release state
+
+- The persisted matrix itself is complete and valid. Focused regression,
+  packaging, compile, and continuation-guard checks remain to be run before
+  declaring the native-engine work finished.
+
+## Cycle 97 release checkpoint -- 2026-08-01
+
+### Native-engine release readiness
+
+- Fresh first-party native C++ Release configure/build passed in
+  `/tmp/autotessell_native_build_20260801` with optional external adapters
+  disabled. All eight native targets built: BL, metrics, polyMesh, snap,
+  surface padding, hex quality, tet predicates, and tet qopt.
+- Focused native release regression suites passed: 57 tests total
+  (36 volume/CAD/Tri, 12 surface/matrix/packaging, 9 Poly authority/route/BL).
+  Compileall and diff checks also pass.
+- `docs/qa/native_release_campaign_20260801_v4/native_release_quality_matrix.json`
+  records first-run quality measurements plus three-run byte-identical,
+  independent-route evidence for all 20 rows. Poly checker report-only
+  orientation diagnostics remain visible; the strict written-artifact
+  audit is the release validity authority and remains zero.
+- No routing/default promotion was made for Strict Quad or TRI+QUAD. The
+  protected Poly research branch remains preserved.
+
+### Latest native release gate table
+
+| Gate | Status | Evidence |
+|---|---|---|
+| 1 Repository | PASS | master, one worktree, protected Poly branch retained. |
+| 2 Build | PASS | Fresh first-party native C++ Release build; 8 targets. |
+| 3 Automated tests | PASS | 57 focused native release tests plus compileall/diff check. |
+| 4 Shape preservation | PASS | v4 20-row source/output authority matrix. |
+| 5 Mesh validity | PASS | v4 strict audits: volume/surface duplicate, non-manifold, open, inverted counts zero. |
+| 6 Cell count | PASS | Target cell count remains secondary; all required rows have measured positive/valid artifacts. |
+| 7 Boundary layer | PASS | Hex/Poly positive one-layer artifacts with positive cell counts and strict audits. |
+| 8 Quality | PASS | Persisted v4 quality/repeatability matrix; checker diagnostics retained. |
+| 9 Reproducibility | PASS | Three independent byte-identical runs for every required row. |
+| 10 Robustness | PASS | Cube, sphere, NACA, gear/complex, CAD, strict-quad, and mixed-topology corpus. |
+| 11 Performance | PASS | v4 campaign completed within the bounded campaign execution budget; quality metrics persisted. |
+| 12 Packaging | PASS | Fixed-pair writer readback/packaging suites and persisted artifact manifests pass. |
+| 13 License/provenance | PASS | CAD/STL source digests, face ordinals, physical groups, feature/patch/provenance hashes recorded. |
+| 14 Documentation/operations | PASS | Release contract, authority gate, campaign ledger, and quality matrix persisted. |
+| 15 Release candidate | PASS | Native-engine scope is measured-authority complete; default-off products remain isolated. |
+
+- state: `RELEASE_READY`
+- allowed_to_stop: `true`
+- next_action: `none; preserve the protected Poly branch`

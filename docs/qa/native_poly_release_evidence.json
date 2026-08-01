@@ -1,0 +1,303 @@
+{
+  "cases": [
+    {
+      "byte_identical": true,
+      "id": "naca",
+      "run_count": 3,
+      "runs": [
+        {
+          "accepted": true,
+          "artifact_sha256": "2fc8009a4b81f8e00885e82162bac0996d1adf20c5667d18e7b8c0596a36defa",
+          "authority": {
+            "authoritative": true,
+            "boundary_patch_name": "source_0_naca0012",
+            "boundary_source_bound": true,
+            "contract": "autotessell/native-poly-boundary-authority/v1",
+            "feature_preserved": true,
+            "gate4_surface_valid": true,
+            "output_artifact_sha256": "6bd28c268b780aa5610af4296e327945d2bb2e1cb9c0ee10943172a900b1a83e",
+            "physical_groups_preserved": true,
+            "provenance_complete": true,
+            "rejection_reason": null,
+            "source_file_sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119",
+            "source_patch_sha256": "cba47b4cc90728740b9bcb075423290277568d51f55a18ef43415625cc29ab8b",
+            "source_physical_group_sha256": "cba47b4cc90728740b9bcb075423290277568d51f55a18ef43415625cc29ab8b",
+            "status": "measured_authoritative_native_poly_boundary",
+            "strict_topology_valid": true
+          },
+          "cells": 159,
+          "route": "poly_harness_release",
+          "strict": {
+            "artifact_sha256": "6bd28c268b780aa5610af4296e327945d2bb2e1cb9c0ee10943172a900b1a83e",
+            "boundary_duplicate_faces": 0,
+            "boundary_nonmanifold_edges": 0,
+            "boundary_nonmanifold_vertices": 0,
+            "boundary_surface_valid": true,
+            "contract": "autotessell/strict-volume-topology/v1",
+            "malformed_reason": null,
+            "min_cell_volume": 4.9807551170683714e-08,
+            "n_cells": 159,
+            "n_duplicate_faces": 0,
+            "n_faces": 636,
+            "n_inverted_cells": 0,
+            "n_nonmanifold_cell_edges": 0,
+            "n_nonmanifold_faces": 0,
+            "n_open_cell_edges": 0,
+            "n_points": 320,
+            "status": "measured",
+            "valid": true
+          },
+          "surface": {
+            "artifact_sha256": "6bd28c268b780aa5610af4296e327945d2bb2e1cb9c0ee10943172a900b1a83e",
+            "valid": true
+          }
+        },
+        {
+          "accepted": true,
+          "artifact_sha256": "2fc8009a4b81f8e00885e82162bac0996d1adf20c5667d18e7b8c0596a36defa",
+          "authority": {
+            "authoritative": true,
+            "boundary_patch_name": "source_0_naca0012",
+            "boundary_source_bound": true,
+            "contract": "autotessell/native-poly-boundary-authority/v1",
+            "feature_preserved": true,
+            "gate4_surface_valid": true,
+            "output_artifact_sha256": "6bd28c268b780aa5610af4296e327945d2bb2e1cb9c0ee10943172a900b1a83e",
+            "physical_groups_preserved": true,
+            "provenance_complete": true,
+            "rejection_reason": null,
+            "source_file_sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119",
+            "source_patch_sha256": "cba47b4cc90728740b9bcb075423290277568d51f55a18ef43415625cc29ab8b",
+            "source_physical_group_sha256": "cba47b4cc90728740b9bcb075423290277568d51f55a18ef43415625cc29ab8b",
+            "status": "measured_authoritative_native_poly_boundary",
+            "strict_topology_valid": true
+          },
+          "cells": 159,
+          "route": "poly_harness_release",
+          "strict": {
+            "artifact_sha256": "6bd28c268b780aa5610af4296e327945d2bb2e1cb9c0ee10943172a900b1a83e",
+            "boundary_duplicate_faces": 0,
+            "boundary_nonmanifold_edges": 0,
+            "boundary_nonmanifold_vertices": 0,
+            "boundary_surface_valid": true,
+            "contract": "autotessell/strict-volume-topology/v1",
+            "malformed_reason": null,
+            "min_cell_volume": 4.9807551170683714e-08,
+            "n_cells": 159,
+            "n_duplicate_faces": 0,
+            "n_faces": 636,
+            "n_inverted_cells": 0,
+            "n_nonmanifold_cell_edges": 0,
+            "n_nonmanifold_faces": 0,
+            "n_open_cell_edges": 0,
+            "n_points": 320,
+            "status": "measured",
+            "valid": true
+          },
+          "surface": {
+            "artifact_sha256": "6bd28c268b780aa5610af4296e327945d2bb2e1cb9c0ee10943172a900b1a83e",
+            "valid": true
+          }
+        },
+        {
+          "accepted": true,
+          "artifact_sha256": "2fc8009a4b81f8e00885e82162bac0996d1adf20c5667d18e7b8c0596a36defa",
+          "authority": {
+            "authoritative": true,
+            "boundary_patch_name": "source_0_naca0012",
+            "boundary_source_bound": true,
+            "contract": "autotessell/native-poly-boundary-authority/v1",
+            "feature_preserved": true,
+            "gate4_surface_valid": true,
+            "output_artifact_sha256": "6bd28c268b780aa5610af4296e327945d2bb2e1cb9c0ee10943172a900b1a83e",
+            "physical_groups_preserved": true,
+            "provenance_complete": true,
+            "rejection_reason": null,
+            "source_file_sha256": "617455cf8947dc1c6c0f18638492da63cf400d93746f6fd27db2401fad50e119",
+            "source_patch_sha256": "cba47b4cc90728740b9bcb075423290277568d51f55a18ef43415625cc29ab8b",
+            "source_physical_group_sha256": "cba47b4cc90728740b9bcb075423290277568d51f55a18ef43415625cc29ab8b",
+            "status": "measured_authoritative_native_poly_boundary",
+            "strict_topology_valid": true
+          },
+          "cells": 159,
+          "route": "poly_harness_release",
+          "strict": {
+            "artifact_sha256": "6bd28c268b780aa5610af4296e327945d2bb2e1cb9c0ee10943172a900b1a83e",
+            "boundary_duplicate_faces": 0,
+            "boundary_nonmanifold_edges": 0,
+            "boundary_nonmanifold_vertices": 0,
+            "boundary_surface_valid": true,
+            "contract": "autotessell/strict-volume-topology/v1",
+            "malformed_reason": null,
+            "min_cell_volume": 4.9807551170683714e-08,
+            "n_cells": 159,
+            "n_duplicate_faces": 0,
+            "n_faces": 636,
+            "n_inverted_cells": 0,
+            "n_nonmanifold_cell_edges": 0,
+            "n_nonmanifold_faces": 0,
+            "n_open_cell_edges": 0,
+            "n_points": 320,
+            "status": "measured",
+            "valid": true
+          },
+          "surface": {
+            "artifact_sha256": "6bd28c268b780aa5610af4296e327945d2bb2e1cb9c0ee10943172a900b1a83e",
+            "valid": true
+          }
+        }
+      ],
+      "source": "tests/benchmarks/naca0012.stl"
+    },
+    {
+      "byte_identical": true,
+      "id": "gear",
+      "run_count": 3,
+      "runs": [
+        {
+          "accepted": true,
+          "artifact_sha256": "8bf7b9f37971255c9357106c21dc0250a40af54da2a7a6181dfb2714722bddf6",
+          "authority": {
+            "authoritative": true,
+            "boundary_patch_name": "source_0_04_extreme_gear",
+            "boundary_source_bound": true,
+            "contract": "autotessell/native-poly-boundary-authority/v1",
+            "feature_preserved": true,
+            "gate4_surface_valid": true,
+            "output_artifact_sha256": "1832a21fe62d77c29713a930b93cdd1f8bacbfc66e964fe5ddb1d4c50947a4c4",
+            "physical_groups_preserved": true,
+            "provenance_complete": true,
+            "rejection_reason": null,
+            "source_file_sha256": "9c2c8b2ebe597332e2f1852d9fd9ee3cdf94ebb74aeb138a2acc2bb3e75050f6",
+            "source_patch_sha256": "2f866f918db0d6a03eceadb74b70c9b72596d0bbb784826a429b6035b07e277b",
+            "source_physical_group_sha256": "2f866f918db0d6a03eceadb74b70c9b72596d0bbb784826a429b6035b07e277b",
+            "status": "measured_authoritative_native_poly_boundary",
+            "strict_topology_valid": true
+          },
+          "cells": 264,
+          "route": "poly_harness_release",
+          "strict": {
+            "artifact_sha256": "1832a21fe62d77c29713a930b93cdd1f8bacbfc66e964fe5ddb1d4c50947a4c4",
+            "boundary_duplicate_faces": 0,
+            "boundary_nonmanifold_edges": 0,
+            "boundary_nonmanifold_vertices": 0,
+            "boundary_surface_valid": true,
+            "contract": "autotessell/strict-volume-topology/v1",
+            "malformed_reason": null,
+            "min_cell_volume": 6.162116588299367e-06,
+            "n_cells": 264,
+            "n_duplicate_faces": 0,
+            "n_faces": 1052,
+            "n_inverted_cells": 0,
+            "n_nonmanifold_cell_edges": 0,
+            "n_nonmanifold_faces": 0,
+            "n_open_cell_edges": 0,
+            "n_points": 512,
+            "status": "measured",
+            "valid": true
+          },
+          "surface": {
+            "artifact_sha256": "1832a21fe62d77c29713a930b93cdd1f8bacbfc66e964fe5ddb1d4c50947a4c4",
+            "valid": true
+          }
+        },
+        {
+          "accepted": true,
+          "artifact_sha256": "8bf7b9f37971255c9357106c21dc0250a40af54da2a7a6181dfb2714722bddf6",
+          "authority": {
+            "authoritative": true,
+            "boundary_patch_name": "source_0_04_extreme_gear",
+            "boundary_source_bound": true,
+            "contract": "autotessell/native-poly-boundary-authority/v1",
+            "feature_preserved": true,
+            "gate4_surface_valid": true,
+            "output_artifact_sha256": "1832a21fe62d77c29713a930b93cdd1f8bacbfc66e964fe5ddb1d4c50947a4c4",
+            "physical_groups_preserved": true,
+            "provenance_complete": true,
+            "rejection_reason": null,
+            "source_file_sha256": "9c2c8b2ebe597332e2f1852d9fd9ee3cdf94ebb74aeb138a2acc2bb3e75050f6",
+            "source_patch_sha256": "2f866f918db0d6a03eceadb74b70c9b72596d0bbb784826a429b6035b07e277b",
+            "source_physical_group_sha256": "2f866f918db0d6a03eceadb74b70c9b72596d0bbb784826a429b6035b07e277b",
+            "status": "measured_authoritative_native_poly_boundary",
+            "strict_topology_valid": true
+          },
+          "cells": 264,
+          "route": "poly_harness_release",
+          "strict": {
+            "artifact_sha256": "1832a21fe62d77c29713a930b93cdd1f8bacbfc66e964fe5ddb1d4c50947a4c4",
+            "boundary_duplicate_faces": 0,
+            "boundary_nonmanifold_edges": 0,
+            "boundary_nonmanifold_vertices": 0,
+            "boundary_surface_valid": true,
+            "contract": "autotessell/strict-volume-topology/v1",
+            "malformed_reason": null,
+            "min_cell_volume": 6.162116588299367e-06,
+            "n_cells": 264,
+            "n_duplicate_faces": 0,
+            "n_faces": 1052,
+            "n_inverted_cells": 0,
+            "n_nonmanifold_cell_edges": 0,
+            "n_nonmanifold_faces": 0,
+            "n_open_cell_edges": 0,
+            "n_points": 512,
+            "status": "measured",
+            "valid": true
+          },
+          "surface": {
+            "artifact_sha256": "1832a21fe62d77c29713a930b93cdd1f8bacbfc66e964fe5ddb1d4c50947a4c4",
+            "valid": true
+          }
+        },
+        {
+          "accepted": true,
+          "artifact_sha256": "8bf7b9f37971255c9357106c21dc0250a40af54da2a7a6181dfb2714722bddf6",
+          "authority": {
+            "authoritative": true,
+            "boundary_patch_name": "source_0_04_extreme_gear",
+            "boundary_source_bound": true,
+            "contract": "autotessell/native-poly-boundary-authority/v1",
+            "feature_preserved": true,
+            "gate4_surface_valid": true,
+            "output_artifact_sha256": "1832a21fe62d77c29713a930b93cdd1f8bacbfc66e964fe5ddb1d4c50947a4c4",
+            "physical_groups_preserved": true,
+            "provenance_complete": true,
+            "rejection_reason": null,
+            "source_file_sha256": "9c2c8b2ebe597332e2f1852d9fd9ee3cdf94ebb74aeb138a2acc2bb3e75050f6",
+            "source_patch_sha256": "2f866f918db0d6a03eceadb74b70c9b72596d0bbb784826a429b6035b07e277b",
+            "source_physical_group_sha256": "2f866f918db0d6a03eceadb74b70c9b72596d0bbb784826a429b6035b07e277b",
+            "status": "measured_authoritative_native_poly_boundary",
+            "strict_topology_valid": true
+          },
+          "cells": 264,
+          "route": "poly_harness_release",
+          "strict": {
+            "artifact_sha256": "1832a21fe62d77c29713a930b93cdd1f8bacbfc66e964fe5ddb1d4c50947a4c4",
+            "boundary_duplicate_faces": 0,
+            "boundary_nonmanifold_edges": 0,
+            "boundary_nonmanifold_vertices": 0,
+            "boundary_surface_valid": true,
+            "contract": "autotessell/strict-volume-topology/v1",
+            "malformed_reason": null,
+            "min_cell_volume": 6.162116588299367e-06,
+            "n_cells": 264,
+            "n_duplicate_faces": 0,
+            "n_faces": 1052,
+            "n_inverted_cells": 0,
+            "n_nonmanifold_cell_edges": 0,
+            "n_nonmanifold_faces": 0,
+            "n_open_cell_edges": 0,
+            "n_points": 512,
+            "status": "measured",
+            "valid": true
+          },
+          "surface": {
+            "artifact_sha256": "1832a21fe62d77c29713a930b93cdd1f8bacbfc66e964fe5ddb1d4c50947a4c4",
+            "valid": true
+          }
+        }
+      ],
+      "source": "tests/stl/04_extreme_gear.stl"
+    }
+  ],
+  "schema": "autotessell/native-poly-release-evidence/v1"
+}

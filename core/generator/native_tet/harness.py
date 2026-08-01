@@ -249,14 +249,110 @@ def _generate_with_cell_rebudget(
 
     for p in range(passes + 1 if active else 1):
         tmp = Path(tempfile.mkdtemp(prefix=f"nth_{iteration}_{p}_"))
-        res: NativeTetResult = generate_native_tet(
-            vertices, faces, tmp,
-            target_edge_length=edge,
-            seed_density=int(seed_density),
-            sliver_quality_threshold=float(sliver_quality_threshold),
-            max_input_vertices=int(max_input_vertices),
-            **gen_kwargs,
+        _call_kwargs = dict(gen_kwargs)
+        _release_conservative = False
+        if _call_kwargs.get("enable_same_side_retriangulation") is True:
+            # A repeated-index/open-edge source needs the conservative Delaunay
+            # ingress.  Phase-A recovery can create same-side debt before the
+            # explicit transaction runs.  This is a route selection based on
+            # measured input health, not a relaxation of the final gate.
+            try:
+                from core.generator.native_tet.input_check import check_input
+                _source_health = check_input(
+                    np.asarray(vertices, dtype=np.float64),
+                    np.asarray(faces, dtype=np.int64),
+                )
+                _release_conservative = bool(
+                    _source_health.n_duplicate_vertices > 0
+                    or _source_health.n_boundary_edges > 0
+                    or _source_health.n_nonmanifold_edges > 0
+                    or any(
+                        "self-intersection" in str(warning).lower()
+                        for warning in getattr(_source_health, "warnings", ())
+                    )
+                )
+                if _release_conservative:
+                    _call_kwargs["enable_phase_a"] = False
+                    _call_kwargs["recovery_iterations"] = 0
+                    _call_kwargs["smooth_iterations"] = 0
+            except Exception:
+                _release_conservative = False
+        # The conservative release route is intentionally mutation-free after
+        # source ingress.  Preserve the caller's environment and only suppress
+        # known topology-changing recovery stages for this one generation call.
+        _release_disabled_envs = [
+            "AUTO_TESSELL_CVT3D_OFF",
+            "AUTO_TESSELL_STELLAR_KLINGNER",
+            "AUTO_TESSELL_VVV2_QUEUE",
+            "AUTO_TESSELL_VVV5B_OFF",
+            "AUTO_TESSELL_VVV6_OFF",
+            "AUTO_TESSELL_VVV7_OFF",
+            "AUTO_TESSELL_VVV8_OFF",
+            "AUTO_TESSELL_VVV9_OFF",
+            "AUTO_TESSELL_VVV10_OFF",
+            "AUTO_TESSELL_VVV11_OFF",
+            "AUTO_TESSELL_VVV12_OFF",
+            "AUTO_TESSELL_VVV13_OFF",
+            "AUTO_TESSELL_VVV14_OFF",
+            "AUTO_TESSELL_TET_QUALITY1_OFF",
+            "AUTO_TESSELL_P3_SSS_REVIVAL",
+            "AUTO_TESSELL_NNN1_DRYRUN",
+            "AUTO_TESSELL_NNN2_INSERT",
+            "AUTO_TESSELL_NNN3_INSERT",
+            "AUTO_TESSELL_NNN4_AMIPS",
+            "AUTO_TESSELL_RRR2_TARGETED",
+        ]
+        _saved_release_env = (
+            {key: os.environ.get(key) for key in _release_disabled_envs}
+            if _release_conservative else {}
         )
+        if _release_conservative:
+            os.environ.update({
+                "AUTO_TESSELL_CVT3D_OFF": "1",
+                "AUTO_TESSELL_STELLAR_KLINGNER": "0",
+                "AUTO_TESSELL_VVV2_QUEUE": "0",
+                "AUTO_TESSELL_VVV5B_OFF": "1",
+                "AUTO_TESSELL_VVV6_OFF": "1",
+                "AUTO_TESSELL_VVV7_OFF": "1",
+                "AUTO_TESSELL_VVV8_OFF": "1",
+                "AUTO_TESSELL_VVV9_OFF": "1",
+                "AUTO_TESSELL_VVV10_OFF": "1",
+                "AUTO_TESSELL_VVV11_OFF": "1",
+                "AUTO_TESSELL_VVV12_OFF": "1",
+                "AUTO_TESSELL_VVV13_OFF": "1",
+                "AUTO_TESSELL_VVV14_OFF": "1",
+                "AUTO_TESSELL_TET_QUALITY1_OFF": "1",
+                "AUTO_TESSELL_P3_SSS_REVIVAL": "0",
+                "AUTO_TESSELL_NNN1_DRYRUN": "0",
+                "AUTO_TESSELL_NNN2_INSERT": "0",
+                "AUTO_TESSELL_NNN3_INSERT": "0",
+                "AUTO_TESSELL_NNN4_AMIPS": "0",
+                "AUTO_TESSELL_RRR2_TARGETED": "0",
+            })
+        try:
+            res: NativeTetResult = generate_native_tet(
+                vertices, faces, tmp,
+                target_edge_length=edge,
+                seed_density=int(seed_density),
+                sliver_quality_threshold=float(sliver_quality_threshold),
+                max_input_vertices=int(max_input_vertices),
+                **_call_kwargs,
+            )
+        finally:
+            if _release_conservative:
+                for key, previous in _saved_release_env.items():
+                    if previous is None:
+                        os.environ.pop(key, None)
+                    else:
+                        os.environ[key] = previous
+        if _release_conservative:
+            if res.debug_info is None:
+                res.debug_info = {}
+            res.debug_info["release_route_preflight"] = {
+                "conservative_phase_a": True,
+                "reason": "source_duplicate_or_open_edge_health",
+                "disabled_mutation_envs": list(_release_disabled_envs),
+            }
         if not active:
             return res, tmp, edge
         if not res.success:

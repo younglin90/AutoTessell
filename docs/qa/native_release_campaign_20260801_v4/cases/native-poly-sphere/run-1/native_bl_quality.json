@@ -1,0 +1,2949 @@
+{
+  "requested_layers": 1,
+  "used_layers": 1,
+  "n_wall_faces": 7680,
+  "n_wall_verts": 3842,
+  "n_prism_cells": 7680,
+  "n_feature_edge_merged": 0,
+  "n_new_points": 3842,
+  "total_thickness": 0.0001,
+  "bbox_diag": 3.4641016151377544,
+  "thickness_to_bbox_ratio": 2.8867513459481293e-05,
+  "n_degenerate_prisms": 0,
+  "max_aspect_ratio": 7.771727068795384,
+  "wall_preserve": {
+    "max_diff": 0.0,
+    "max_diff_rel": 0.0,
+    "n_drift": 0,
+    "within_envelope": true,
+    "envelope_eps_rel": 1e-06
+  },
+  "force_snap": {
+    "n_applied": 0,
+    "max_diff": 0.0
+  },
+  "lcr": {
+    "n_reduced_verts": 0,
+    "max_reduction": 0,
+    "min_layers_used": 1,
+    "n_safe_full_layers": 0
+  },
+  "feature_size": {
+    "enabled": false,
+    "n_limited": 0,
+    "gradient_limit": 0.0
+  },
+  "extrusion_line_search": {
+    "enabled": true,
+    "accepted": true,
+    "mode": "none",
+    "negative_pre": 0,
+    "negative_post": 0,
+    "n_scaled_vertices": 0,
+    "boundary_skew_pre": 0.0,
+    "non_ortho_pre": 0.0,
+    "face_weight_pre": 1.0,
+    "face_weight_post": 1.0,
+    "max_scale": 1.0
+  },
+  "aniso_split": {
+    "n_examined": 0,
+    "n_would_split": 0,
+    "max_aspect_in": 0.0
+  },
+  "bad_internal_faces": {
+    "thresholds": {
+      "max_non_ortho_deg": 65.0,
+      "min_face_weight": 0.05
+    },
+    "n_internal_faces": 36224,
+    "n_bad_faces": 4624,
+    "n_components_total": 635,
+    "n_components_analyzed": 12,
+    "total_by_class": {
+      "bulk-bulk": 7244,
+      "bulk-prism": 7680,
+      "prism-prism": 21300,
+      "bulk-other": 0,
+      "prism-other": 0,
+      "other-other": 0
+    },
+    "bad_by_class": {
+      "bulk-bulk": 12,
+      "bulk-prism": 4612,
+      "prism-prism": 0,
+      "bulk-other": 0,
+      "prism-other": 0,
+      "other-other": 0
+    },
+    "bad_by_reason": {
+      "non_ortho": 2627,
+      "face_weight": 4277,
+      "degenerate": 0
+    },
+    "components": [
+      {
+        "n_faces": 15,
+        "n_cells": 16,
+        "classes": {
+          "bulk-bulk": 1,
+          "bulk-prism": 14
+        },
+        "n_inside_internal_faces": 32,
+        "n_cavity_boundary_faces": 111,
+        "boundary_by_class": {
+          "bulk-bulk": 36,
+          "prism-prism": 51,
+          "bulk-prism": 10
+        },
+        "n_physical_boundary_faces": 14,
+        "ids_truncated": false,
+        "sample_faces": [
+          278,
+          8262,
+          8269,
+          8280,
+          8283,
+          8291,
+          8304,
+          8309,
+          9098,
+          9112,
+          9117,
+          9123
+        ],
+        "sample_cells": [
+          21,
+          39,
+          921,
+          922,
+          924,
+          925,
+          927,
+          931,
+          932,
+          1137,
+          1140,
+          1141
+        ],
+        "faces": [
+          278,
+          8262,
+          8269,
+          8280,
+          8283,
+          8291,
+          8304,
+          8309,
+          9098,
+          9112,
+          9117,
+          9123,
+          9128,
+          9132,
+          9139
+        ],
+        "cells": [
+          21,
+          39,
+          921,
+          922,
+          924,
+          925,
+          927,
+          931,
+          932,
+          1137,
+          1140,
+          1141,
+          1143,
+          1144,
+          1145,
+          1147
+        ],
+        "cavity_shell": {
+          "n_cells": 16,
+          "cell_kinds": {
+            "bulk": 2,
+            "prism": 14
+          },
+          "n_boundary_faces": 111,
+          "n_internal_faces": 32,
+          "n_physical_boundary_faces": 14,
+          "boundary_by_class": {
+            "bulk-bulk": 36,
+            "prism-prism": 51,
+            "bulk-prism": 10,
+            "prism-physical": 14
+          },
+          "n_boundary_vertices": 57,
+          "n_boundary_edges": 166,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 7,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.000228352439712351,
+          "total_boundary_area": 0.1589550513449641,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 97,
+            "n_bad_interface_faces": 26,
+            "max_non_ortho_deg": 86.41736097987426,
+            "min_face_weight": -0.2759854706761511,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 8279,
+                "outside_cell": 923,
+                "non_ortho_deg": 86.41736097987426,
+                "face_weight": -0.01621749041420717,
+                "bad": true
+              },
+              {
+                "face": 9130,
+                "outside_cell": 1148,
+                "non_ortho_deg": 81.66867529030579,
+                "face_weight": -0.11658638821421952,
+                "bad": true
+              },
+              {
+                "face": 9131,
+                "outside_cell": 1148,
+                "non_ortho_deg": 81.6594471520206,
+                "face_weight": 0.11833353111207401,
+                "bad": true
+              },
+              {
+                "face": 9099,
+                "outside_cell": 1142,
+                "non_ortho_deg": 76.64019737565067,
+                "face_weight": -0.2759854706761511,
+                "bad": true
+              },
+              {
+                "face": 9100,
+                "outside_cell": 1142,
+                "non_ortho_deg": 76.61806551125548,
+                "face_weight": 0.34267997244745974,
+                "bad": true
+              },
+              {
+                "face": 8297,
+                "outside_cell": 929,
+                "non_ortho_deg": 76.28015086781348,
+                "face_weight": 0.02340547868209153,
+                "bad": true
+              },
+              {
+                "face": 8294,
+                "outside_cell": 928,
+                "non_ortho_deg": 75.55512618964374,
+                "face_weight": 0.012142363977659998,
+                "bad": true
+              },
+              {
+                "face": 8299,
+                "outside_cell": 930,
+                "non_ortho_deg": 75.33881006195283,
+                "face_weight": 0.017622418482864832,
+                "bad": true
+              },
+              {
+                "face": 9145,
+                "outside_cell": 1148,
+                "non_ortho_deg": 75.1995681210002,
+                "face_weight": 0.04094324868363819,
+                "bad": true
+              },
+              {
+                "face": 9107,
+                "outside_cell": 1139,
+                "non_ortho_deg": 73.96396773281805,
+                "face_weight": 0.040694944795049315,
+                "bad": true
+              },
+              {
+                "face": 8288,
+                "outside_cell": 926,
+                "non_ortho_deg": 73.85345010647134,
+                "face_weight": 0.018390864714342925,
+                "bad": true
+              },
+              {
+                "face": 9103,
+                "outside_cell": 1138,
+                "non_ortho_deg": 73.01605191307122,
+                "face_weight": 0.013502625477509134,
+                "bad": true
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            129,
+            130,
+            131,
+            178,
+            179,
+            180,
+            269,
+            270,
+            271,
+            272,
+            273,
+            274
+          ]
+        }
+      },
+      {
+        "n_faces": 13,
+        "n_cells": 14,
+        "classes": {
+          "bulk-bulk": 2,
+          "bulk-prism": 11
+        },
+        "n_inside_internal_faces": 27,
+        "n_cavity_boundary_faces": 149,
+        "boundary_by_class": {
+          "bulk-bulk": 80,
+          "prism-prism": 45,
+          "bulk-prism": 13
+        },
+        "n_physical_boundary_faces": 11,
+        "ids_truncated": false,
+        "sample_faces": [
+          6574,
+          6847,
+          33722,
+          33738,
+          33742,
+          33748,
+          33760,
+          34768,
+          34777,
+          34780,
+          34783,
+          34788
+        ],
+        "sample_cells": [
+          584,
+          608,
+          668,
+          7657,
+          7661,
+          7663,
+          7664,
+          7667,
+          7943,
+          7946,
+          7947,
+          7948
+        ],
+        "faces": [
+          6574,
+          6847,
+          33722,
+          33738,
+          33742,
+          33748,
+          33760,
+          34768,
+          34777,
+          34780,
+          34783,
+          34788,
+          34798
+        ],
+        "cells": [
+          584,
+          608,
+          668,
+          7657,
+          7661,
+          7663,
+          7664,
+          7667,
+          7943,
+          7946,
+          7947,
+          7948,
+          7949,
+          7951
+        ],
+        "cavity_shell": {
+          "n_cells": 14,
+          "cell_kinds": {
+            "bulk": 3,
+            "prism": 11
+          },
+          "n_boundary_faces": 149,
+          "n_internal_faces": 27,
+          "n_physical_boundary_faces": 11,
+          "boundary_by_class": {
+            "bulk-bulk": 80,
+            "prism-prism": 45,
+            "bulk-prism": 13,
+            "prism-physical": 11
+          },
+          "n_boundary_vertices": 123,
+          "n_boundary_edges": 270,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 3,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.000236573924858509,
+          "total_boundary_area": 1.3359069130261554,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 138,
+            "n_bad_interface_faces": 50,
+            "max_non_ortho_deg": 84.85789838119942,
+            "min_face_weight": -0.285581059421365,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 6672,
+                "outside_cell": 592,
+                "non_ortho_deg": 84.85789838119942,
+                "face_weight": -0.285581059421365,
+                "bad": true
+              },
+              {
+                "face": 33729,
+                "outside_cell": 7658,
+                "non_ortho_deg": 80.61207559473006,
+                "face_weight": 0.09510253732399188,
+                "bad": true
+              },
+              {
+                "face": 33730,
+                "outside_cell": 7658,
+                "non_ortho_deg": 80.32546773671818,
+                "face_weight": -0.02951919950696147,
+                "bad": true
+              },
+              {
+                "face": 34123,
+                "outside_cell": 7763,
+                "non_ortho_deg": 79.93555117483496,
+                "face_weight": 0.08015454013825962,
+                "bad": true
+              },
+              {
+                "face": 34122,
+                "outside_cell": 7763,
+                "non_ortho_deg": 79.82659377153561,
+                "face_weight": 0.023434867748394206,
+                "bad": true
+              },
+              {
+                "face": 34776,
+                "outside_cell": 7945,
+                "non_ortho_deg": 79.6045866262365,
+                "face_weight": -0.15338421363893917,
+                "bad": true
+              },
+              {
+                "face": 34775,
+                "outside_cell": 7945,
+                "non_ortho_deg": 79.59337375707862,
+                "face_weight": 0.029272002275883335,
+                "bad": true
+              },
+              {
+                "face": 33736,
+                "outside_cell": 7660,
+                "non_ortho_deg": 79.48470515956316,
+                "face_weight": 0.0518356607254945,
+                "bad": true
+              },
+              {
+                "face": 33737,
+                "outside_cell": 7660,
+                "non_ortho_deg": 79.03981531120913,
+                "face_weight": 0.02300870847202463,
+                "bad": true
+              },
+              {
+                "face": 33750,
+                "outside_cell": 7666,
+                "non_ortho_deg": 77.02296392880474,
+                "face_weight": -0.020313303443471042,
+                "bad": true
+              },
+              {
+                "face": 6032,
+                "outside_cell": 532,
+                "non_ortho_deg": 76.99740530279054,
+                "face_weight": 0.10647821631914478,
+                "bad": true
+              },
+              {
+                "face": 33749,
+                "outside_cell": 7666,
+                "non_ortho_deg": 76.70758321592739,
+                "face_weight": 0.09495984066237517,
+                "bad": true
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            4480,
+            4588,
+            4757,
+            4758,
+            4850,
+            4898,
+            4999,
+            5056,
+            5116,
+            5273,
+            5326,
+            5327
+          ]
+        }
+      },
+      {
+        "n_faces": 12,
+        "n_cells": 13,
+        "classes": {
+          "bulk-bulk": 2,
+          "bulk-prism": 10
+        },
+        "n_inside_internal_faces": 26,
+        "n_cavity_boundary_faces": 144,
+        "boundary_by_class": {
+          "bulk-bulk": 81,
+          "prism-prism": 39,
+          "bulk-prism": 14
+        },
+        "n_physical_boundary_faces": 10,
+        "ids_truncated": false,
+        "sample_faces": [
+          470,
+          475,
+          8965,
+          8974,
+          8977,
+          8986,
+          8996,
+          8999,
+          10034,
+          10043,
+          10045,
+          10059
+        ],
+        "sample_cells": [
+          36,
+          60,
+          650,
+          1103,
+          1106,
+          1107,
+          1109,
+          1111,
+          1112,
+          1385,
+          1387,
+          1388
+        ],
+        "faces": [
+          470,
+          475,
+          8965,
+          8974,
+          8977,
+          8986,
+          8996,
+          8999,
+          10034,
+          10043,
+          10045,
+          10059
+        ],
+        "cells": [
+          36,
+          60,
+          650,
+          1103,
+          1106,
+          1107,
+          1109,
+          1111,
+          1112,
+          1385,
+          1387,
+          1388,
+          1391
+        ],
+        "cavity_shell": {
+          "n_cells": 13,
+          "cell_kinds": {
+            "bulk": 3,
+            "prism": 10
+          },
+          "n_boundary_faces": 144,
+          "n_internal_faces": 26,
+          "n_physical_boundary_faces": 10,
+          "boundary_by_class": {
+            "bulk-bulk": 81,
+            "prism-prism": 39,
+            "bulk-prism": 14,
+            "prism-physical": 10
+          },
+          "n_boundary_vertices": 123,
+          "n_boundary_edges": 265,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 2,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.000236573943607842,
+          "total_boundary_area": 1.358171897532422,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 134,
+            "n_bad_interface_faces": 48,
+            "max_non_ortho_deg": 81.41484850569638,
+            "min_face_weight": -0.30281041601049896,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 463,
+                "outside_cell": 52,
+                "non_ortho_deg": 81.41484850569638,
+                "face_weight": -0.30281041601049896,
+                "bad": true
+              },
+              {
+                "face": 10041,
+                "outside_cell": 1386,
+                "non_ortho_deg": 81.17516922827922,
+                "face_weight": 0.08947646797202535,
+                "bad": true
+              },
+              {
+                "face": 8992,
+                "outside_cell": 1110,
+                "non_ortho_deg": 81.06188352181256,
+                "face_weight": -0.14669543469912805,
+                "bad": true
+              },
+              {
+                "face": 8991,
+                "outside_cell": 1110,
+                "non_ortho_deg": 81.05058258894418,
+                "face_weight": 0.03037568070532537,
+                "bad": true
+              },
+              {
+                "face": 10040,
+                "outside_cell": 1386,
+                "non_ortho_deg": 80.88970339182403,
+                "face_weight": -0.02985967116655286,
+                "bad": true
+              },
+              {
+                "face": 9001,
+                "outside_cell": 1299,
+                "non_ortho_deg": 78.56958682622407,
+                "face_weight": 0.0758188153949012,
+                "bad": true
+              },
+              {
+                "face": 9000,
+                "outside_cell": 1299,
+                "non_ortho_deg": 78.45309321996724,
+                "face_weight": 0.021350181283359082,
+                "bad": true
+              },
+              {
+                "face": 1368,
+                "outside_cell": 112,
+                "non_ortho_deg": 77.3971808275614,
+                "face_weight": 0.11799155127728922,
+                "bad": true
+              },
+              {
+                "face": 10046,
+                "outside_cell": 1395,
+                "non_ortho_deg": 75.52950119490502,
+                "face_weight": -0.02224704297658331,
+                "bad": true
+              },
+              {
+                "face": 10047,
+                "outside_cell": 1395,
+                "non_ortho_deg": 75.21143870945716,
+                "face_weight": 0.08530224471276748,
+                "bad": true
+              },
+              {
+                "face": 8990,
+                "outside_cell": 1295,
+                "non_ortho_deg": 74.20834499997787,
+                "face_weight": -0.062269408101545354,
+                "bad": true
+              },
+              {
+                "face": 1409,
+                "outside_cell": 116,
+                "non_ortho_deg": 74.0299205080644,
+                "face_weight": 0.00706660198753184,
+                "bad": true
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            231,
+            232,
+            233,
+            332,
+            333,
+            334,
+            411,
+            412,
+            413,
+            414,
+            460,
+            461
+          ]
+        }
+      },
+      {
+        "n_faces": 12,
+        "n_cells": 13,
+        "classes": {
+          "bulk-prism": 12
+        },
+        "n_inside_internal_faces": 34,
+        "n_cavity_boundary_faces": 55,
+        "boundary_by_class": {
+          "bulk-bulk": 19,
+          "prism-prism": 24
+        },
+        "n_physical_boundary_faces": 12,
+        "ids_truncated": false,
+        "sample_faces": [
+          11232,
+          11239,
+          11244,
+          11248,
+          11253,
+          11258,
+          11261,
+          11268,
+          11271,
+          11273,
+          11276,
+          11281
+        ],
+        "sample_cells": [
+          86,
+          1697,
+          1698,
+          1699,
+          1700,
+          1701,
+          1702,
+          1703,
+          1704,
+          1705,
+          1706,
+          1707
+        ],
+        "faces": [
+          11232,
+          11239,
+          11244,
+          11248,
+          11253,
+          11258,
+          11261,
+          11268,
+          11271,
+          11273,
+          11276,
+          11281
+        ],
+        "cells": [
+          86,
+          1697,
+          1698,
+          1699,
+          1700,
+          1701,
+          1702,
+          1703,
+          1704,
+          1705,
+          1706,
+          1707,
+          1708
+        ],
+        "cavity_shell": {
+          "n_cells": 13,
+          "cell_kinds": {
+            "bulk": 1,
+            "prism": 12
+          },
+          "n_boundary_faces": 55,
+          "n_internal_faces": 34,
+          "n_physical_boundary_faces": 12,
+          "boundary_by_class": {
+            "bulk-bulk": 19,
+            "prism-prism": 24,
+            "prism-physical": 12
+          },
+          "n_boundary_vertices": 31,
+          "n_boundary_edges": 84,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 0,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.00022835245171334438,
+          "total_boundary_area": 0.05371354825556819,
+          "is_closed_2manifold": true,
+          "small_closed_cavity_candidate": true,
+          "agglomerate_probe": {
+            "n_interface_faces": 43,
+            "n_bad_interface_faces": 0,
+            "max_non_ortho_deg": 33.188915144814544,
+            "min_face_weight": 0.1357508871326103,
+            "passes": true,
+            "worst_faces": [
+              {
+                "face": 10325,
+                "outside_cell": 1457,
+                "non_ortho_deg": 33.188915144814544,
+                "face_weight": 0.15547956363229143,
+                "bad": false
+              },
+              {
+                "face": 10326,
+                "outside_cell": 1457,
+                "non_ortho_deg": 33.1640924368163,
+                "face_weight": 0.2333433032192106,
+                "bad": false
+              },
+              {
+                "face": 11263,
+                "outside_cell": 2107,
+                "non_ortho_deg": 31.664336648551622,
+                "face_weight": 0.1560555931927332,
+                "bad": false
+              },
+              {
+                "face": 11262,
+                "outside_cell": 2107,
+                "non_ortho_deg": 31.648838229063173,
+                "face_weight": 0.23048270771047552,
+                "bad": false
+              },
+              {
+                "face": 11235,
+                "outside_cell": 1841,
+                "non_ortho_deg": 20.50462408464622,
+                "face_weight": 0.19101392930508032,
+                "bad": false
+              },
+              {
+                "face": 11236,
+                "outside_cell": 1841,
+                "non_ortho_deg": 20.50408879229443,
+                "face_weight": 0.1512911227751521,
+                "bad": false
+              },
+              {
+                "face": 11260,
+                "outside_cell": 1843,
+                "non_ortho_deg": 20.471548655772846,
+                "face_weight": 0.18757590204772612,
+                "bad": false
+              },
+              {
+                "face": 11259,
+                "outside_cell": 1843,
+                "non_ortho_deg": 20.471249817077155,
+                "face_weight": 0.15016661508610452,
+                "bad": false
+              },
+              {
+                "face": 10419,
+                "outside_cell": 1483,
+                "non_ortho_deg": 20.101653299567932,
+                "face_weight": 0.23209599031822292,
+                "bad": false
+              },
+              {
+                "face": 843,
+                "outside_cell": 66,
+                "non_ortho_deg": 20.09484638573316,
+                "face_weight": 0.4762449611420416,
+                "bad": false
+              },
+              {
+                "face": 10420,
+                "outside_cell": 1483,
+                "non_ortho_deg": 20.053008934928325,
+                "face_weight": 0.1881722696421958,
+                "bad": false
+              },
+              {
+                "face": 11241,
+                "outside_cell": 2081,
+                "non_ortho_deg": 19.317524272561766,
+                "face_weight": 0.22850215430998733,
+                "bad": false
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            843,
+            844,
+            845,
+            857,
+            858,
+            859,
+            1057,
+            1058,
+            1059,
+            1060,
+            1061,
+            1062
+          ]
+        }
+      },
+      {
+        "n_faces": 11,
+        "n_cells": 12,
+        "classes": {
+          "bulk-prism": 11
+        },
+        "n_inside_internal_faces": 27,
+        "n_cavity_boundary_faces": 57,
+        "boundary_by_class": {
+          "bulk-bulk": 19,
+          "prism-prism": 26,
+          "bulk-prism": 1
+        },
+        "n_physical_boundary_faces": 11,
+        "ids_truncated": false,
+        "sample_faces": [
+          12532,
+          12537,
+          12542,
+          12547,
+          12551,
+          12555,
+          12556,
+          12559,
+          12562,
+          12569,
+          12573
+        ],
+        "sample_cells": [
+          114,
+          2033,
+          2034,
+          2035,
+          2036,
+          2037,
+          2038,
+          2039,
+          2040,
+          2041,
+          2043,
+          2044
+        ],
+        "faces": [
+          12532,
+          12537,
+          12542,
+          12547,
+          12551,
+          12555,
+          12556,
+          12559,
+          12562,
+          12569,
+          12573
+        ],
+        "cells": [
+          114,
+          2033,
+          2034,
+          2035,
+          2036,
+          2037,
+          2038,
+          2039,
+          2040,
+          2041,
+          2043,
+          2044
+        ],
+        "cavity_shell": {
+          "n_cells": 12,
+          "cell_kinds": {
+            "bulk": 1,
+            "prism": 11
+          },
+          "n_boundary_faces": 57,
+          "n_internal_faces": 27,
+          "n_physical_boundary_faces": 11,
+          "boundary_by_class": {
+            "bulk-bulk": 19,
+            "prism-prism": 26,
+            "bulk-prism": 1,
+            "prism-physical": 11
+          },
+          "n_boundary_vertices": 32,
+          "n_boundary_edges": 87,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 2,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.0002717992004567998,
+          "total_boundary_area": 0.06926972062088513,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 46,
+            "n_bad_interface_faces": 5,
+            "max_non_ortho_deg": 71.27778272710712,
+            "min_face_weight": -0.5394844228169444,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 12566,
+                "outside_cell": 2042,
+                "non_ortho_deg": 71.27778272710712,
+                "face_weight": 0.03986251982085143,
+                "bad": true
+              },
+              {
+                "face": 12568,
+                "outside_cell": 2042,
+                "non_ortho_deg": 62.20606096809779,
+                "face_weight": -0.0075807241910932355,
+                "bad": true
+              },
+              {
+                "face": 12561,
+                "outside_cell": 2042,
+                "non_ortho_deg": 59.69043381140773,
+                "face_weight": 0.030939232359241342,
+                "bad": true
+              },
+              {
+                "face": 12564,
+                "outside_cell": 2042,
+                "non_ortho_deg": 17.509144948226144,
+                "face_weight": -0.49204117880499876,
+                "bad": true
+              },
+              {
+                "face": 12565,
+                "outside_cell": 2042,
+                "non_ortho_deg": 17.421545505508433,
+                "face_weight": -0.5394844228169444,
+                "bad": true
+              },
+              {
+                "face": 12567,
+                "outside_cell": 2042,
+                "non_ortho_deg": 62.203913537947365,
+                "face_weight": 0.4936334490885683,
+                "bad": false
+              },
+              {
+                "face": 12560,
+                "outside_cell": 2042,
+                "non_ortho_deg": 59.681693696857984,
+                "face_weight": 0.4870586259183495,
+                "bad": false
+              },
+              {
+                "face": 1020,
+                "outside_cell": 82,
+                "non_ortho_deg": 33.69696940960605,
+                "face_weight": 0.47788004779455934,
+                "bad": false
+              },
+              {
+                "face": 1021,
+                "outside_cell": 82,
+                "non_ortho_deg": 31.507493961683288,
+                "face_weight": 0.4149660942870034,
+                "bad": false
+              },
+              {
+                "face": 1089,
+                "outside_cell": 88,
+                "non_ortho_deg": 31.125071540842686,
+                "face_weight": 0.42755420321322846,
+                "bad": false
+              },
+              {
+                "face": 1088,
+                "outside_cell": 88,
+                "non_ortho_deg": 29.74453206476154,
+                "face_weight": 0.39283707522262595,
+                "bad": false
+              },
+              {
+                "face": 1022,
+                "outside_cell": 82,
+                "non_ortho_deg": 29.66448480948312,
+                "face_weight": 0.49211662162280256,
+                "bad": false
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            1020,
+            1021,
+            1022,
+            1087,
+            1088,
+            1089,
+            1288,
+            1289,
+            1290,
+            1380,
+            1381,
+            1382
+          ]
+        }
+      },
+      {
+        "n_faces": 11,
+        "n_cells": 12,
+        "classes": {
+          "bulk-prism": 11
+        },
+        "n_inside_internal_faces": 27,
+        "n_cavity_boundary_faces": 57,
+        "boundary_by_class": {
+          "bulk-bulk": 19,
+          "prism-prism": 26,
+          "bulk-prism": 1
+        },
+        "n_physical_boundary_faces": 11,
+        "ids_truncated": false,
+        "sample_faces": [
+          12574,
+          12578,
+          12583,
+          12587,
+          12590,
+          12593,
+          12598,
+          12603,
+          12605,
+          12612,
+          12615
+        ],
+        "sample_cells": [
+          115,
+          2045,
+          2046,
+          2047,
+          2048,
+          2049,
+          2050,
+          2051,
+          2052,
+          2053,
+          2055,
+          2056
+        ],
+        "faces": [
+          12574,
+          12578,
+          12583,
+          12587,
+          12590,
+          12593,
+          12598,
+          12603,
+          12605,
+          12612,
+          12615
+        ],
+        "cells": [
+          115,
+          2045,
+          2046,
+          2047,
+          2048,
+          2049,
+          2050,
+          2051,
+          2052,
+          2053,
+          2055,
+          2056
+        ],
+        "cavity_shell": {
+          "n_cells": 12,
+          "cell_kinds": {
+            "bulk": 1,
+            "prism": 11
+          },
+          "n_boundary_faces": 57,
+          "n_internal_faces": 27,
+          "n_physical_boundary_faces": 11,
+          "boundary_by_class": {
+            "bulk-bulk": 19,
+            "prism-prism": 26,
+            "bulk-prism": 1,
+            "prism-physical": 11
+          },
+          "n_boundary_vertices": 32,
+          "n_boundary_edges": 87,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 2,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.0002717992004567998,
+          "total_boundary_area": 0.0694352284840331,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 46,
+            "n_bad_interface_faces": 5,
+            "max_non_ortho_deg": 72.17050289708222,
+            "min_face_weight": -0.5404481559676215,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 12609,
+                "outside_cell": 2054,
+                "non_ortho_deg": 72.17050289708222,
+                "face_weight": 0.037264696953974386,
+                "bad": true
+              },
+              {
+                "face": 12579,
+                "outside_cell": 2054,
+                "non_ortho_deg": 63.227235171908774,
+                "face_weight": -0.02050716741714176,
+                "bad": true
+              },
+              {
+                "face": 12610,
+                "outside_cell": 2054,
+                "non_ortho_deg": 58.44470861980891,
+                "face_weight": 0.04215009938628078,
+                "bad": true
+              },
+              {
+                "face": 12607,
+                "outside_cell": 2054,
+                "non_ortho_deg": 16.791456952851043,
+                "face_weight": -0.4826762915965046,
+                "bad": true
+              },
+              {
+                "face": 12608,
+                "outside_cell": 2054,
+                "non_ortho_deg": 16.703792936476297,
+                "face_weight": -0.5404481559676215,
+                "bad": true
+              },
+              {
+                "face": 12580,
+                "outside_cell": 2054,
+                "non_ortho_deg": 63.22530424516693,
+                "face_weight": 0.4842358332103369,
+                "bad": false
+              },
+              {
+                "face": 12611,
+                "outside_cell": 2054,
+                "non_ortho_deg": 58.43659916325131,
+                "face_weight": 0.4843138592291881,
+                "bad": false
+              },
+              {
+                "face": 11419,
+                "outside_cell": 1743,
+                "non_ortho_deg": 27.03137590870375,
+                "face_weight": 0.20654053783257809,
+                "bad": false
+              },
+              {
+                "face": 11418,
+                "outside_cell": 1743,
+                "non_ortho_deg": 27.026046967253208,
+                "face_weight": 0.14796647427554188,
+                "bad": false
+              },
+              {
+                "face": 1030,
+                "outside_cell": 83,
+                "non_ortho_deg": 24.2269490658568,
+                "face_weight": 0.4929943241339339,
+                "bad": false
+              },
+              {
+                "face": 11130,
+                "outside_cell": 1671,
+                "non_ortho_deg": 24.127192014846916,
+                "face_weight": 0.21303120747590776,
+                "bad": false
+              },
+              {
+                "face": 11131,
+                "outside_cell": 1671,
+                "non_ortho_deg": 24.116638565042486,
+                "face_weight": 0.157942753731791,
+                "bad": false
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            1030,
+            1031,
+            1032,
+            1100,
+            1101,
+            1102,
+            1298,
+            1299,
+            1300,
+            1390,
+            1391,
+            1392
+          ]
+        }
+      },
+      {
+        "n_faces": 11,
+        "n_cells": 12,
+        "classes": {
+          "bulk-prism": 11
+        },
+        "n_inside_internal_faces": 27,
+        "n_cavity_boundary_faces": 57,
+        "boundary_by_class": {
+          "bulk-bulk": 19,
+          "prism-prism": 26,
+          "bulk-prism": 1
+        },
+        "n_physical_boundary_faces": 11,
+        "ids_truncated": false,
+        "sample_faces": [
+          12616,
+          12621,
+          12624,
+          12626,
+          12629,
+          12640,
+          12645,
+          12646,
+          12649,
+          12653,
+          12656
+        ],
+        "sample_cells": [
+          116,
+          2057,
+          2058,
+          2059,
+          2060,
+          2061,
+          2063,
+          2064,
+          2065,
+          2066,
+          2067,
+          2068
+        ],
+        "faces": [
+          12616,
+          12621,
+          12624,
+          12626,
+          12629,
+          12640,
+          12645,
+          12646,
+          12649,
+          12653,
+          12656
+        ],
+        "cells": [
+          116,
+          2057,
+          2058,
+          2059,
+          2060,
+          2061,
+          2063,
+          2064,
+          2065,
+          2066,
+          2067,
+          2068
+        ],
+        "cavity_shell": {
+          "n_cells": 12,
+          "cell_kinds": {
+            "bulk": 1,
+            "prism": 11
+          },
+          "n_boundary_faces": 57,
+          "n_internal_faces": 27,
+          "n_physical_boundary_faces": 11,
+          "boundary_by_class": {
+            "bulk-bulk": 19,
+            "prism-prism": 26,
+            "bulk-prism": 1,
+            "prism-physical": 11
+          },
+          "n_boundary_vertices": 32,
+          "n_boundary_edges": 87,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 2,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.0002717992003807672,
+          "total_boundary_area": 0.06850688120262834,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 46,
+            "n_bad_interface_faces": 5,
+            "max_non_ortho_deg": 72.29809309688665,
+            "min_face_weight": -0.54015712062001,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 12635,
+                "outside_cell": 2062,
+                "non_ortho_deg": 72.29809309688665,
+                "face_weight": 0.0368952512286963,
+                "bad": true
+              },
+              {
+                "face": 12639,
+                "outside_cell": 2062,
+                "non_ortho_deg": 63.3028705936442,
+                "face_weight": -0.02155612208808666,
+                "bad": true
+              },
+              {
+                "face": 12636,
+                "outside_cell": 2062,
+                "non_ortho_deg": 58.33799825079134,
+                "face_weight": 0.04295608316108024,
+                "bad": true
+              },
+              {
+                "face": 12633,
+                "outside_cell": 2062,
+                "non_ortho_deg": 16.683009861339375,
+                "face_weight": -0.4817057473032249,
+                "bad": true
+              },
+              {
+                "face": 12634,
+                "outside_cell": 2062,
+                "non_ortho_deg": 16.595365352673895,
+                "face_weight": -0.54015712062001,
+                "bad": true
+              },
+              {
+                "face": 12638,
+                "outside_cell": 2062,
+                "non_ortho_deg": 63.30096890564407,
+                "face_weight": 0.4832617218764338,
+                "bad": false
+              },
+              {
+                "face": 12637,
+                "outside_cell": 2062,
+                "non_ortho_deg": 58.329989289164715,
+                "face_weight": 0.4843547895993865,
+                "bad": false
+              },
+              {
+                "face": 1042,
+                "outside_cell": 84,
+                "non_ortho_deg": 28.513359959205356,
+                "face_weight": 0.49404179041405727,
+                "bad": false
+              },
+              {
+                "face": 1112,
+                "outside_cell": 90,
+                "non_ortho_deg": 28.065999937903964,
+                "face_weight": 0.4358978136718662,
+                "bad": false
+              },
+              {
+                "face": 1041,
+                "outside_cell": 84,
+                "non_ortho_deg": 26.463449945450577,
+                "face_weight": 0.46299027509470764,
+                "bad": false
+              },
+              {
+                "face": 1113,
+                "outside_cell": 90,
+                "non_ortho_deg": 26.118550453060564,
+                "face_weight": 0.3964316249116331,
+                "bad": false
+              },
+              {
+                "face": 12650,
+                "outside_cell": 2393,
+                "non_ortho_deg": 25.471429098867418,
+                "face_weight": 0.1966013454297434,
+                "bad": false
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            1040,
+            1041,
+            1042,
+            1112,
+            1113,
+            1114,
+            1308,
+            1309,
+            1310,
+            1400,
+            1401,
+            1402
+          ]
+        }
+      },
+      {
+        "n_faces": 11,
+        "n_cells": 12,
+        "classes": {
+          "bulk-prism": 11
+        },
+        "n_inside_internal_faces": 27,
+        "n_cavity_boundary_faces": 57,
+        "boundary_by_class": {
+          "bulk-bulk": 19,
+          "prism-prism": 26,
+          "bulk-prism": 1
+        },
+        "n_physical_boundary_faces": 11,
+        "ids_truncated": false,
+        "sample_faces": [
+          13802,
+          13805,
+          13810,
+          13813,
+          13816,
+          13820,
+          13823,
+          13825,
+          13829,
+          13839,
+          13843
+        ],
+        "sample_cells": [
+          142,
+          2369,
+          2370,
+          2371,
+          2372,
+          2373,
+          2374,
+          2375,
+          2376,
+          2377,
+          2379,
+          2380
+        ],
+        "faces": [
+          13802,
+          13805,
+          13810,
+          13813,
+          13816,
+          13820,
+          13823,
+          13825,
+          13829,
+          13839,
+          13843
+        ],
+        "cells": [
+          142,
+          2369,
+          2370,
+          2371,
+          2372,
+          2373,
+          2374,
+          2375,
+          2376,
+          2377,
+          2379,
+          2380
+        ],
+        "cavity_shell": {
+          "n_cells": 12,
+          "cell_kinds": {
+            "bulk": 1,
+            "prism": 11
+          },
+          "n_boundary_faces": 57,
+          "n_internal_faces": 27,
+          "n_physical_boundary_faces": 11,
+          "boundary_by_class": {
+            "bulk-bulk": 19,
+            "prism-prism": 26,
+            "bulk-prism": 1,
+            "prism-physical": 11
+          },
+          "n_boundary_vertices": 32,
+          "n_boundary_edges": 87,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 2,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.0002717992000584354,
+          "total_boundary_area": 0.06903568961981649,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 46,
+            "n_bad_interface_faces": 4,
+            "max_non_ortho_deg": 71.1286005082898,
+            "min_face_weight": -0.5431109505002738,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 13836,
+                "outside_cell": 2378,
+                "non_ortho_deg": 71.1286005082898,
+                "face_weight": 0.04234250649685822,
+                "bad": true
+              },
+              {
+                "face": 13838,
+                "outside_cell": 2378,
+                "non_ortho_deg": 64.53513507434889,
+                "face_weight": -0.03553271308309225,
+                "bad": true
+              },
+              {
+                "face": 13834,
+                "outside_cell": 2378,
+                "non_ortho_deg": 18.13316002535169,
+                "face_weight": -0.5249901847653669,
+                "bad": true
+              },
+              {
+                "face": 13835,
+                "outside_cell": 2378,
+                "non_ortho_deg": 18.08160321057648,
+                "face_weight": -0.5431109505002738,
+                "bad": true
+              },
+              {
+                "face": 13837,
+                "outside_cell": 2378,
+                "non_ortho_deg": 64.54350033964123,
+                "face_weight": 0.4965868887734941,
+                "bad": false
+              },
+              {
+                "face": 13821,
+                "outside_cell": 2378,
+                "non_ortho_deg": 58.60888226997574,
+                "face_weight": 0.4551526810781336,
+                "bad": false
+              },
+              {
+                "face": 13822,
+                "outside_cell": 2378,
+                "non_ortho_deg": 58.59208112850325,
+                "face_weight": 0.060463272231765064,
+                "bad": false
+              },
+              {
+                "face": 13826,
+                "outside_cell": 2565,
+                "non_ortho_deg": 26.26090986848404,
+                "face_weight": 0.17630682161492162,
+                "bad": false
+              },
+              {
+                "face": 1560,
+                "outside_cell": 130,
+                "non_ortho_deg": 25.877023363276415,
+                "face_weight": 0.4139251852014879,
+                "bad": false
+              },
+              {
+                "face": 1559,
+                "outside_cell": 130,
+                "non_ortho_deg": 24.66870710488297,
+                "face_weight": 0.38746404044781607,
+                "bad": false
+              },
+              {
+                "face": 1558,
+                "outside_cell": 130,
+                "non_ortho_deg": 24.654094480680747,
+                "face_weight": 0.4497799241833829,
+                "bad": false
+              },
+              {
+                "face": 1688,
+                "outside_cell": 170,
+                "non_ortho_deg": 24.31923573243311,
+                "face_weight": 0.46609425502452057,
+                "bad": false
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            1294,
+            1295,
+            1296,
+            1383,
+            1384,
+            1385,
+            1558,
+            1559,
+            1560,
+            1685,
+            1686,
+            1687
+          ]
+        }
+      },
+      {
+        "n_faces": 11,
+        "n_cells": 12,
+        "classes": {
+          "bulk-prism": 11
+        },
+        "n_inside_internal_faces": 27,
+        "n_cavity_boundary_faces": 57,
+        "boundary_by_class": {
+          "bulk-bulk": 19,
+          "prism-prism": 26,
+          "bulk-prism": 1
+        },
+        "n_physical_boundary_faces": 11,
+        "ids_truncated": false,
+        "sample_faces": [
+          13846,
+          13852,
+          13857,
+          13864,
+          13867,
+          13871,
+          13874,
+          13878,
+          13880,
+          13886,
+          13889
+        ],
+        "sample_cells": [
+          143,
+          2381,
+          2382,
+          2383,
+          2384,
+          2385,
+          2386,
+          2387,
+          2388,
+          2389,
+          2391,
+          2392
+        ],
+        "faces": [
+          13846,
+          13852,
+          13857,
+          13864,
+          13867,
+          13871,
+          13874,
+          13878,
+          13880,
+          13886,
+          13889
+        ],
+        "cells": [
+          143,
+          2381,
+          2382,
+          2383,
+          2384,
+          2385,
+          2386,
+          2387,
+          2388,
+          2389,
+          2391,
+          2392
+        ],
+        "cavity_shell": {
+          "n_cells": 12,
+          "cell_kinds": {
+            "bulk": 1,
+            "prism": 11
+          },
+          "n_boundary_faces": 57,
+          "n_internal_faces": 27,
+          "n_physical_boundary_faces": 11,
+          "boundary_by_class": {
+            "bulk-bulk": 19,
+            "prism-prism": 26,
+            "bulk-prism": 1,
+            "prism-physical": 11
+          },
+          "n_boundary_vertices": 32,
+          "n_boundary_edges": 87,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 2,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.0002717992000584354,
+          "total_boundary_area": 0.06912510172132422,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 46,
+            "n_bad_interface_faces": 4,
+            "max_non_ortho_deg": 70.74205916610393,
+            "min_face_weight": -0.531534621034083,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 13883,
+                "outside_cell": 2390,
+                "non_ortho_deg": 70.74205916610393,
+                "face_weight": 0.042819766519599956,
+                "bad": true
+              },
+              {
+                "face": 13884,
+                "outside_cell": 2390,
+                "non_ortho_deg": 63.79196488117194,
+                "face_weight": -0.026103508832393763,
+                "bad": true
+              },
+              {
+                "face": 13882,
+                "outside_cell": 2390,
+                "non_ortho_deg": 18.324615433299478,
+                "face_weight": -0.5229710363556141,
+                "bad": true
+              },
+              {
+                "face": 13881,
+                "outside_cell": 2390,
+                "non_ortho_deg": 18.2720596853574,
+                "face_weight": -0.531534621034083,
+                "bad": true
+              },
+              {
+                "face": 13885,
+                "outside_cell": 2390,
+                "non_ortho_deg": 63.80072305713179,
+                "face_weight": 0.4942885345902087,
+                "bad": false
+              },
+              {
+                "face": 13873,
+                "outside_cell": 2390,
+                "non_ortho_deg": 59.45011354089511,
+                "face_weight": 0.46676404926605986,
+                "bad": false
+              },
+              {
+                "face": 13872,
+                "outside_cell": 2390,
+                "non_ortho_deg": 59.43287413567509,
+                "face_weight": 0.05138335119807025,
+                "bad": false
+              },
+              {
+                "face": 1700,
+                "outside_cell": 171,
+                "non_ortho_deg": 34.59644330457164,
+                "face_weight": 0.4635594790996979,
+                "bad": false
+              },
+              {
+                "face": 1699,
+                "outside_cell": 171,
+                "non_ortho_deg": 33.05672009076668,
+                "face_weight": 0.41056761903073097,
+                "bad": false
+              },
+              {
+                "face": 1698,
+                "outside_cell": 171,
+                "non_ortho_deg": 32.13324747546226,
+                "face_weight": 0.49935762076499446,
+                "bad": false
+              },
+              {
+                "face": 1571,
+                "outside_cell": 131,
+                "non_ortho_deg": 29.022980167294705,
+                "face_weight": 0.39365580099263814,
+                "bad": false
+              },
+              {
+                "face": 1572,
+                "outside_cell": 131,
+                "non_ortho_deg": 27.358702277155164,
+                "face_weight": 0.35885554095357153,
+                "bad": false
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            1304,
+            1305,
+            1306,
+            1393,
+            1394,
+            1395,
+            1571,
+            1572,
+            1573,
+            1695,
+            1696,
+            1697
+          ]
+        }
+      },
+      {
+        "n_faces": 11,
+        "n_cells": 12,
+        "classes": {
+          "bulk-prism": 11
+        },
+        "n_inside_internal_faces": 27,
+        "n_cavity_boundary_faces": 57,
+        "boundary_by_class": {
+          "bulk-bulk": 19,
+          "prism-prism": 26,
+          "bulk-prism": 1
+        },
+        "n_physical_boundary_faces": 11,
+        "ids_truncated": false,
+        "sample_faces": [
+          14558,
+          14564,
+          14569,
+          14574,
+          14577,
+          14584,
+          14587,
+          14595,
+          14597,
+          14600,
+          14603
+        ],
+        "sample_cells": [
+          159,
+          2569,
+          2570,
+          2571,
+          2572,
+          2573,
+          2574,
+          2575,
+          2577,
+          2578,
+          2579,
+          2580
+        ],
+        "faces": [
+          14558,
+          14564,
+          14569,
+          14574,
+          14577,
+          14584,
+          14587,
+          14595,
+          14597,
+          14600,
+          14603
+        ],
+        "cells": [
+          159,
+          2569,
+          2570,
+          2571,
+          2572,
+          2573,
+          2574,
+          2575,
+          2577,
+          2578,
+          2579,
+          2580
+        ],
+        "cavity_shell": {
+          "n_cells": 12,
+          "cell_kinds": {
+            "bulk": 1,
+            "prism": 11
+          },
+          "n_boundary_faces": 57,
+          "n_internal_faces": 27,
+          "n_physical_boundary_faces": 11,
+          "boundary_by_class": {
+            "bulk-bulk": 19,
+            "prism-prism": 26,
+            "bulk-prism": 1,
+            "prism-physical": 11
+          },
+          "n_boundary_vertices": 32,
+          "n_boundary_edges": 87,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 2,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.0002717992006877229,
+          "total_boundary_area": 0.06889262852091585,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 46,
+            "n_bad_interface_faces": 5,
+            "max_non_ortho_deg": 71.91310183780342,
+            "min_face_weight": -0.534127159754564,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 14592,
+                "outside_cell": 2576,
+                "non_ortho_deg": 71.91310183780342,
+                "face_weight": 0.037813127929444246,
+                "bad": true
+              },
+              {
+                "face": 14593,
+                "outside_cell": 2576,
+                "non_ortho_deg": 62.288665824193544,
+                "face_weight": -0.009761615754102282,
+                "bad": true
+              },
+              {
+                "face": 14585,
+                "outside_cell": 2576,
+                "non_ortho_deg": 59.44415600419113,
+                "face_weight": 0.031787754354358655,
+                "bad": true
+              },
+              {
+                "face": 14591,
+                "outside_cell": 2576,
+                "non_ortho_deg": 16.896403754718445,
+                "face_weight": -0.4865524160710175,
+                "bad": true
+              },
+              {
+                "face": 14590,
+                "outside_cell": 2576,
+                "non_ortho_deg": 16.8087575841918,
+                "face_weight": -0.534127159754564,
+                "bad": true
+              },
+              {
+                "face": 14594,
+                "outside_cell": 2576,
+                "non_ortho_deg": 62.28665760645606,
+                "face_weight": 0.4881244269030812,
+                "bad": false
+              },
+              {
+                "face": 14586,
+                "outside_cell": 2576,
+                "non_ortho_deg": 59.43594229401842,
+                "face_weight": 0.4910430005098163,
+                "bad": false
+              },
+              {
+                "face": 1878,
+                "outside_cell": 205,
+                "non_ortho_deg": 29.139025457445644,
+                "face_weight": 0.41970567666557596,
+                "bad": false
+              },
+              {
+                "face": 1872,
+                "outside_cell": 175,
+                "non_ortho_deg": 28.010668693767414,
+                "face_weight": 0.49669709490616554,
+                "bad": false
+              },
+              {
+                "face": 1880,
+                "outside_cell": 205,
+                "non_ortho_deg": 27.45134427842121,
+                "face_weight": 0.4346721752045576,
+                "bad": false
+              },
+              {
+                "face": 1879,
+                "outside_cell": 205,
+                "non_ortho_deg": 27.439487760195952,
+                "face_weight": 0.37390928859462597,
+                "bad": false
+              },
+              {
+                "face": 14576,
+                "outside_cell": 2771,
+                "non_ortho_deg": 26.669035434816564,
+                "face_weight": 0.20534073038047918,
+                "bad": false
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            1396,
+            1397,
+            1398,
+            1618,
+            1619,
+            1620,
+            1695,
+            1696,
+            1697,
+            1872,
+            1873,
+            1874
+          ]
+        }
+      },
+      {
+        "n_faces": 11,
+        "n_cells": 12,
+        "classes": {
+          "bulk-prism": 11
+        },
+        "n_inside_internal_faces": 27,
+        "n_cavity_boundary_faces": 61,
+        "boundary_by_class": {
+          "bulk-bulk": 19,
+          "prism-prism": 30,
+          "bulk-prism": 1
+        },
+        "n_physical_boundary_faces": 11,
+        "ids_truncated": false,
+        "sample_faces": [
+          22272,
+          22279,
+          22284,
+          22288,
+          22291,
+          22298,
+          22301,
+          22305,
+          22308,
+          22313,
+          22314
+        ],
+        "sample_cells": [
+          330,
+          4613,
+          4614,
+          4615,
+          4616,
+          4617,
+          4618,
+          4619,
+          4620,
+          4621,
+          4622,
+          4623
+        ],
+        "faces": [
+          22272,
+          22279,
+          22284,
+          22288,
+          22291,
+          22298,
+          22301,
+          22305,
+          22308,
+          22313,
+          22314
+        ],
+        "cells": [
+          330,
+          4613,
+          4614,
+          4615,
+          4616,
+          4617,
+          4618,
+          4619,
+          4620,
+          4621,
+          4622,
+          4623
+        ],
+        "cavity_shell": {
+          "n_cells": 12,
+          "cell_kinds": {
+            "bulk": 1,
+            "prism": 11
+          },
+          "n_boundary_faces": 61,
+          "n_internal_faces": 27,
+          "n_physical_boundary_faces": 11,
+          "boundary_by_class": {
+            "bulk-bulk": 19,
+            "prism-prism": 30,
+            "bulk-prism": 1,
+            "prism-physical": 11
+          },
+          "n_boundary_vertices": 32,
+          "n_boundary_edges": 91,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 2,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.00022835245211176258,
+          "total_boundary_area": 0.05752014552240975,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 50,
+            "n_bad_interface_faces": 4,
+            "max_non_ortho_deg": 74.71722238050513,
+            "min_face_weight": -0.5565070678893096,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 22317,
+                "outside_cell": 4624,
+                "non_ortho_deg": 74.71722238050513,
+                "face_weight": 0.034594183270694856,
+                "bad": true
+              },
+              {
+                "face": 22310,
+                "outside_cell": 4624,
+                "non_ortho_deg": 64.21093005579779,
+                "face_weight": -0.07362495510586586,
+                "bad": true
+              },
+              {
+                "face": 22316,
+                "outside_cell": 4624,
+                "non_ortho_deg": 16.75990971345566,
+                "face_weight": -0.49761309325682346,
+                "bad": true
+              },
+              {
+                "face": 22315,
+                "outside_cell": 4624,
+                "non_ortho_deg": 16.709743300217244,
+                "face_weight": -0.5565070678893096,
+                "bad": true
+              },
+              {
+                "face": 22309,
+                "outside_cell": 4624,
+                "non_ortho_deg": 64.21819942212122,
+                "face_weight": 0.47422587028215546,
+                "bad": false
+              },
+              {
+                "face": 22307,
+                "outside_cell": 4624,
+                "non_ortho_deg": 62.38281074037736,
+                "face_weight": 0.4417309220220153,
+                "bad": false
+              },
+              {
+                "face": 22306,
+                "outside_cell": 4624,
+                "non_ortho_deg": 62.37636056449629,
+                "face_weight": 0.09348815790318132,
+                "bad": false
+              },
+              {
+                "face": 22276,
+                "outside_cell": 4773,
+                "non_ortho_deg": 31.983485269276,
+                "face_weight": 0.14920652514478538,
+                "bad": false
+              },
+              {
+                "face": 22275,
+                "outside_cell": 4773,
+                "non_ortho_deg": 31.96403788786528,
+                "face_weight": 0.22133356322617892,
+                "bad": false
+              },
+              {
+                "face": 20954,
+                "outside_cell": 4251,
+                "non_ortho_deg": 29.20374660226314,
+                "face_weight": 0.15965100447740177,
+                "bad": false
+              },
+              {
+                "face": 20953,
+                "outside_cell": 4251,
+                "non_ortho_deg": 29.193471625342724,
+                "face_weight": 0.23034313643006699,
+                "bad": false
+              },
+              {
+                "face": 22295,
+                "outside_cell": 4723,
+                "non_ortho_deg": 22.418689202285144,
+                "face_weight": 0.22679467830457767,
+                "bad": false
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            3129,
+            3130,
+            3131,
+            3492,
+            3493,
+            3494,
+            3535,
+            3536,
+            3537,
+            3808,
+            3809,
+            3810
+          ]
+        }
+      },
+      {
+        "n_faces": 11,
+        "n_cells": 12,
+        "classes": {
+          "bulk-prism": 11
+        },
+        "n_inside_internal_faces": 27,
+        "n_cavity_boundary_faces": 57,
+        "boundary_by_class": {
+          "bulk-bulk": 19,
+          "prism-prism": 26,
+          "bulk-prism": 1
+        },
+        "n_physical_boundary_faces": 11,
+        "ids_truncated": false,
+        "sample_faces": [
+          29122,
+          29127,
+          29132,
+          29141,
+          29146,
+          29148,
+          29153,
+          29155,
+          29157,
+          29160,
+          29163
+        ],
+        "sample_cells": [
+          481,
+          6425,
+          6426,
+          6427,
+          6429,
+          6430,
+          6431,
+          6432,
+          6433,
+          6434,
+          6435,
+          6436
+        ],
+        "faces": [
+          29122,
+          29127,
+          29132,
+          29141,
+          29146,
+          29148,
+          29153,
+          29155,
+          29157,
+          29160,
+          29163
+        ],
+        "cells": [
+          481,
+          6425,
+          6426,
+          6427,
+          6429,
+          6430,
+          6431,
+          6432,
+          6433,
+          6434,
+          6435,
+          6436
+        ],
+        "cavity_shell": {
+          "n_cells": 12,
+          "cell_kinds": {
+            "bulk": 1,
+            "prism": 11
+          },
+          "n_boundary_faces": 57,
+          "n_internal_faces": 27,
+          "n_physical_boundary_faces": 11,
+          "boundary_by_class": {
+            "bulk-bulk": 19,
+            "prism-prism": 26,
+            "bulk-prism": 1,
+            "prism-physical": 11
+          },
+          "n_boundary_vertices": 32,
+          "n_boundary_edges": 87,
+          "n_open_edges": 0,
+          "n_nonmanifold_edges": 2,
+          "n_duplicate_boundary_faces": 0,
+          "min_boundary_face_area": 0.00027179920014984405,
+          "total_boundary_area": 0.06755633181676175,
+          "is_closed_2manifold": false,
+          "small_closed_cavity_candidate": false,
+          "agglomerate_probe": {
+            "n_interface_faces": 46,
+            "n_bad_interface_faces": 5,
+            "max_non_ortho_deg": 72.1924829498894,
+            "min_face_weight": -0.5403216992032569,
+            "passes": false,
+            "worst_faces": [
+              {
+                "face": 29138,
+                "outside_cell": 6428,
+                "non_ortho_deg": 72.1924829498894,
+                "face_weight": 0.037454086603936454,
+                "bad": true
+              },
+              {
+                "face": 29140,
+                "outside_cell": 6428,
+                "non_ortho_deg": 62.50932721392569,
+                "face_weight": -0.01285258174511883,
+                "bad": true
+              },
+              {
+                "face": 29131,
+                "outside_cell": 6428,
+                "non_ortho_deg": 59.15451458055064,
+                "face_weight": 0.03460724088721123,
+                "bad": true
+              },
+              {
+                "face": 29136,
+                "outside_cell": 6428,
+                "non_ortho_deg": 16.652757878130792,
+                "face_weight": -0.4900150308542006,
+                "bad": true
+              },
+              {
+                "face": 29137,
+                "outside_cell": 6428,
+                "non_ortho_deg": 16.565072381328186,
+                "face_weight": -0.5403216992032569,
+                "bad": true
+              },
+              {
+                "face": 29139,
+                "outside_cell": 6428,
+                "non_ortho_deg": 62.507384283065846,
+                "face_weight": 0.49159734228963414,
+                "bad": false
+              },
+              {
+                "face": 29130,
+                "outside_cell": 6428,
+                "non_ortho_deg": 59.1465111577368,
+                "face_weight": 0.48459758280970205,
+                "bad": false
+              },
+              {
+                "face": 5330,
+                "outside_cell": 465,
+                "non_ortho_deg": 36.805267555236654,
+                "face_weight": 0.4727948674426252,
+                "bad": false
+              },
+              {
+                "face": 5329,
+                "outside_cell": 465,
+                "non_ortho_deg": 34.57777105970503,
+                "face_weight": 0.4039208808304029,
+                "bad": false
+              },
+              {
+                "face": 5328,
+                "outside_cell": 465,
+                "non_ortho_deg": 33.437739297026184,
+                "face_weight": 0.48430926313716116,
+                "bad": false
+              },
+              {
+                "face": 4961,
+                "outside_cell": 435,
+                "non_ortho_deg": 32.71289720844062,
+                "face_weight": 0.42867760069742,
+                "bad": false
+              },
+              {
+                "face": 5509,
+                "outside_cell": 660,
+                "non_ortho_deg": 31.709283303119516,
+                "face_weight": 0.2610359035926686,
+                "bad": false
+              }
+            ]
+          },
+          "sample_boundary_faces": [
+            4961,
+            4962,
+            4963,
+            5237,
+            5238,
+            5239,
+            5328,
+            5329,
+            5330,
+            5500,
+            5501,
+            5502
+          ]
+        }
+      }
+    ],
+    "worst_faces": [
+      {
+        "face": 5816,
+        "owner": 511,
+        "neighbour": 663,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 88.1176627419894,
+        "face_weight": 0.3203109730517865
+      },
+      {
+        "face": 2353,
+        "owner": 198,
+        "neighbour": 242,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 76.34002894118883,
+        "face_weight": 0.38936260670420614
+      },
+      {
+        "face": 11261,
+        "owner": 86,
+        "neighbour": 1703,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.81595730262245,
+        "face_weight": 0.02029169695724209
+      },
+      {
+        "face": 24770,
+        "owner": 384,
+        "neighbour": 5271,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.74761253837282,
+        "face_weight": 0.017159160010795316
+      },
+      {
+        "face": 19030,
+        "owner": 256,
+        "neighbour": 3743,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.7471784839405,
+        "face_weight": 0.01715620664415074
+      },
+      {
+        "face": 11276,
+        "owner": 86,
+        "neighbour": 1707,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.73597239079199,
+        "face_weight": 0.02048093521803307
+      },
+      {
+        "face": 13675,
+        "owner": 139,
+        "neighbour": 2335,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.71865647888441,
+        "face_weight": 0.01714398515643034
+      },
+      {
+        "face": 30101,
+        "owner": 503,
+        "neighbour": 6693,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.68508764232486,
+        "face_weight": 0.017184694812466983
+      },
+      {
+        "face": 34239,
+        "owner": 596,
+        "neighbour": 7799,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.55891432864635,
+        "face_weight": 0.029121805928548627
+      },
+      {
+        "face": 24392,
+        "owner": 376,
+        "neighbour": 5173,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.5098089993468,
+        "face_weight": 0.019570811618449202
+      },
+      {
+        "face": 19385,
+        "owner": 264,
+        "neighbour": 3835,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.50869910775192,
+        "face_weight": 0.0195659607002433
+      },
+      {
+        "face": 33557,
+        "owner": 580,
+        "neighbour": 7611,
+        "class": "bulk-prism",
+        "non_ortho_deg": 74.50551035109174,
+        "face_weight": 0.01729196870865668
+      }
+    ]
+  },
+  "pre_bl_bad_internal_faces": {
+    "thresholds": {
+      "max_non_ortho_deg": 65.0,
+      "min_face_weight": 0.05
+    },
+    "n_internal_faces": 7074,
+    "n_bad_faces": 13,
+    "n_components_total": 0,
+    "n_components_analyzed": 0,
+    "total_by_class": {
+      "bulk-bulk": 7074,
+      "bulk-prism": 0,
+      "prism-prism": 0,
+      "bulk-other": 0,
+      "prism-other": 0,
+      "other-other": 0
+    },
+    "bad_by_class": {
+      "bulk-bulk": 13,
+      "bulk-prism": 0,
+      "prism-prism": 0,
+      "bulk-other": 0,
+      "prism-other": 0,
+      "other-other": 0
+    },
+    "bad_by_reason": {
+      "non_ortho": 13,
+      "face_weight": 0,
+      "degenerate": 0
+    },
+    "components": [],
+    "worst_faces": [
+      {
+        "face": 5686,
+        "owner": 511,
+        "neighbour": 663,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 86.7159375360143,
+        "face_weight": 0.33396169738022674
+      },
+      {
+        "face": 2300,
+        "owner": 198,
+        "neighbour": 242,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 76.76041099302574,
+        "face_weight": 0.4133940089019338
+      },
+      {
+        "face": 2026,
+        "owner": 177,
+        "neighbour": 199,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 74.23882291465836,
+        "face_weight": 0.48209574313212744
+      },
+      {
+        "face": 4488,
+        "owner": 402,
+        "neighbour": 446,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 73.8542516981303,
+        "face_weight": 0.4748919336348938
+      },
+      {
+        "face": 4971,
+        "owner": 444,
+        "neighbour": 478,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 72.78982315379731,
+        "face_weight": 0.4242926064376237
+      },
+      {
+        "face": 4908,
+        "owner": 440,
+        "neighbour": 462,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 71.97761765316963,
+        "face_weight": 0.45201089068135136
+      },
+      {
+        "face": 276,
+        "owner": 21,
+        "neighbour": 39,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 70.18717032818161,
+        "face_weight": 0.37034708753534895
+      },
+      {
+        "face": 6428,
+        "owner": 584,
+        "neighbour": 608,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 68.0828686928843,
+        "face_weight": 0.41245309448003875
+      },
+      {
+        "face": 7059,
+        "owner": 660,
+        "neighbour": 664,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 67.93385821579992,
+        "face_weight": 0.43769783204372426
+      },
+      {
+        "face": 6690,
+        "owner": 608,
+        "neighbour": 668,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 66.97281312591147,
+        "face_weight": 0.27207436171487437
+      },
+      {
+        "face": 5676,
+        "owner": 511,
+        "neighbour": 515,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 66.00082867529693,
+        "face_weight": 0.3498587581878194
+      },
+      {
+        "face": 464,
+        "owner": 36,
+        "neighbour": 60,
+        "class": "bulk-bulk",
+        "non_ortho_deg": 65.80816034063709,
+        "face_weight": 0.40735598659602756
+      }
+    ]
+  },
+  "tet_wall_cavity": {
+    "n_cells": 669,
+    "n_wall_faces": 7680,
+    "n_wall_owner_cells": 642,
+    "n_single_wall_owner_cells": 0,
+    "n_single_wall_tet_owner_cells": 0,
+    "n_multi_wall_owner_cells": 642,
+    "n_non_tet_owner_cells": 0,
+    "coverage_single_wall_tet": 0.0,
+    "sample_single_wall_tet_cells": [],
+    "single_wall_tet_cells": [],
+    "sample_blocked_cells": [
+      {
+        "cell": 0,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 1,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 2,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 3,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 4,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 5,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 6,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 7,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 8,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 9,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 10,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 11,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 12,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 13,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 14,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      },
+      {
+        "cell": 15,
+        "reason": "multi_wall_faces",
+        "n_wall_faces": 12,
+        "n_vertices": 19,
+        "n_faces": 37
+      }
+    ],
+    "n_stale_wall_faces": 0
+  },
+  "owner_centre_motion": {
+    "enabled": false,
+    "n_eligible": 0,
+    "n_moved": 0,
+    "mean_motion": 0.0,
+    "max_motion": 0.0,
+    "n_rejected_orientation": 0,
+    "n_eligible_owner_cells": 0
+  },
+  "tet_cavity_probe": {
+    "enabled": false,
+    "n_candidates": 0,
+    "n_quality_pass": 0,
+    "n_quality_fail_det": 0,
+    "n_quality_fail_topology": 0,
+    "mean_predicted_det": 0.0,
+    "min_predicted_det": 0.0,
+    "max_predicted_det": 0.0
+  },
+  "tet_cavity_replace": {
+    "enabled": false,
+    "wired_to_writer": false,
+    "n_planned": 0,
+    "n_replaced": 0,
+    "n_rejected_topology": 0,
+    "n_rejected_det": 0,
+    "n_rejected_neighbour_internal": 0,
+    "n_cells_before": 0,
+    "n_cells_after": 0,
+    "n_new_points_total": 0
+  },
+  "tet_cavity_eval": {
+    "enabled": false,
+    "n_components": 0,
+    "n_accepted": 0,
+    "n_rejected_uncovered_shell": 0,
+    "n_rejected_bad_det": 0,
+    "n_rejected_bad_shape": 0,
+    "n_rejected_bad_non_ortho": 0,
+    "n_rejected_bad_skewness": 0
+  },
+  "anti_invert_cap": {
+    "enabled": false,
+    "n_capped": 0,
+    "max_reduction": 0.0,
+    "n_wall_verts": 3842
+  },
+  "pre_bl_self_intersect": null,
+  "config": {
+    "num_layers": 1,
+    "growth_ratio": 1.2,
+    "first_thickness": 0.0001,
+    "wall_patch_names": [
+      "source_0_sphere_watertight"
+    ],
+    "set_faces": null,
+    "ignore_faces": null,
+    "ignore_patch_names": null,
+    "ignore_patch_prefixes": null,
+    "target_y_plus": null,
+    "flow_fluid_preset": null
+  }
+}

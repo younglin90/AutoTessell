@@ -26,6 +26,7 @@ from .operator_loop import (
     shell_provenance_reporting_enabled,
 )
 from .metric import BLHandoffReport, audit_bl_handoff
+from .release_route import NativeTriReleaseResult, NativeTriSourceAuthority, run_native_tri_release
 
 __all__ = [
     "BijectiveShell",
@@ -46,4 +47,7 @@ __all__ = [
     "audit_bl_handoff",
     "estimate_curvature_sizing",
     "shell_provenance_reporting_enabled",
+    "NativeTriReleaseResult",
+    "NativeTriSourceAuthority",
+    "run_native_tri_release",
 ]

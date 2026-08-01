@@ -16,12 +16,14 @@ Phase 2 확장 (향후):
     - bulk tet → 자체 dual 변환 구현 (scipy Voronoi 의존 제거)
     - prism vs polyhedral cell 간 face 정렬 품질 개선
 """
+
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from core.evaluator.strict_volume_topology import audit_strict_volume_topology
 from core.layers.native_bl import (
     BLConfig,
     _native_bl_zero_request_blocker,
@@ -43,7 +45,9 @@ class PolyBLResult:
 
 
 def _classify_cells_by_vertex_count(
-    owner, neighbour, faces,
+    owner,
+    neighbour,
+    faces,
 ) -> tuple[int, list[set[int]], list[int], list[int]]:
     """polyMesh face/owner/neighbour 로부터 각 cell 의 unique vertex set 복원.
 
@@ -94,9 +98,12 @@ def _try_native_poly_dual(
     """
     try:
         import numpy as np  # noqa: PLC0415
+
         from core.generator.native_poly.dual import tet_to_poly_dual  # noqa: PLC0415
         from core.utils.polymesh_reader import (  # noqa: PLC0415
-            parse_foam_faces, parse_foam_labels, parse_foam_points,
+            parse_foam_faces,
+            parse_foam_labels,
+            parse_foam_points,
         )
     except Exception as exc:
         return False, f"native dual import 실패: {exc}"
@@ -107,13 +114,16 @@ def _try_native_poly_dual(
         faces = parse_foam_faces(poly_dir / "faces")
         owner = np.array(parse_foam_labels(poly_dir / "owner"), dtype=np.int64)
         neighbour = np.array(
-            parse_foam_labels(poly_dir / "neighbour"), dtype=np.int64,
+            parse_foam_labels(poly_dir / "neighbour"),
+            dtype=np.int64,
         )
     except Exception as exc:
         return False, f"polyMesh 읽기 실패: {exc}"
 
     n_cells, cell_verts, tet_ids, non_tet_ids = _classify_cells_by_vertex_count(
-        owner, neighbour, faces,
+        owner,
+        neighbour,
+        faces,
     )
     if n_cells == 0:
         return False, "cell 없음"
@@ -129,7 +139,13 @@ def _try_native_poly_dual(
         # prism 보존. interface face 가 dual cell 경계와 정합하지 않을 경우
         # pass-through 로 fallback.
         ok, msg = _try_hybrid_dual(
-            pts, faces, owner, neighbour, cell_verts, tet_ids, non_tet_ids,
+            pts,
+            faces,
+            owner,
+            neighbour,
+            cell_verts,
+            tet_ids,
+            non_tet_ids,
             case_dir,
             interface_smoothing=interface_smoothing,
             interface_smooth_iters=interface_smooth_iters,
@@ -139,7 +155,8 @@ def _try_native_poly_dual(
         # fallback: 원본 mesh 보존 (beta13 동작)
         log.info(
             "poly_bl_hybrid_pass_through",
-            n_tets=n_tets, n_non_tet=n_non_tet,
+            n_tets=n_tets,
+            n_non_tet=n_non_tet,
             fallback_reason=msg,
         )
         return False, (
@@ -149,7 +166,8 @@ def _try_native_poly_dual(
 
     # 순수 tet → 전체 dual 변환
     tets_list: list[tuple[int, int, int, int]] = [
-        tuple(sorted(cell_verts[ci])) for ci in tet_ids  # type: ignore[misc]
+        tuple(sorted(cell_verts[ci]))
+        for ci in tet_ids  # type: ignore[misc]
     ]
     T = np.array(tets_list, dtype=np.int64)
     res = tet_to_poly_dual(pts, T, case_dir)
@@ -204,9 +222,8 @@ def _smooth_interface_vertices(
         for fi, fv in enumerate(faces):
             o = int(owner[fi])
             n = int(neighbour[fi]) if fi < n_nbr else -1
-            is_interface = (
-                (o in prism_cell_ids and n in tet_set) or
-                (o in tet_set and n in prism_cell_ids)
+            is_interface = (o in prism_cell_ids and n in tet_set) or (
+                o in tet_set and n in prism_cell_ids
             )
             if not is_interface:
                 continue
@@ -224,7 +241,13 @@ def _smooth_interface_vertices(
 
 
 def _try_hybrid_dual(
-    pts, faces, owner, neighbour, cell_verts, tet_ids, non_tet_ids,
+    pts,
+    faces,
+    owner,
+    neighbour,
+    cell_verts,
+    tet_ids,
+    non_tet_ids,
     case_dir: Path,
     *,
     interface_smoothing: bool = True,
@@ -255,7 +278,9 @@ def _try_hybrid_dual(
         write_generic_polymesh,
     )
     from core.utils.polymesh_reader import (  # noqa: PLC0415
-        parse_foam_faces, parse_foam_labels, parse_foam_points,
+        parse_foam_faces,
+        parse_foam_labels,
+        parse_foam_points,
     )
 
     if len(tet_ids) == 0:
@@ -268,7 +293,10 @@ def _try_hybrid_dual(
         if interface_smoothing and interface_smooth_iters > 0:
             prism_set = set(non_tet_ids)
             working_pts = _smooth_interface_vertices(
-                pts, faces, owner, neighbour,
+                pts,
+                faces,
+                owner,
+                neighbour,
                 prism_cell_ids=prism_set,
                 tet_cell_ids=tet_ids,
                 n_iter=interface_smooth_iters,
@@ -297,23 +325,24 @@ def _try_hybrid_dual(
             # 3. dual 결과 읽기
             dual_poly = tmp_case / "constant" / "polyMesh"
             dual_pts = np.array(
-                parse_foam_points(dual_poly / "points"), dtype=np.float64,
+                parse_foam_points(dual_poly / "points"),
+                dtype=np.float64,
             )
             dual_faces = parse_foam_faces(dual_poly / "faces")
             dual_owner = np.array(
-                parse_foam_labels(dual_poly / "owner"), dtype=np.int64,
+                parse_foam_labels(dual_poly / "owner"),
+                dtype=np.int64,
             )
             dual_nbr = np.array(
-                parse_foam_labels(dual_poly / "neighbour"), dtype=np.int64,
+                parse_foam_labels(dual_poly / "neighbour"),
+                dtype=np.int64,
             )
 
             # 4. dual 의 cell-wise face-list 재구성 → write_generic_polymesh 입력 형식
             n_dual_cells = int(dual_owner.max()) + 1
             if len(dual_nbr):
                 n_dual_cells = max(n_dual_cells, int(dual_nbr.max()) + 1)
-            dual_cell_faces: list[list[list[int]]] = [
-                [] for _ in range(n_dual_cells)
-            ]
+            dual_cell_faces: list[list[list[int]]] = [[] for _ in range(n_dual_cells)]
             for fi, fv in enumerate(dual_faces):
                 o = int(dual_owner[fi])
                 dual_cell_faces[o].append(list(fv))
@@ -323,9 +352,7 @@ def _try_hybrid_dual(
                     dual_cell_faces[n].append(list(reversed(fv)))
 
         # 5. 원본 prism cell 의 face-list 복원 — 원본 pts indexing 기준
-        prism_cell_faces: list[list[list[int]]] = [
-            [] for _ in range(len(non_tet_ids))
-        ]
+        prism_cell_faces: list[list[list[int]]] = [[] for _ in range(len(non_tet_ids))]
         prism_idx_map = {ci: local_i for local_i, ci in enumerate(non_tet_ids)}
         for fi, fv in enumerate(faces):
             o = int(owner[fi])
@@ -342,7 +369,8 @@ def _try_hybrid_dual(
         # dual_pts 에 이미 원본 boundary 정점이 포함되어 있을 수 있으므로 좌표
         # 기반 dedup (scale quantization) 사용. smoothing 적용 후 좌표 사용.
         combined_V, vertex_remap_orig, vertex_remap_dual = _merge_vertices(
-            working_pts, dual_pts,
+            working_pts,
+            dual_pts,
         )
 
         # 7. cell_faces 재인덱싱
@@ -472,7 +500,8 @@ def run_poly_bl_transition(
     bl_res = generate_native_bl(case_dir, cfg)
     if not bl_res.success:
         return PolyBLResult(
-            success=False, elapsed=time.perf_counter() - t0,
+            success=False,
+            elapsed=time.perf_counter() - t0,
             message=f"native_bl 실패: {bl_res.message}",
         )
 
@@ -492,11 +521,7 @@ def run_poly_bl_transition(
 
     state_error = _refresh_native_bl_state_output(
         case_dir,
-        last_transform=(
-            "poly_bl_transition_dual"
-            if bulk_dual_applied
-            else "poly_bl_transition"
-        ),
+        last_transform=("poly_bl_transition_dual" if bulk_dual_applied else "poly_bl_transition"),
     )
     if state_error is not None:
         return PolyBLResult(
@@ -507,6 +532,22 @@ def run_poly_bl_transition(
             message=state_error,
         )
 
+    strict = audit_strict_volume_topology(case_dir)
+    if not strict.valid:
+        return PolyBLResult(
+            success=False,
+            elapsed=time.perf_counter() - t0,
+            n_prism_cells=int(bl_res.n_prism_cells),
+            bulk_dual_applied=bulk_dual_applied,
+            message=(
+                "poly_bl_transition strict topology rejected: "
+                f"duplicate={strict.n_duplicate_faces}, "
+                f"nonmanifold={strict.n_nonmanifold_faces}, "
+                f"cell_edges={strict.n_nonmanifold_cell_edges}, "
+                f"open_edges={strict.n_open_cell_edges}, "
+                f"inverted={strict.n_inverted_cells}"
+            ),
+        )
     elapsed = time.perf_counter() - t0
     return PolyBLResult(
         success=True,

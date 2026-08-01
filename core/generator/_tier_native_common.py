@@ -322,13 +322,42 @@ def run_native_tier(
             time_seconds=time.monotonic() - t_start,
             error_message=f"reader import 실패: {exc}",
         )
+    source_ingress: dict[str, Any] = {}
     try:
-        m = read_stl(preprocessed_path)
+        if tier_name == "tier_native_hex" and preprocessed_path.suffix.lower() in {
+            ".step", ".stp", ".iges", ".igs", ".brep",
+        }:
+            from core.analyzer.readers.step import load_cad_native_with_provenance
+
+            cad = load_cad_native_with_provenance(
+                preprocessed_path, preprocessed_path.suffix
+            )
+            # The CAD reader's raw stream is face-local and intentionally
+            # duplicated. The native Hex route consumes the canonical B-Rep
+            # stream, while the raw file/provenance stays in the certificate.
+            m_vertices = np.ascontiguousarray(
+                cad.vertices[cad.provenance.canonical_vertex_source_ids],
+                dtype=np.float64,
+            )
+            m_faces = np.ascontiguousarray(
+                cad.provenance.oriented_canonical_faces,
+                dtype=np.int64,
+            )
+            source_ingress = {
+                "source_path": preprocessed_path,
+                "source_vertices": m_vertices,
+                "source_faces": m_faces,
+                "source_provenance": cad.provenance,
+            }
+        else:
+            m = read_stl(preprocessed_path)
+            m_vertices = m.vertices
+            m_faces = m.faces
     except Exception as exc:
         return TierAttempt(
             tier=tier_name, status="failed",
             time_seconds=time.monotonic() - t_start,
-            error_message=f"STL 읽기 실패: {exc}",
+            error_message=f"surface source read failed: {exc}",
         )
 
     target_edge = _parse_target_edge(strategy)
@@ -342,7 +371,7 @@ def run_native_tier(
     if _n_target:
         try:
             _edge_n = _edge_from_target_cells(
-                m.vertices, m.faces, tier_name, int(_n_target)
+                m_vertices, m_faces, tier_name, int(_n_target)
             )
         except Exception:
             _edge_n = None
@@ -393,6 +422,8 @@ def run_native_tier(
         # BOOLMERGE5b: ordered provenance and volume boolean operation.
         "boolean_input_paths",
         "boolean_operation",
+        "source_physical_group_names",
+        "release_route",        # explicit native release route; forbids fallback
         "bl_layers",               # post-layer budget reservation
         "post_layers_num_layers",  # post-layer budget reservation
         "enable_amips_smooth",     # AMIPS analytic optimizer (beta1350)
@@ -421,10 +452,27 @@ def run_native_tier(
     # extra_kwargs 가 최상위 우선
     params.update(dict(extra_kwargs or {}))
     params["target_edge_length"] = target_edge
+    if source_ingress:
+        group_names = tsp.get("source_physical_group_names")
+        if group_names is not None:
+            from dataclasses import replace as _replace
+
+            provenance = source_ingress["source_provenance"]
+            if (
+                isinstance(group_names, (tuple, list))
+                and len(group_names) == provenance.face_count
+                and all(isinstance(name, str) and name.strip() for name in group_names)
+            ):
+                source_ingress["source_provenance"] = _replace(
+                    provenance,
+                    physical_group_names=tuple(group_names),
+                    physical_groups_authoritative=True,
+                )
+        params.update(source_ingress)
     kwargs = params
 
     try:
-        res = runner_fn(m.vertices, m.faces, case_dir, **kwargs)
+        res = runner_fn(m_vertices, m_faces, case_dir, **kwargs)
     except Exception as exc:
         return TierAttempt(
             tier=tier_name, status="failed",

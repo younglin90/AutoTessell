@@ -1,0 +1,214 @@
+/*--------------------------------*- C++ -*----------------------------------*\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     |
+    \\  /    A nd           | Version: 13
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       polyBoundaryMesh;
+    location    "constant/polyMesh";
+    object      boundary;
+}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+32
+(
+    gear-face-28
+    {
+        type            wall;
+        nFaces          1;
+        startFace       128;
+    }
+    gear-face-65
+    {
+        type            wall;
+        nFaces          1;
+        startFace       129;
+    }
+    gear-face-26
+    {
+        type            wall;
+        nFaces          2;
+        startFace       130;
+    }
+    gear-face-68
+    {
+        type            wall;
+        nFaces          3;
+        startFace       132;
+    }
+    gear-face-49
+    {
+        type            wall;
+        nFaces          1;
+        startFace       135;
+    }
+    gear-face-85
+    {
+        type            wall;
+        nFaces          1;
+        startFace       136;
+    }
+    gear-face-51
+    {
+        type            wall;
+        nFaces          1;
+        startFace       137;
+    }
+    gear-face-88
+    {
+        type            wall;
+        nFaces          1;
+        startFace       138;
+    }
+    gear-face-53
+    {
+        type            wall;
+        nFaces          3;
+        startFace       139;
+    }
+    gear-face-10
+    {
+        type            wall;
+        nFaces          1;
+        startFace       142;
+    }
+    gear-face-42
+    {
+        type            wall;
+        nFaces          1;
+        startFace       143;
+    }
+    gear-face-24
+    {
+        type            wall;
+        nFaces          1;
+        startFace       144;
+    }
+    gear-face-47
+    {
+        type            wall;
+        nFaces          1;
+        startFace       145;
+    }
+    gear-face-23
+    {
+        type            wall;
+        nFaces          1;
+        startFace       146;
+    }
+    gear-face-11
+    {
+        type            wall;
+        nFaces          1;
+        startFace       147;
+    }
+    gear-face-44
+    {
+        type            wall;
+        nFaces          1;
+        startFace       148;
+    }
+    gear-face-13
+    {
+        type            wall;
+        nFaces          1;
+        startFace       149;
+    }
+    gear-face-81
+    {
+        type            wall;
+        nFaces          1;
+        startFace       150;
+    }
+    gear-face-33
+    {
+        type            wall;
+        nFaces          1;
+        startFace       151;
+    }
+    gear-face-74
+    {
+        type            wall;
+        nFaces          1;
+        startFace       152;
+    }
+    gear-face-9
+    {
+        type            wall;
+        nFaces          1;
+        startFace       153;
+    }
+    gear-face-41
+    {
+        type            wall;
+        nFaces          1;
+        startFace       154;
+    }
+    gear-face-18
+    {
+        type            wall;
+        nFaces          2;
+        startFace       155;
+    }
+    gear-face-7
+    {
+        type            wall;
+        nFaces          1;
+        startFace       157;
+    }
+    gear-face-39
+    {
+        type            wall;
+        nFaces          1;
+        startFace       158;
+    }
+    gear-face-16
+    {
+        type            wall;
+        nFaces          1;
+        startFace       159;
+    }
+    gear-face-57
+    {
+        type            wall;
+        nFaces          1;
+        startFace       160;
+    }
+    gear-face-17
+    {
+        type            wall;
+        nFaces          1;
+        startFace       161;
+    }
+    gear-face-58
+    {
+        type            wall;
+        nFaces          1;
+        startFace       162;
+    }
+    gear-face-22
+    {
+        type            wall;
+        nFaces          1;
+        startFace       163;
+    }
+    gear-face-36
+    {
+        type            wall;
+        nFaces          1;
+        startFace       164;
+    }
+    gear-face-37
+    {
+        type            wall;
+        nFaces          1;
+        startFace       165;
+    }
+)
+
+// ************************************************************************* //

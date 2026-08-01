@@ -192,6 +192,8 @@ class NativeHexResult:
     untangle_beta_margin: float | None = None
     untangle_beta_margin_ratio: float | None = None
     untangle_beta_pass: bool | None = None
+    # Measured only when an authoritative CAD/B-Rep source payload is supplied.
+    source_output_binding: object | None = None
 
 
 def _has_complex_values(values: np.ndarray) -> bool:
@@ -298,6 +300,8 @@ def _write_polymesh_hex(
     vertices: np.ndarray,
     hexes: np.ndarray,
     case_dir: Path,
+    *,
+    boundary_patch_classifier: object | None = None,
 ) -> dict[str, int]:
     """hex (N, 8) array → OpenFOAM polyMesh (``write_generic_polymesh`` wrapper).
 
@@ -315,7 +319,13 @@ def _write_polymesh_hex(
     # solid.  The generic writer already audits both conditions (through the
     # C++23 native_polymesh kernel when available), so make that contract hard
     # for this engine instead of emitting a partially connected polyMesh.
-    return write_generic_polymesh(vertices, cell_faces, case_dir, strict=True)
+    return write_generic_polymesh(
+        vertices,
+        cell_faces,
+        case_dir,
+        strict=True,
+        boundary_patch_classifier=boundary_patch_classifier,
+    )
 
 
 def _native_hex_phase0_metrics(
@@ -1411,6 +1421,12 @@ def generate_native_hex(
     # 호출은 환경변수 AUTO_TESSELL_HEX_BUFFER_LAYER 를 검사하므로 여기서
     # 환경변수 임시 설정하는 단발 wiring.
     hex_buffer_cells: int = 1,
+    # Optional authoritative CAD/B-Rep ingress.  Geometry-only calls remain
+    # backward compatible and deliberately produce no source binding claim.
+    source_path: str | Path | None = None,
+    source_vertices: np.ndarray | None = None,
+    source_faces: np.ndarray | None = None,
+    source_provenance: object | None = None,
     **_unused: object,
 ) -> NativeHexResult:
     # C-PERF-3 / beta2388 — wall-clock soft budget 진단.
@@ -2339,8 +2355,56 @@ def generate_native_hex(
     _ensure_minimal_controldict(case_dir)
     _write_minimal_fv_dicts(case_dir)
 
+    _source_output_binding = None
+    _boundary_patch_classifier = None
     try:
-        stats = _write_polymesh_hex(final_pts, final_hexes, case_dir)
+        from core.generator.native_hex.output_source_binding import (
+            make_boundary_patch_classifier,
+            measure_hex_source_binding,
+        )
+
+        _prov = getattr(source_provenance, "provenance", source_provenance)
+        _source_face_ordinals = getattr(_prov, "triangle_face_ordinals", None)
+        _physical_group_names = getattr(_prov, "physical_group_names", None)
+        _source_brep_authoritative = bool(
+            _prov is not None
+            and getattr(_prov, "face_ordinals_authoritative", False)
+            and getattr(_prov, "face_orientation_authoritative", False)
+            and getattr(_prov, "seam_connectivity_authoritative", False)
+        )
+        _groups_authoritative = bool(
+            _prov is not None
+            and getattr(_prov, "physical_groups_authoritative", False)
+        )
+        _source_output_binding = measure_hex_source_binding(
+            final_pts,
+            final_hexes,
+            source_vertices=source_vertices,
+            source_faces=source_faces,
+            source_face_ordinals=_source_face_ordinals,
+            physical_group_names=_physical_group_names,
+            source_brep_authoritative=_source_brep_authoritative,
+            physical_groups_authoritative=_groups_authoritative,
+            source_path=source_path,
+            # Uniform-grid Hex has a half-cell stair-step offset from a CAD
+            # face; make that measured tolerance explicit in the certificate.
+            plane_tolerance=max(1e-9, 1.25 * float(np.sqrt(3.0)) * float(h)),
+        )
+        if _source_output_binding.strict_binding_complete:
+            _boundary_patch_classifier = make_boundary_patch_classifier(
+                _source_output_binding, final_hexes
+            )
+    except Exception as _binding_exc:
+        log.warning("native_hex_source_binding_failed", error=str(_binding_exc)[:240])
+        _source_output_binding = None
+
+    try:
+        stats = _write_polymesh_hex(
+            final_pts,
+            final_hexes,
+            case_dir,
+            boundary_patch_classifier=_boundary_patch_classifier,
+        )
     except Exception as exc:
         return NativeHexResult(
             False,
@@ -2478,6 +2542,7 @@ def generate_native_hex(
         fill_ratio=round(_fill, 4),
         elapsed=round(time.perf_counter() - t0, 3),
         **_phase0_fields,
+        source_output_binding=_source_output_binding,
     )
 
     # C-PERF-3 / beta2388 — wall-clock budget 진단.
@@ -2534,4 +2599,5 @@ def generate_native_hex(
         n_self_intersect_pre=_pre_mesh_si_count,
         mesh_integrity_suspect=_hex_suspect,
         **_phase0_fields,
+        source_output_binding=_source_output_binding,
     )

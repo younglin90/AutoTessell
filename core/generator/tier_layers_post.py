@@ -126,6 +126,48 @@ def _hex_inward_l0_box_contract(
     return True, "ok", side_lengths
 
 
+def _hex_general_inward_boundary_contract(
+    points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int],
+    neighbour: list[int],
+    selected: list[int],
+    face_patch: dict[int, tuple[str, str]],
+) -> tuple[bool, str, np.ndarray]:
+    """Recognize a conservative all-boundary quad source for inward BL.
+
+    This route is opt-in and does not infer CAD topology from coordinates.
+    It only admits a closed all-quad boundary selection; the staged strict
+    checker remains authoritative for the base cells.
+    """
+    if len(points) == 0 or not np.all(np.isfinite(points)):
+        return False, "requires_finite_points", np.zeros(3)
+    boundary_faces = set(range(len(neighbour), len(faces)))
+    if not boundary_faces or set(selected) != boundary_faces:
+        return False, "requires_all_boundary_quads_selected", np.zeros(3)
+    if set(face_patch) != boundary_faces:
+        return False, "requires_boundary_patch_binding", np.zeros(3)
+    if any(len(faces[fi]) != 4 for fi in boundary_faces):
+        return False, "requires_all_boundary_faces_quad", np.zeros(3)
+    if len(owner) != len(faces) or len(neighbour) > len(faces):
+        return False, "invalid_polyMesh_topology", np.zeros(3)
+    boundary_vertices = {int(vertex) for fi in boundary_faces for vertex in faces[fi]}
+    if not boundary_vertices:
+        return False, "requires_boundary_vertices", np.zeros(3)
+    edge_lengths: list[float] = []
+    for fi in boundary_faces:
+        face = faces[fi]
+        if len(set(int(vertex) for vertex in face)) != 4:
+            return False, "quad_has_repeated_vertex", np.zeros(3)
+        for index, vertex in enumerate(face):
+            adjacent = int(face[(index + 1) % len(face)])
+            edge_lengths.append(float(np.linalg.norm(points[int(vertex)] - points[adjacent])))
+    min_edge = min(edge_lengths, default=0.0)
+    if not np.isfinite(min_edge) or min_edge <= 0.0:
+        return False, "boundary_edge_length_not_positive", np.zeros(3)
+    return True, "ok", np.array([min_edge, min_edge, min_edge], dtype=np.float64)
+
+
 def _polymesh_manifest(root: Path) -> dict[str, tuple[str, bytes | str]]:
     """Capture every polyMesh entry without following internal symlinks."""
     manifest: dict[str, tuple[str, bytes | str]] = {}
@@ -344,17 +386,37 @@ def _run_native_hex_bl_locked(
             face_patch[fi] = (name, kind)
 
     box_side_lengths = np.zeros(3, dtype=np.float64)
+    general_inward = _coerce_bool(
+        params.get("post_layers_hex_general_inward_shell"),
+        False,
+    )
     if inward_shell:
-        contract_ok, contract_reason, box_side_lengths = _hex_inward_l0_box_contract(
-            points,
-            faces,
-            owner,
-            neighbour,
-            selected,
-            face_patch,
-        )
+        if general_inward:
+            contract_ok, contract_reason, box_side_lengths = (
+                _hex_general_inward_boundary_contract(
+                    points,
+                    faces,
+                    owner,
+                    neighbour,
+                    selected,
+                    face_patch,
+                )
+            )
+            contract_prefix = "native_hex_bl_general_inward_contract"
+        else:
+            contract_ok, contract_reason, box_side_lengths = (
+                _hex_inward_l0_box_contract(
+                    points,
+                    faces,
+                    owner,
+                    neighbour,
+                    selected,
+                    face_patch,
+                )
+            )
+            contract_prefix = "native_hex_bl_inward_l0_contract"
         if not contract_ok:
-            return False, f"native_hex_bl_inward_l0_contract:{contract_reason}", 0
+            return False, f"{contract_prefix}:{contract_reason}", 0
         layers = int(num_layers)
         first = float(first_thickness)
         growth = float(growth_ratio)
@@ -365,15 +427,12 @@ def _run_native_hex_bl_locked(
             or not np.isfinite(growth)
             or growth <= 0.0
         ):
-            return False, "native_hex_bl_inward_l0_contract:invalid_layer_sizes", 0
+            return False, f"{contract_prefix}:invalid_layer_sizes", 0
         with np.errstate(over="ignore", invalid="ignore"):
             layer_thicknesses = first * np.power(growth, np.arange(layers))
         total_thickness = float(np.sum(layer_thicknesses))
-        safe_limit = (
-            _HEX_INWARD_L0_HALF_SIDE_SAFETY
-            * 0.5
-            * float(np.min(box_side_lengths))
-        )
+        safe_fraction = 0.25 if general_inward else _HEX_INWARD_L0_HALF_SIDE_SAFETY * 0.5
+        safe_limit = safe_fraction * float(np.min(box_side_lengths))
         if not np.isfinite(total_thickness) or not total_thickness < safe_limit:
             return (
                 False,

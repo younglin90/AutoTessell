@@ -841,6 +841,7 @@ def generate_native_tet(
     # Native-poly opt-in: the dual creates one cell per retained primal point.
     # Generic tet callers leave this unset and retain the legacy contract.
     min_final_vertices: int | None = None,
+    enable_same_side_retriangulation: bool | None = None,
     # beta410 — progress_cb(stage: str, pct: float, info: dict): 진행 보고.
     progress_cb: "Any" = None,
     # beta140 Phase E2 — curvature-adaptive sizing (split/collapse 기준).
@@ -913,6 +914,10 @@ def generate_native_tet(
         NativeTetResult.
     """
     t0 = time.perf_counter()
+    # Preserve caller intent; the internal grid heuristic may materialize an
+    # edge length, but explicit target experiments must remain fail-closed.
+    _requested_target_cells = target_cells
+    _requested_target_edge_length = target_edge_length
     _smooth_then_drop_sidedness_transaction: dict[str, int | bool] | None = None
     _degenerate_removal_source_transaction: dict[str, int | bool] | None = None
     _sss_relocation_source_transaction: dict[str, int | bool] | None = None
@@ -942,6 +947,18 @@ def generate_native_tet(
     _input_source_faces = np.array(F, dtype=np.int64, order="C", copy=True)
     _input_source_vertices.setflags(write=False)
     _input_source_faces.setflags(write=False)
+    _raw_source_vertices = _input_source_vertices
+    _raw_source_faces = _input_source_faces
+    _source_ingress_normalization = {
+        "applied": False,
+        "raw_vertices": int(_raw_source_vertices.shape[0]),
+        "raw_faces": int(_raw_source_faces.shape[0]),
+        "canonical_vertices": int(_raw_source_vertices.shape[0]),
+        "canonical_faces": int(_raw_source_faces.shape[0]),
+        "deduplicated_vertices": 0,
+        "dropped_degenerate_faces": 0,
+        "duplicate_faces_rejected": False,
+    }
 
     # BETA2833 (B-8) — env AUTO_TESSELL_USE_FTETWILD_LOOP=1 시 dedicated
     # ftetwild_main_loop 직접 호출 → 기존 mesher pipeline 우회. wildmesh parity
@@ -1120,6 +1137,11 @@ def generate_native_tet(
                 if chk is not None:
                     if chk.n_boundary_edges > 0 or chk.n_nonmanifold_edges > 0:
                         aggressive = True
+                # The explicit release route must never fill holes or invent
+                # source faces. Conservative coordinate/degenerate cleanup is
+                # allowed and is separately recorded as ingress evidence.
+                if enable_same_side_retriangulation is True:
+                    aggressive = False
                 V_fix, F_fix, fix_info = auto_fix_input(
                     V, F, dup_tol=1e-9, drop_zero_area=True, align_winding=True,
                     aggressive=aggressive,
@@ -1139,6 +1161,26 @@ def generate_native_tet(
                     )
                     V = V_fix.astype(np.float64)
                     F = F_fix.astype(np.int64)
+                    # Keep immutable caller arrays as source authority.
+                    # Auto-fix may feed the mesher but cannot authorize an
+                    # ambiguous duplicate-coordinate source.
+                    _canonical_face_keys = np.sort(np.asarray(F_fix, dtype=np.int64), axis=1)
+                    _duplicate_face_count = int(
+                        _canonical_face_keys.shape[0]
+                        - np.unique(_canonical_face_keys, axis=0).shape[0]
+                    )
+                    _source_ingress_normalization = {
+                        "applied": True,
+                        "raw_vertices": int(_raw_source_vertices.shape[0]),
+                        "raw_faces": int(_raw_source_faces.shape[0]),
+                        "canonical_vertices": int(V_fix.shape[0]),
+                        "canonical_faces": int(F_fix.shape[0]),
+                        "deduplicated_vertices": int(fix_info.get("n_dedup", 0)),
+                        "dropped_degenerate_faces": int(
+                            fix_info.get("n_zero_area_drop", 0)
+                        ),
+                        "duplicate_faces_rejected": bool(_duplicate_face_count > 0),
+                    }
             except Exception as exc:
                 log.debug("native_tet_auto_fix_skipped", reason=str(exc))
 
@@ -3967,7 +4009,10 @@ def generate_native_tet(
     try:
         if _phase_bc_skip:
             raise RuntimeError("_phase_bc_skip")
-        if os.environ.get("AUTO_TESSELL_STELLAR_KLINGNER", "1") != "0":
+        if (
+            enable_same_side_retriangulation is not True
+            and os.environ.get("AUTO_TESSELL_STELLAR_KLINGNER", "1") != "0"
+        ):
             from core.generator.native_tet.quality import snapshot as _qsnap_st
             pre_q_st = _qsnap_st(final_pts, final_tets)
             # 트리거: mean_q < 0.30 또는 min_q < 1e-4 (sliver 잔존).
@@ -5091,20 +5136,23 @@ def generate_native_tet(
                         "n_moved": int(_cvt_res.n_moved),
                     }
                     if not _cvt3d_sidedness_transaction["accepted"]:
-                        # This is the first persistent overlap transition
-                        # after JJ3.  Do not let a later local pass conceal
-                        # it: return the exact pre-CVT arrays and publish no
-                        # new polyMesh artifact.
+                        # The legacy route fails closed immediately.  The
+                        # explicit release route keeps the exact pre-CVT
+                        # arrays and continues to the independent final
+                        # topology/source audit; the rejected candidate never
+                        # reaches a writer or later mutator.
                         log.warning(
                             "native_tet_cvt3d_sidedness_rejected",
                             **_cvt3d_sidedness_transaction,
                         )
-                        return _cvt3d_fail_closed_result(
-                            _cvt3d_selected_pts,
-                            _cvt3d_selected_tets,
-                            _cvt3d_sidedness_transaction,
-                        )
-                    final_pts = _cvt3d_selected_pts
+                        if enable_same_side_retriangulation is not True:
+                            return _cvt3d_fail_closed_result(
+                                _cvt3d_selected_pts,
+                                _cvt3d_selected_tets,
+                                _cvt3d_sidedness_transaction,
+                            )
+                    else:
+                        final_pts = _cvt3d_selected_pts
                     final_tets = _cvt3d_selected_tets
                 log.info(
                     "native_tet_cvt3d_lloyd",
@@ -5161,12 +5209,14 @@ def generate_native_tet(
                                     "native_tet_cvt3d_sidedness_rejected",
                                     **_cvt2_sidedness_transaction,
                                 )
-                                return _cvt3d_fail_closed_result(
-                                    _cvt2_selected_pts,
-                                    _cvt2_selected_tets,
-                                    _cvt2_sidedness_transaction,
-                                )
-                            final_pts = _cvt2_selected_pts
+                                if enable_same_side_retriangulation is not True:
+                                    return _cvt3d_fail_closed_result(
+                                        _cvt2_selected_pts,
+                                        _cvt2_selected_tets,
+                                        _cvt2_sidedness_transaction,
+                                    )
+                            else:
+                                final_pts = _cvt2_selected_pts
                             final_tets = _cvt2_selected_tets
                         log.info(
                             "native_tet_cvt3d_lloyd_pass2_qw",
@@ -6230,7 +6280,11 @@ def generate_native_tet(
     # collapse → split → flip(3-2/4-4) → smooth — 4-stage cycle, n_cycles=2.
     # GAP-SELF AMIPS 직전 통합 sweep 으로 self-impl mesh 의 cross-stage 효과 누적.
     # 자체 monotone guard + plateau early-exit.
-    if grade in ("B", "C", "D", "?") and final_tets.shape[0] > 100:
+    if (
+        enable_same_side_retriangulation is not True
+        and grade in ("B", "C", "D", "?")
+        and final_tets.shape[0] > 100
+    ):
         try:
             from core.generator.native_tet.klingner_full_sweep import (
                 klingner_full_sweep,
@@ -6270,7 +6324,11 @@ def generate_native_tet(
     # METRIC-TENSOR / beta2803 — curvature anisotropic metric guided sweep.
     # surface curvature → anisotropic metric tensor → collapse/split 우선순위.
     # self-impl tet 단독 grade A 도달 시도.
-    if grade in ("B", "C", "D", "?") and final_tets.shape[0] > 100:
+    if (
+        enable_same_side_retriangulation is not True
+        and grade in ("B", "C", "D", "?")
+        and final_tets.shape[0] > 100
+    ):
         try:
             from core.generator.native_tet.metric_tensor_sweep import (
                 metric_tensor_sweep, compute_curvature_metric,
@@ -6413,7 +6471,7 @@ def generate_native_tet(
     # n_iter_per=2 (보통 1) → 더 깊은 minimization. monotone guard (자체 보유).
     # P4-C fallback 직전 self-impl 의 마지막 회복 기회 — 외부 fallback 없을 때
     # (env P4C OFF) 에도 self-impl 단독 grade A 향상 가능.
-    if grade in ("B", "C", "D", "?"):
+    if enable_same_side_retriangulation is not True and grade in ("B", "C", "D", "?"):
         try:
             from core.generator.native_tet.amips import smooth_amips_multistage as _ams
             from core.generator.native_tet.quality import snapshot as _qs_self
@@ -6739,6 +6797,7 @@ def generate_native_tet(
         "target_edge": float(target_edge_length),
         "n_final_tets": int(final_tets.shape[0]),
         "n_final_points": int(final_pts.shape[0]),
+        "source_ingress_normalization": _source_ingress_normalization,
     }
     if _smooth_then_drop_sidedness_transaction is not None:
         debug_info["smooth_then_drop_sidedness_transaction"] = (
@@ -6908,8 +6967,10 @@ def generate_native_tet(
     # unchanged coordinates when a previous local mutation leaves overlapping
     # same-side internal faces.  Admission requires exact source ownership
     # plus a strict debt decrease; every other result keeps original arrays
-    # byte-for-byte.
-    if os.environ.get("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION") == "1":
+    if (
+        enable_same_side_retriangulation is True
+        or os.environ.get("AUTO_TESSELL_TET_SAME_SIDE_RETRIANGULATION") == "1"
+    ):
         try:
             from core.generator.native_tet.same_side_retriangulation import (
                 retriangulate_if_strictly_safer,
@@ -7097,7 +7158,90 @@ def generate_native_tet(
                 _source_component_audit.source_faces_preserved
             ),
         }
-        if not _source_topology_audit.valid:
+        _release_written_artifact_valid = False
+        if (
+            not _source_topology_audit.valid
+            and (
+                enable_same_side_retriangulation is True
+                or (
+                    _requested_target_cells is None
+                    and _requested_target_edge_length is None
+                )
+            )
+            and _source_component_audit.bijective
+            and _source_component_audit.source_faces_preserved
+            and (
+                _boundary_topology_audit.n_same_side_internal_faces == 0
+                or (
+                    enable_same_side_retriangulation is not True
+                    and _requested_target_cells is None
+                    and _requested_target_edge_length is None
+                )
+            )
+            and _boundary_topology_audit.n_open_edges == 0
+            and _boundary_topology_audit.n_nonmanifold_edges == 0
+            and _boundary_topology_audit.n_nonmanifold_faces == 0
+            and _boundary_topology_audit.n_duplicate_tets == 0
+            and _boundary_topology_audit.n_inverted_tets == 0
+        ):
+            # The in-memory sidedness predicate intentionally fails closed on
+            # near-zero/degenerate predicates.  For an admitted route the
+            # written artifact is an independent authority: write the exact
+            # candidate once, then require the read-back strict volume audit.
+            try:
+                PolyMeshWriter().write(
+                    final_pts,
+                    final_tets,
+                    case_dir,
+                    boundary_patch_classifier=_get_boundary_patch_classifier(),
+                    point_precision=17,
+                )
+                from core.evaluator.strict_volume_topology import (
+                    audit_strict_volume_topology,
+                )
+                _release_artifact_audit = audit_strict_volume_topology(case_dir)
+                _release_written_artifact_valid = bool(
+                    _release_artifact_audit.valid
+                )
+                debug_info["strict_source_topology"][
+                    "release_written_artifact_gate"
+                ] = {
+                    "valid": _release_written_artifact_valid,
+                    "artifact_sha256": _release_artifact_audit.artifact_sha256,
+                    "n_duplicate_faces": _release_artifact_audit.n_duplicate_faces,
+                    "n_nonmanifold_faces": (
+                        _release_artifact_audit.n_nonmanifold_faces
+                    ),
+                    "n_nonmanifold_cell_edges": (
+                        _release_artifact_audit.n_nonmanifold_cell_edges
+                    ),
+                    "n_open_cell_edges": _release_artifact_audit.n_open_cell_edges,
+                    "n_inverted_cells": _release_artifact_audit.n_inverted_cells,
+                    "min_cell_volume": _release_artifact_audit.min_cell_volume,
+                    "boundary_surface_valid": (
+                        _release_artifact_audit.boundary_surface_valid
+                    ),
+                    "boundary_nonmanifold_edges": (
+                        _release_artifact_audit.boundary_nonmanifold_edges
+                    ),
+                    "boundary_nonmanifold_vertices": (
+                        _release_artifact_audit.boundary_nonmanifold_vertices
+                    ),
+                    "in_memory_ambiguous_internal_faces": int(
+                        _boundary_topology_audit.n_ambiguous_internal_faces
+                    ),
+                    "in_memory_degenerate_tets": int(
+                        _boundary_topology_audit.n_degenerate_tets
+                    ),
+                }
+            except Exception as _release_artifact_exc:
+                debug_info["strict_source_topology"][
+                    "release_written_artifact_gate_error"
+                ] = (
+                    f"{type(_release_artifact_exc).__name__}: "
+                    f"{_release_artifact_exc}"
+                )
+        if not _source_topology_audit.valid and not _release_written_artifact_valid:
             import shutil  # noqa: PLC0415
 
             _stale_poly_mesh = Path(case_dir) / "constant" / "polyMesh"
@@ -7121,6 +7265,13 @@ def generate_native_tet(
                 warnings=warnings_list or None,
                 debug_info=debug_info,
             )
+        if _release_written_artifact_valid:
+            debug_info["strict_source_topology"][
+                "release_route_valid"
+            ] = True
+            debug_info["strict_source_topology"][
+                "in_memory_predicate_valid"
+            ] = False
     except Exception as _source_topology_exc:
         import shutil  # noqa: PLC0415
 
