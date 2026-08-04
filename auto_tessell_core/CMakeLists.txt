@@ -415,6 +415,8 @@ if(BUILD_NATIVE_TET_BL_QOPT)
   pybind11_add_module(native_tet_bl_admission native_tet_bl_admission_bind.cpp)
   autotessell_configure_first_party_native(native_tet_bl_admission)
   pybind11_add_module(native_tet_bl_authoritative_graph native_tet_bl_authoritative_graph_bind.cpp)
+  pybind11_add_module(native_tet_persisted_volume_artifact native_tet_persisted_volume_artifact_bind.cpp native_tet_polymesh_persisted_reader.cpp)
+  autotessell_configure_first_party_native(native_tet_persisted_volume_artifact)
   autotessell_configure_first_party_native(native_tet_bl_authoritative_graph)
 endif()
 

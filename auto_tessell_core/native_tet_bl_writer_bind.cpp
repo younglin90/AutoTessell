@@ -145,6 +145,9 @@ py::dict generate(
     result["candidate_discarded"] = false;
     result["requested_layers"] = requested_layers;
     result["actual_layers"] = requested_layers;
+    result["first_height"] = first_height;
+    result["growth_ratio"] = growth_ratio;
+    result["total_thickness"] = 0.0;
     if (requested_layers == 0) {
         result["accepted"] = true;
         result["status"] = "bl0_identity";
@@ -171,6 +174,7 @@ py::dict generate(
         }
     }
 
+    result["total_thickness"] = cumulative;
     std::vector<Tet> output_tets;
     py::list prism_records;
     py::list cell_records;
@@ -683,6 +687,22 @@ py::dict generate_authoritative_artifact(
     return result;
 }
 
+py::dict generate_authoritative_persisted_volume_artifact(
+    const std::string& poly_mesh_root, const py::dict& authority) {
+    try {
+        const py::module_ reader = py::module_::import("native_tet_persisted_volume_artifact");
+        return reader.attr("read_authoritative_volume_artifact")(poly_mesh_root, authority).cast<py::dict>();
+    } catch (const py::error_already_set&) {
+        py::dict result;
+        result["accepted"] = false;
+        result["status"] = "native-tet-persisted-volume-route-refused";
+        result["reason"] = "persisted_volume_reader_unavailable";
+        result["candidate_discarded"] = true;
+        result["publication_eligible"] = false;
+        result["rollback_required"] = true;
+        return result;
+    }
+}
 PYBIND11_MODULE(native_tet_bl_writer, module) {
     module.doc() = "C++23 bounded Native Tet BL candidate writer; release route disabled.";
     module.def("generate", &generate,
@@ -691,6 +711,7 @@ PYBIND11_MODULE(native_tet_bl_writer, module) {
         py::arg("minimum_volume") = 1.0e-14);
     module.def("generate_authoritative", &generate_authoritative, py::arg("points"), py::arg("triangles"), py::arg("normals"), py::arg("requested_layers"), py::arg("first_height"), py::arg("growth_ratio"), py::arg("minimum_volume"), py::arg("authority"));
     module.def("generate_authoritative_artifact", &generate_authoritative_artifact, py::arg("points"), py::arg("triangles"), py::arg("normals"), py::arg("requested_layers"), py::arg("first_height"), py::arg("growth_ratio"), py::arg("minimum_volume"), py::arg("authority"));
+    module.def("generate_authoritative_persisted_volume_artifact", &generate_authoritative_persisted_volume_artifact, py::arg("poly_mesh_root"), py::arg("authority"));
 }
 py::list integer_list(std::initializer_list<std::int64_t> values) {
     return integer_list(std::vector<std::int64_t>(values));
