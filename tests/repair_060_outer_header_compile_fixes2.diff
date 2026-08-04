@@ -1,0 +1,15 @@
+diff --git a/auto_tessell_core/native_tet_bl_admission_bind.cpp b/auto_tessell_core/native_tet_bl_admission_bind.cpp
+--- a/auto_tessell_core/native_tet_bl_admission_bind.cpp
++++ b/auto_tessell_core/native_tet_bl_admission_bind.cpp
+@@ -22,0 +23,1 @@
++#include "surface_bl_front_shared/brep_evidence_sha256.hpp"
+diff --git a/auto_tessell_core/native_tet_writer_outer_admission.hpp b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+--- a/auto_tessell_core/native_tet_writer_outer_admission.hpp
++++ b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+@@ -151,1 +151,1 @@
+-    py::array_t<std::int64_t> result({static_cast<py::ssize_t>(faces.size()), 3});
++    py::array_t<std::int64_t> result(py::array::ShapeContainer{static_cast<py::ssize_t>(faces.size()), 3});
+@@ -204,1 +204,2 @@
+-    result["collision_first_pair"] = evidence.first_left < 0 ? py::none() : py::make_tuple(evidence.first_left, evidence.first_right);
++    if (evidence.first_left < 0) result["collision_first_pair"] = py::none();
++    else result["collision_first_pair"] = py::make_tuple(evidence.first_left, evidence.first_right);

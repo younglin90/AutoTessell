@@ -1,0 +1,5 @@
+diff --git a/auto_tessell_core/native_tet_bl_admission_bind.cpp b/auto_tessell_core/native_tet_bl_admission_bind.cpp
+--- a/auto_tessell_core/native_tet_bl_admission_bind.cpp
++++ b/auto_tessell_core/native_tet_bl_admission_bind.cpp
+@@ -667,0 +668,1 @@
++#include "native_tet_writer_outer_admission.hpp"

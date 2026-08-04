@@ -1,0 +1,9 @@
+diff --git a/auto_tessell_core/native_tet_writer_outer_admission.hpp b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+--- a/auto_tessell_core/native_tet_writer_outer_admission.hpp
++++ b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+@@ -36,1 +36,1 @@
+-        for (py::ssize_t index = 0; index < sequence.size(); ++index) {
++        for (py::ssize_t index = 0; index < static_cast<py::ssize_t>(sequence.size()); ++index) {
+@@ -180,1 +180,1 @@
+-    if (authority_rows.size() != static_cast<py::ssize_t>(faces.size()))
++    if (static_cast<py::ssize_t>(authority_rows.size()) != static_cast<py::ssize_t>(faces.size()))

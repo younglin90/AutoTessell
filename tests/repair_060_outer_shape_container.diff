@@ -1,0 +1,7 @@
+diff --git a/auto_tessell_core/native_tet_writer_outer_admission.hpp b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+--- a/auto_tessell_core/native_tet_writer_outer_admission.hpp
++++ b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+@@ -151,1 +151,2 @@
+-    py::array_t<std::int64_t> result(py::array::ShapeContainer{static_cast<py::ssize_t>(faces.size()), 3});
++    const std::vector<py::ssize_t> shape = {static_cast<py::ssize_t>(faces.size()), static_cast<py::ssize_t>(3)};
++    py::array_t<std::int64_t> result(shape);

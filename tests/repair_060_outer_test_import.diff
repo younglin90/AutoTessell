@@ -1,0 +1,6 @@
+diff --git a/tests/test_native_tet_writer_outer_admission_cpp23.py b/tests/test_native_tet_writer_outer_admission_cpp23.py
+--- a/tests/test_native_tet_writer_outer_admission_cpp23.py
++++ b/tests/test_native_tet_writer_outer_admission_cpp23.py
+@@ -9,1 +9,1 @@
+-from test_native_tet_bl_admission_cpp23 import _authority, _ledger, _policy, _tetra
++from tests.test_native_tet_bl_admission_cpp23 import _authority, _ledger, _policy, _tetra

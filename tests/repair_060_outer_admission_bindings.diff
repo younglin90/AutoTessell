@@ -1,0 +1,13 @@
+diff --git a/auto_tessell_core/native_tet_bl_admission_bind.cpp b/auto_tessell_core/native_tet_bl_admission_bind.cpp
+--- a/auto_tessell_core/native_tet_bl_admission_bind.cpp
++++ b/auto_tessell_core/native_tet_bl_admission_bind.cpp
+@@ -678,4 +678,9 @@ PYBIND11_MODULE(native_tet_bl_admission, module) {
+         py::arg("base_points") = py::none(),
+         py::arg("ledger") = py::none(),
+         py::arg("authority") = py::none());
++    module.def("canonical_input_parameters_sha256", &native_tet_writer_outer::input_parameters_sha256,
++        py::arg("input_parameters"));
++    module.def("admit_writer_owned_outer_surface", &native_tet_writer_outer::admit_writer_owned_outer_surface,
++        py::arg("points"), py::arg("tets"), py::arg("policy"), py::arg("requested_layers"),
++        py::arg("ledger"), py::arg("authority"));
+ }

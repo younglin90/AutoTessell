@@ -1,0 +1,24 @@
+diff --git a/docs/qa/rounds/native-all-production-gate-060/plan.md b/docs/qa/rounds/native-all-production-gate-060/plan.md
+--- a/docs/qa/rounds/native-all-production-gate-060/plan.md
++++ b/docs/qa/rounds/native-all-production-gate-060/plan.md
+@@ -9,1 +9,1 @@
+-- 
++-
+@@ -20,1 +20,1 @@
+-- 
++-
+@@ -31,1 +31,1 @@
+-- 
++-
+diff --git a/docs/qa/rounds/native-all-production-gate-060/literature.md b/docs/qa/rounds/native-all-production-gate-060/literature.md
+--- a/docs/qa/rounds/native-all-production-gate-060/literature.md
++++ b/docs/qa/rounds/native-all-production-gate-060/literature.md
+@@ -9,1 +9,1 @@
+-- 
++-
+@@ -13,1 +13,1 @@
+-- 
++-
+@@ -17,1 +17,1 @@
+-- 
++-

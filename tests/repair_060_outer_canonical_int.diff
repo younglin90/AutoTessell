@@ -1,0 +1,6 @@
+diff --git a/auto_tessell_core/native_tet_writer_outer_admission.hpp b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+--- a/auto_tessell_core/native_tet_writer_outer_admission.hpp
++++ b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+@@ -15,1 +15,1 @@
+-    if (py::isinstance<py::int_>(value)) return "int:" + value.cast<std::string>() + ";";
++    if (py::isinstance<py::int_>(value)) return "int:" + std::to_string(value.cast<long long>()) + ";";

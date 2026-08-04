@@ -1,0 +1,30 @@
+diff --git a/auto_tessell_core/native_tet_bl_admission_bind.cpp b/auto_tessell_core/native_tet_bl_admission_bind.cpp
+--- a/auto_tessell_core/native_tet_bl_admission_bind.cpp
++++ b/auto_tessell_core/native_tet_bl_admission_bind.cpp
+@@ -17,5 +17,9 @@
+ #include <cstring>
+ #include <map>
+ #include <set>
+ #include <stdexcept>
++#include <iomanip>
++#include <sstream>
+ #include <string>
++#include <utility>
+ #include <vector>
++#include "surface_bl_front_shared/brep_evidence_sha256.hpp"
+diff --git a/auto_tessell_core/native_tet_writer_outer_admission.hpp b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+--- a/auto_tessell_core/native_tet_writer_outer_admission.hpp
++++ b/auto_tessell_core/native_tet_writer_outer_admission.hpp
+@@ -3,12 +3,1 @@
+-#include <algorithm>
+-#include <iomanip>
+-#include <limits>
+-#include <map>
+-#include <sstream>
+-#include <string>
+-#include <utility>
+-#include <vector>
+-
+-#include "surface_bl_front_shared/brep_evidence_sha256.hpp"
+-
+ namespace native_tet_writer_outer {
