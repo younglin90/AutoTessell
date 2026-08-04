@@ -63,6 +63,8 @@ option(BUILD_NATIVE_TRI_CAD_STL_AUTHORITY_INGRESS
   "Build private C++23 Native Tri CAD/STL authority certificate ingress" ON)
 option(BUILD_NATIVE_WALL_EDGE_METRIC_CORRIDOR
   "Build default-off shared wall-edge metric corridor certificate" ON)
+option(BUILD_NATIVE_TRANSACTION_INTENT
+  "Build default-off authoritative transaction-intent admission kernel" ON)
 option(BUILD_NATIVE_TRI_WALL_EDGE_BL_PREFLIGHT
   "Build private C++23 Native Tri wall-edge BL authority preflight" ON)
 option(BUILD_NATIVE_TRI_PLANAR_TRIANGLE_BL_TEMPLATE
@@ -946,4 +948,10 @@ if(BUILD_NATIVE_WALL_EDGE_METRIC_CORRIDOR)
   pybind11_add_module(native_wall_edge_metric_corridor
       native_wall_edge_metric_corridor.cpp)
   autotessell_configure_first_party_native(native_wall_edge_metric_corridor)
+endif()
+if(BUILD_NATIVE_TRANSACTION_INTENT)
+  pybind11_add_module(native_transaction_intent
+      native_transaction_intent/native_transaction_intent_bind.cpp
+      native_transaction_intent/native_transaction_intent_v1.cpp)
+  autotessell_configure_first_party_native(native_transaction_intent)
 endif()

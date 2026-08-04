@@ -1952,3 +1952,11 @@ compile, and diff checks passed. Next: TRI+QUAD mixed-topology authority.
 - Next: native-all-production-gate-064
 - Evidence: docs/qa/rounds/native-all-production-gate-063/
 
+## native-all-production-gate-064 — partial
+
+- Closed: 2026-08-04T16:00:07+00:00
+- Goal: native-all-production-gate-064
+- Result: 064_atb_authoritative_transaction_binding_cpp23_and_43_focused_tests_pass
+- Next: native-all-production-gate-065
+- Evidence: docs/qa/rounds/native-all-production-gate-064/
+
