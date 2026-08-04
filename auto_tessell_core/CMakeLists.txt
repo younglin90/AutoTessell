@@ -61,6 +61,8 @@ option(BUILD_NATIVE_POLY_PROTECTED_CORPUS_RECEIPT Build_private_protected_native
 option(BUILD_NATIVE_TRI_AUTHORITY_INGRESS_RECEIPT Build_private_native_tri_authority_ingress_receipt ON)
 option(BUILD_NATIVE_TRI_CAD_STL_AUTHORITY_INGRESS
   "Build private C++23 Native Tri CAD/STL authority certificate ingress" ON)
+option(BUILD_NATIVE_WALL_EDGE_METRIC_CORRIDOR
+  "Build default-off shared wall-edge metric corridor certificate" ON)
 option(BUILD_NATIVE_TRI_WALL_EDGE_BL_PREFLIGHT
   "Build private C++23 Native Tri wall-edge BL authority preflight" ON)
 option(BUILD_NATIVE_TRI_PLANAR_TRIANGLE_BL_TEMPLATE
@@ -939,4 +941,9 @@ endif()
   target_include_directories(native_surface_bl_front_shared_optimizer PRIVATE
       "${CMAKE_CURRENT_SOURCE_DIR}/surface_bl_front_shared")
   autotessell_configure_first_party_native(native_surface_bl_front_shared_optimizer)
+endif()
+if(BUILD_NATIVE_WALL_EDGE_METRIC_CORRIDOR)
+  pybind11_add_module(native_wall_edge_metric_corridor
+      native_wall_edge_metric_corridor.cpp)
+  autotessell_configure_first_party_native(native_wall_edge_metric_corridor)
 endif()
