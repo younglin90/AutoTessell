@@ -1960,3 +1960,27 @@ compile, and diff checks passed. Next: TRI+QUAD mixed-topology authority.
 - Next: native-all-production-gate-065
 - Evidence: docs/qa/rounds/native-all-production-gate-064/
 
+## native-all-production-gate-065 — success
+
+- Closed: 2026-08-04T16:46:12+00:00
+- Goal: native-all-production-gate-065
+- Result: 065_AQTE_complete_35_tests_passed_actual_writer_bindings_next
+- Next: native-all-production-gate-066
+- Evidence: docs/qa/rounds/native-all-production-gate-065/
+
+## native-all-production-gate-066 — partial
+
+- Closed: 2026-08-04T17:13:59+00:00
+- Goal: native-all-production-gate-066
+- Result: 066_AQTE_callback_complete_actual_Tet_surface_writers_fail_closed_44_tests_passed
+- Next: native-all-production-gate-067
+- Evidence: docs/qa/rounds/native-all-production-gate-066/
+
+## native-all-production-gate-067 — partial
+
+- Closed: 2026-08-04T17:54:40+00:00
+- Goal: native-all-production-gate-067
+- Result: actual_writer_contract_surface_bl0_bl1_tet_bl1_pass_tet_bl0_open
+- Next: native-all-production-gate-068
+- Evidence: docs/qa/rounds/native-all-production-gate-067/
+

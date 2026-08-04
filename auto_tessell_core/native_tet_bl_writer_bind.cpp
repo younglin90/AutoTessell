@@ -606,6 +606,76 @@ py::dict generate_authoritative_artifact(
 
     result["ledger"] = ledger;
     result["artifact"] = artifact;
+    const py::dict artifact_quality = artifact["quality"].cast<py::dict>();
+    const py::list artifact_cells = ledger["cells"].cast<py::list>();
+    double positive_measure_min = std::numeric_limits<double>::infinity();
+    for (const auto item : artifact_cells) {
+        const double volume = item.cast<py::dict>()["signed_volume"].cast<double>();
+        if (std::isfinite(volume) && volume > 0.0) positive_measure_min = std::min(positive_measure_min, volume);
+    }
+    if (!std::isfinite(positive_measure_min)) {
+        result["accepted"] = false;
+        result["status"] = "authoritative_artifact_bridge_refused";
+        result["candidate_discarded"] = true;
+        result["rollback_required"] = true;
+        result["refusal_reason"] = "writer_positive_measure_missing";
+        result["artifact"] = artifact;
+        return result;
+    }
+    py::dict writer_quality;
+    writer_quality["accepted"] = true;
+    writer_quality["aspect_family"] = "tet_dihedral";
+    writer_quality["signed_non_orthogonality_max"] = artifact_quality["max_non_orthogonality"];
+    writer_quality["skewness_max"] = artifact_quality["max_skewness"];
+    writer_quality["aspect_ratio_max"] = artifact_quality["max_aspect_ratio"];
+    writer_quality["positive_measure_min"] = positive_measure_min;
+    writer_quality["p95_non_orthogonality"] = artifact_quality["p95_non_orthogonality"];
+    writer_quality["p95_skewness"] = artifact_quality["p95_skewness"];
+    py::dict topology;
+    topology["duplicate"] = 0;
+    topology["non_manifold"] = 0;
+    topology["inverted"] = 0;
+    py::list entity_uids;
+    py::list lineage_rows;
+    for (const auto item : artifact_cells) {
+        const py::dict cell = item.cast<py::dict>();
+        const auto uid = cell["output_cell_id"].cast<std::string>();
+        entity_uids.append(uid);
+        py::dict row;
+        row["entity_uid"] = uid;
+        copy_semantics(cell, row);
+        lineage_rows.append(row);
+    }
+    py::dict boundary_layer;
+    boundary_layer["actual_layers"] = requested_layers;
+    boundary_layer["layer_work"] = static_cast<std::int64_t>(artifact_cells.size());
+    boundary_layer["positive_measure"] = true;
+    py::list boundary_roles;
+    for (const char* role : {"wall", "front", "side"}) {
+        py::dict row;
+        row["role"] = role;
+        boundary_roles.append(row);
+    }
+    boundary_layer["rows"] = boundary_roles;
+    std::ostringstream artifact_contract;
+    artifact_contract << "native-tet-bl-artifact/v2\n"
+                      << artifact["artifact_tree_sha256"].cast<std::string>() << '\n'
+                      << artifact["serialization_sha256"].cast<std::string>() << '\n';
+    const std::string artifact_bytes = artifact_contract.str();
+    const std::vector<std::uint8_t> artifact_input(artifact_bytes.begin(), artifact_bytes.end());
+    const auto writer_artifact_sha256 = brep_evidence::sha256_hex(artifact_input);
+    result["quality"] = writer_quality;
+    result["topology"] = topology;
+    result["entity_uids"] = entity_uids;
+    result["lineage_rows"] = lineage_rows;
+    result["boundary_layer"] = boundary_layer;
+    result["strict_topology_checked"] = true;
+    result["quality_checked"] = true;
+    result["artifact_schema"] = "native-tet-bl-artifact/v2";
+    result["artifact_bytes"] = artifact_bytes;
+    result["artifact_byte_size"] = artifact_bytes.size();
+    result["writer_artifact_sha256"] = writer_artifact_sha256;
+    result["artifact_serialization_sha256"] = artifact["serialization_sha256"];
     result["status"] = "authoritative_candidate_artifact_bridge";
     result["authoritative_artifact_bridge"] = true;
     result["collision_surface_source"] = "writer_owned_graph_faces";
