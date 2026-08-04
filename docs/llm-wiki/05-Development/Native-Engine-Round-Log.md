@@ -1992,3 +1992,11 @@ compile, and diff checks passed. Next: TRI+QUAD mixed-topology authority.
 - Next: native-all-production-gate-069
 - Evidence: docs/qa/rounds/native-all-production-gate-068/
 
+## native-all-production-gate-069 — partial
+
+- Closed: 2026-08-04T22:10:16+00:00
+- Goal: native-all-production-gate-069
+- Result: persisted_child_verifier
+- Next: native-all-production-gate-070
+- Evidence: docs/qa/rounds/native-all-production-gate-069/
+
