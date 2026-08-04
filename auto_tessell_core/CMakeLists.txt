@@ -65,6 +65,8 @@ option(BUILD_NATIVE_WALL_EDGE_METRIC_CORRIDOR
   "Build default-off shared wall-edge metric corridor certificate" ON)
 option(BUILD_NATIVE_TRANSACTION_INTENT
   "Build default-off authoritative transaction-intent admission kernel" ON)
+option(BUILD_NATIVE_TRANSACTION_EXECUTOR
+  "Build default-off staged quality transaction executor" OFF)
 option(BUILD_NATIVE_TRI_WALL_EDGE_BL_PREFLIGHT
   "Build private C++23 Native Tri wall-edge BL authority preflight" ON)
 option(BUILD_NATIVE_TRI_PLANAR_TRIANGLE_BL_TEMPLATE
@@ -954,4 +956,10 @@ if(BUILD_NATIVE_TRANSACTION_INTENT)
       native_transaction_intent/native_transaction_intent_bind.cpp
       native_transaction_intent/native_transaction_intent_v1.cpp)
   autotessell_configure_first_party_native(native_transaction_intent)
+endif()
+if(BUILD_NATIVE_TRANSACTION_EXECUTOR)
+  pybind11_add_module(native_transaction_executor
+      native_transaction_executor/native_transaction_executor_v1.cpp
+      native_transaction_executor/native_transaction_executor_bind.cpp)
+  autotessell_configure_first_party_native(native_transaction_executor)
 endif()
