@@ -419,6 +419,7 @@ if(BUILD_NATIVE_TET_BL_QOPT)
   autotessell_configure_first_party_native(native_tet_persisted_volume_artifact)
   add_executable(native_tet_persisted_volume_artifact_cli native_tet_persisted_volume_artifact_cli.cpp native_tet_polymesh_persisted_reader.cpp)
   autotessell_configure_first_party_native(native_tet_persisted_volume_artifact_cli)
+  install(TARGETS native_tet_persisted_volume_artifact_cli RUNTIME DESTINATION bin)
   autotessell_configure_first_party_native(native_tet_bl_authoritative_graph)
 endif()
 

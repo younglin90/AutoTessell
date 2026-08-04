@@ -2000,3 +2000,11 @@ compile, and diff checks passed. Next: TRI+QUAD mixed-topology authority.
 - Next: native-all-production-gate-070
 - Evidence: docs/qa/rounds/native-all-production-gate-069/
 
+## native-all-production-gate-070 — partial
+
+- Closed: 2026-08-04T22:57:22+00:00
+- Goal: native-all-production-gate-070
+- Result: tet_child_bound
+- Next: native-all-production-gate-071
+- Evidence: docs/qa/rounds/native-all-production-gate-070/
+

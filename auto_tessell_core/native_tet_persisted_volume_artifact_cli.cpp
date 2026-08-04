@@ -81,15 +81,37 @@ bool read_ledger(const std::filesystem::path& path, std::vector<SourceFace>& fac
     }
     std::string line;
     bool schema_seen = false;
+    bool v2_schema = false;
+    std::map<std::string, std::string> metadata;
     while (std::getline(input, line)) {
         const auto fields = words(line);
         if (fields.empty()) continue;
         if (fields[0] == "schema") {
-            if (schema_seen || fields.size() != 2 || fields[1] != "native-tet-source-ledger/v1") {
+            if (schema_seen || fields.size() != 2) {
+                error = "source_ledger_schema_invalid";
+                return false;
+            }
+            if (fields[1] == "native-tet-source-ledger/v1") {
+                v2_schema = false;
+            } else if (fields[1] == "native-tet-persisted-contract/v2") {
+                v2_schema = true;
+            } else {
                 error = "source_ledger_schema_invalid";
                 return false;
             }
             schema_seen = true;
+        } else if (fields[0] == "meta") {
+            const std::set<std::string> allowed = {
+                "source_sha256", "semantic_ledger_sha256", "topology_kind",
+                "cell_family", "face_arity_policy", "requested_layers",
+                "actual_layers", "parameter_receipt_sha256", "build_identity",
+            };
+            if (!v2_schema || fields.size() != 3 || !allowed.contains(fields[1]) ||
+                fields[2].empty() || metadata.contains(fields[1])) {
+                error = "source_ledger_meta_invalid";
+                return false;
+            }
+            metadata.emplace(fields[1], fields[2]);
         } else if (fields[0] == "face") {
             if (fields.size() != 10) {
                 error = "source_ledger_face_invalid";
@@ -130,6 +152,31 @@ bool read_ledger(const std::filesystem::path& path, std::vector<SourceFace>& fac
     if (!schema_seen || faces.empty() || cells.empty()) {
         error = "source_ledger_incomplete";
         return false;
+    }
+    if (v2_schema) {
+        const std::array<const char*, 7> required = {"source_sha256", "semantic_ledger_sha256",
+            "topology_kind", "cell_family", "face_arity_policy", "requested_layers", "actual_layers"};
+        for (const char* key_name : required) {
+            if (!metadata.contains(key_name)) {
+                error = "source_ledger_meta_missing";
+                return false;
+            }
+        }
+        if (metadata["topology_kind"] != "tet" || metadata["cell_family"] != "tet" ||
+            metadata["face_arity_policy"] != "triangle") {
+            error = "source_ledger_tet_contract_invalid";
+            return false;
+        }
+        try {
+            if (std::stoi(metadata["requested_layers"]) != 0 ||
+                std::stoi(metadata["actual_layers"]) != 0) {
+                error = "positive_bl_child_requires_writer_geometry";
+                return false;
+            }
+        } catch (...) {
+            error = "source_ledger_layer_receipt_invalid";
+            return false;
+        }
     }
     return true;
 }

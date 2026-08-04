@@ -117,3 +117,38 @@ def test_fresh_cpp_child_refuses_nonpositive_persisted_tet(tmp_path: Path) -> No
     assert refused.returncode != 0
     assert "accepted=false" in refused.stdout
     assert "persisted_tet_nonpositive_volume" in refused.stdout
+
+
+def test_fresh_cpp_child_refuses_positive_bl_without_writer_geometry(tmp_path: Path) -> None:
+    cli = _cli()
+    poly_mesh = tmp_path / "polyMesh"
+    ledger = tmp_path / "source.contract"
+    _write_tetra(poly_mesh)
+    semantics = "tetra-wall wall fluid-wall fixture fixture-ledger"
+    ledger.write_text(
+        "\n".join(
+            [
+                "schema native-tet-persisted-contract/v2",
+                "meta source_sha256 " + "a" * 64,
+                "meta semantic_ledger_sha256 " + "b" * 64,
+                "meta topology_kind tet",
+                "meta cell_family tet",
+                "meta face_arity_policy triangle",
+                "meta requested_layers 1",
+                "meta actual_layers 1",
+                f"face face-z0 0 2 1 {semantics}",
+                f"face face-y0 0 1 3 {semantics}",
+                f"face face-x0 0 3 2 {semantics}",
+                f"face face-top 1 2 3 {semantics}",
+                f"cell cell-0 face-z0 {semantics}",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    refused = _run(cli, poly_mesh, ledger)
+
+    assert refused.returncode != 0
+    assert "accepted=false" in refused.stdout
+    assert "positive_bl_child_requires_writer_geometry" in refused.stdout
