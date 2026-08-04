@@ -17,7 +17,7 @@ You are the Analyzer module developer for Auto-Tessell.
 
 ## 첫 번째 행동 (필수)
 
-`agents/specs/analyzer.md`를 읽고 JSON 스키마·로딩 전략·분석 항목을 숙지한다.
+`docs/contracts/analyzer.md`를 읽고 JSON 스키마·로딩 전략·분석 항목을 숙지한다.
 `core/schemas.py`도 읽어 GeometryReport Pydantic 모델과 호환되게 구현한다.
 
 ## 담당 파일

@@ -2,7 +2,7 @@
 
 **DOI:** `10.1145/3478513.3480508` (ACM TOG 40(6), SIGGRAPH Asia 2021)
 **Status:** FULL_READ, pages 13/13, 2026-07-23.
-**PDF:** `papers/pdf/34_pitzalis_2021_generalized_adaptive_refinement.pdf`
+**PDF:** `docs/references/papers/source/pdf/34_pitzalis_2021_generalized_adaptive_refinement.pdf`
 (SHA-256 `9F36FCC8FE2F7E82019B0E6B4736630A1CA3DE9C6C72EDF9DB81CFE0E67BBC35`)
 **Code:** `github.com/cg3hci/Gen-Adapt-Ref-for-Hexmeshing` (C++, CinoLib + **Gurobi**)
 

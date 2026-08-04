@@ -18,7 +18,7 @@ You are the Strategist module developer for Auto-Tessell.
 
 ## 첫 번째 행동 (필수)
 
-`agents/specs/strategist.md`를 읽고 Tier 선택 로직·도메인 설정·셀 크기 결정·BL 파라미터·재시도 전략·MeshStrategy 스키마를 숙지한다.
+`docs/contracts/strategist.md`를 읽고 Tier 선택 로직·도메인 설정·셀 크기 결정·BL 파라미터·재시도 전략·MeshStrategy 스키마를 숙지한다.
 `core/schemas.py`도 읽어 MeshStrategy Pydantic 모델과 호환되게 구현한다.
 
 ## 담당 파일

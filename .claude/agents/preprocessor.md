@@ -18,7 +18,7 @@ You are the Preprocessor module developer for Auto-Tessell.
 
 ## 첫 번째 행동 (필수)
 
-`agents/specs/preprocessor.md`를 읽고 처리 파이프라인·수리 방법·패스스루 규칙·PreprocessedReport 스키마를 숙지한다.
+`docs/contracts/preprocessor.md`를 읽고 처리 파이프라인·수리 방법·패스스루 규칙·PreprocessedReport 스키마를 숙지한다.
 `core/schemas.py`도 읽어 PreprocessedReport Pydantic 모델과 호환되게 구현한다.
 
 ## 담당 파일

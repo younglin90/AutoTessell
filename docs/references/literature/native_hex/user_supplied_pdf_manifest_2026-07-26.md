@@ -15,13 +15,13 @@ tags:
 
 # 사용자 제공 PDF 보관 원장
 
-2026-07-26에 Windows Downloads의 원본을 WSL 프로젝트의 `papers/pdf/`에 복사했다. 원본과 보관본은 SHA-256이 일치한다. `papers/pdf/`는 저장소의 대용량 문헌 보관 정책에 따라 Git에서 무시되므로, 이 원장이 보관 경로·식별자·무결성의 추적점이다.
+2026-07-26에 Windows Downloads의 원본을 WSL 프로젝트의 `docs/references/papers/source/pdf/`에 복사했다. 원본과 보관본은 SHA-256이 일치한다. `docs/references/papers/source/pdf/`는 저장소의 대용량 문헌 보관 정책에 따라 Git에서 무시되므로, 이 원장이 보관 경로·식별자·무결성의 추적점이다.
 
 | 원본 | 프로젝트 보관본 | 논문 | DOI | 페이지 | SHA-256 | 판독 |
 |---|---|---|---|---:|---|---|
-| `C:/Users/user/Downloads/xu2018.pdf` | `papers/pdf/52_xu_2018_hexahedral_mesh_quality_improvement_edge_angle_optimization.pdf` | Xu, Gao, Chen, *Hexahedral mesh quality improvement via edge-angle optimization* | `10.1016/j.cag.2017.07.002` | 11 | `cba14ba0eabe2196820fc2df2c8fa90ab6f7688cf94b941853f3b9b929b806df` | `FULL_READ` |
-| `C:/Users/user/Downloads/wei2015.pdf` | `papers/pdf/53_wei_2015_hexahedral_mesh_smoothing_local_regularization_global_optimization.pdf` | Wei, De, Huang, Wang, *Hexahedral mesh smoothing via local element regularization and global mesh optimization* | `10.1016/j.cad.2014.09.003` | 13 | `db184709febb53efd35b4471cc401646af50145c8838318b79aa1ce11ad0983e` | `FULL_READ` |
-| `C:/Users/user/Downloads/1-s2.0-S0010448524001520-main.pdf` | `papers/pdf/54_zheng_2025_feature_aware_singularity_structure_optimization_hex_mesh.pdf` | Zheng, Duan, Lei, Luo, *Feature-aware Singularity Structure Optimization for Hex Mesh* | `10.1016/j.cad.2024.103825` | 13 | `d4dee6eb57f9050eba95e0dcc98ede2f56762b2b2033dc13bb79df61d6f31655` | `FULL_READ` |
+| `C:/Users/user/Downloads/xu2018.pdf` | `docs/references/papers/source/pdf/52_xu_2018_hexahedral_mesh_quality_improvement_edge_angle_optimization.pdf` | Xu, Gao, Chen, *Hexahedral mesh quality improvement via edge-angle optimization* | `10.1016/j.cag.2017.07.002` | 11 | `cba14ba0eabe2196820fc2df2c8fa90ab6f7688cf94b941853f3b9b929b806df` | `FULL_READ` |
+| `C:/Users/user/Downloads/wei2015.pdf` | `docs/references/papers/source/pdf/53_wei_2015_hexahedral_mesh_smoothing_local_regularization_global_optimization.pdf` | Wei, De, Huang, Wang, *Hexahedral mesh smoothing via local element regularization and global mesh optimization* | `10.1016/j.cad.2014.09.003` | 13 | `db184709febb53efd35b4471cc401646af50145c8838318b79aa1ce11ad0983e` | `FULL_READ` |
+| `C:/Users/user/Downloads/1-s2.0-S0010448524001520-main.pdf` | `docs/references/papers/source/pdf/54_zheng_2025_feature_aware_singularity_structure_optimization_hex_mesh.pdf` | Zheng, Duan, Lei, Luo, *Feature-aware Singularity Structure Optimization for Hex Mesh* | `10.1016/j.cad.2024.103825` | 13 | `d4dee6eb57f9050eba95e0dcc98ede2f56762b2b2033dc13bb79df61d6f31655` | `FULL_READ` |
 
 ## 판독 요약
 

@@ -6,7 +6,7 @@
   Xiao-Ming Fu (corresponding). University of Science and Technology of China.
 - *Computer Graphics Forum* 41(2), 237-247, 2022 (Eurographics 2022).
 - DOI: `10.1111/cgf.14471`.
-- Local full text: `papers/pdf/32_zhang_2022_evolutionary_vertex_optimization.pdf`.
+- Local full text: `docs/references/papers/source/pdf/32_zhang_2022_evolutionary_vertex_optimization.pdf`.
 - Review status: `FULL_READ` on 2026-07-23. Pages 11/11 text-extracted and read
   (the local PDF is the 11-page published CGF version, not a double-spaced
   manuscript). Title, authors, and DOI verified from page 1. This is the method

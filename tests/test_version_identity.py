@@ -20,7 +20,6 @@ REQUIRED_FILES = (
     "desktop/electron/package.json",
     "frontend/package.json",
     "frontend/package-lock.json",
-    "godot/project.godot",
     "scripts/installer.iss",
 )
 
@@ -43,12 +42,6 @@ def test_repository_release_identities_match_canonical() -> None:
 @pytest.mark.parametrize(
     ("relative", "old", "replacement", "label"),
     [
-        (
-            "godot/project.godot",
-            'config/version="1.2.0"',
-            'config/version="9.9.9"',
-            "godot/project.godot",
-        ),
         (
             "scripts/installer.iss",
             'MyAppVersion "1.2.0"',

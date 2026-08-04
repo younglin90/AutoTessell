@@ -3,8 +3,8 @@
 비상업 연구용 CFD 메쉬 자동 생성 도구.
 오픈소스 라이브러리 전체 목록, 라이선스, 통합 방식 명세.
 
-> 상세 로드맵: `agents/specs/open_source_roadmap.md`
-> 에이전트별 명세: `agents/specs/*.md`
+> 상세 로드맵: `docs/contracts/open_source_roadmap.md`
+> 에이전트별 명세: `docs/contracts/*.md`
 > 기준선/백로그: `CURRENT_STATUS_AND_BACKLOG.md`
 > 오너십: `TRACK_OWNERSHIP.md`
 
@@ -20,7 +20,7 @@
 | 플랫폼 | Windows 10/11 (설치형), Linux (개발) |
 | Python | 3.12+ |
 | Primary Track | `core + cli` |
-| GUI | Godot + desktop.server (현재), PySide6 + PyVistaQt (전환 경로) |
+| GUI | PySide6 Qt + Electron/browser web GUI |
 
 ---
 
@@ -160,10 +160,11 @@
 ## GUI 명세
 
 ### 현재
-- **Godot**: 3D 뷰어 + 메쉬 생성 UI
-- **FastAPI + WebSocket**: GUI ↔ 파이프라인 통신
+- **PySide6 Qt**: native desktop application and parameter panel
+- **Electron/browser web GUI**: shared web viewer and job controls
+- **FastAPI + WebSocket**: desktop clients ↔ pipeline communication
 
-### 전환 계획 (Phase 2)
+### Desktop packaging
 
 | 컴포넌트 | 라이브러리 | 라이선스 | 역할 |
 |---------|-----------|---------|------|

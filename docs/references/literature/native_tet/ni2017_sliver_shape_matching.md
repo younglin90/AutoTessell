@@ -3,7 +3,7 @@
 **Authors:** Saifeng Ni, Zichun Zhong, Yang Liu, Wenping Wang, Zhonggui Chen, Xiaohu Guo
 **Venue:** Computer Aided Geometric Design (CAGD), accepted manuscript (COMAID 1598)
 **DOI:** `10.1016/j.cagd.2017.02.004`
-**Pages read:** 30/30 (accepted-manuscript PDF: `papers/pdf/12_ni_2017_sliver_shape_matching.pdf`; full text extracted to `papers/md/12_ni_2017_extract.txt`)
+**Pages read:** 30/30 (accepted-manuscript PDF: `docs/references/papers/source/pdf/12_ni_2017_sliver_shape_matching.pdf`; full text extracted to `docs/references/papers/source/text/12_ni_2017_extract.txt`)
 **Status:** FULL_READ — 2026-07-23
 
 ## Core Algorithm

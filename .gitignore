@@ -57,15 +57,9 @@ tests/benchmarks/wing.stl
 tests/benchmarks/sphere.obj
 tests/benchmarks/sphere.ply
 
-# Godot
-godot/.godot/
-godot/export_presets.cfg
-
 # OpenFOAM case output
 /case/
 case_fine/
-godot/**/*.import
-godot/**/*.uid
 *.obj
 
 # E2E test runtime artifacts (auto-generated)
@@ -105,11 +99,15 @@ b_aYczSLScZNH/node_modules/
 b_aYczSLScZNH/tsconfig.tsbuildinfo
 
 # CFD paper search — large PDFs & converted text (keep summaries only)
-papers/pdf/
-papers/md/
+docs/references/papers/source/pdf/
+docs/references/papers/source/text/
 
 # Local agent/session artifacts and reproducible benchmark outputs
 /.agents/
+!/.agents/
+!/.agents/skills/
+!/.agents/skills/native-engine-round/
+!/.agents/skills/native-engine-round/**
 /.omc/
 /CMakeFiles/
 /tmp/
@@ -118,3 +116,16 @@ papers/md/
 tests/bench_quality_matrix_*.jsonl
 tests/stl/bench_*_eval_result.json
 tests/stl/bench_*_eval_summary.tsv
+# Local-only experiment/session data (never publish)
+/.autoresearch/
+/.cache/
+/.gstack/
+/.claude/worktrees/
+/*.log
+/*.diff
+/*.patch
+/installer/dist/
+/.codex/
+/__cutting.stl
+/1
+/=1

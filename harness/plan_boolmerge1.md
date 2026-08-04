@@ -19,7 +19,7 @@ fTetWild §3.6의 핵심 수식 — "per-input surface 별 GWN을 독립 계산 
 4. `core/utils/geometry.py::inside_generalized_winding_number(query, V, F)`는
    **단일 surface 전용**. `native_tet/mesher.py`가 9곳에서 사용하지만 전부
    1-surface 시그니처. 다중 surface 조합 함수는 존재하지 않음 — 이게 빈 자리.
-5. fTetWild §3.6 원문(`papers/md/02_hu_2020_ftetwild.md:487-491`): 각 입력 surface의
+5. fTetWild §3.6 원문(`docs/references/papers/source/text/02_hu_2020_ftetwild.md:487-491`): 각 입력 surface의
    provenance 를 추적, per-surface GWN을 독립 계산 후 boolean 결합으로 tet 채택
    여부 결정. **surface-level 교차/클리핑 없음** — volume-level 판정.
 

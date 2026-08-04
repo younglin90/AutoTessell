@@ -41,11 +41,6 @@ def _static_versions(root: Path) -> dict[str, str]:
     frontend_lock = json.loads((root / "frontend/package-lock.json").read_text(encoding="utf-8"))
     electron = json.loads((root / "desktop/electron/package.json").read_text(encoding="utf-8"))
     return {
-        "godot/project.godot": _extract(
-            r'config/version="([^"]+)"',
-            (root / "godot/project.godot").read_text(encoding="utf-8"),
-            "godot/project.godot",
-        ),
         "scripts/installer.iss": _extract(
             r'#define MyAppVersion "([^"]+)"',
             (root / "scripts/installer.iss").read_text(encoding="utf-8"),

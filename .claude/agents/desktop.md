@@ -20,7 +20,7 @@ You are the Desktop GUI module developer for Auto-Tessell.
 
 `desktop/qt_app/main_window.py`와 `desktop/qt_app/pipeline_worker.py`를 읽어
 현재 구현 상태를 파악한다.
-`agents/specs/` 디렉터리에 desktop 스펙이 있으면 읽는다.
+`docs/contracts/` 디렉터리에 desktop 스펙이 있으면 읽는다.
 
 ## 담당 파일
 

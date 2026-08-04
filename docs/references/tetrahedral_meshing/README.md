@@ -13,8 +13,8 @@ in this directory. Do not redistribute copyrighted copies.
 | `leng2013.pdf` | Leng, Zhang, Xu. *A Novel Geometric Flow Approach for Quality Improvement of Multi-Component Tetrahedral Meshes*. CAD 45, 2013. DOI: 10.1016/j.cad.2013.05.004 | Boundary vertices need separate fixed, curve, surface, and interior motion rules; quality optimization must be followed by topology repair. | Add feature-classified, fidelity-bounded smoothing only after protected topology operations exist. |
 | `ni2017.pdf` | Ni et al. *Sliver-Suppressing Tetrahedral Mesh Optimization with Gradient-Based Shape Matching Energy*. CAGD 2017. DOI: 10.1016/j.cagd.2017.02.004 | Gradient-based shape energy penalizes near-coplanar tets that edge-length or interpolation energies miss. | Use a barriered gradient-shape score as the native quality acceptance objective; do not optimize edge ratios alone. |
 | `1-s2.0-S0965997824001893-main.pdf` | Wang et al. *Multi-Threaded Parallel Tetrahedral Mesh Improvement by Combining Atomic Operation and Graph Coloring*. Adv. Eng. Softw. 198, 2024. DOI: 10.1016/j.advengsoft.2024.103782 | Vertex coloring is suitable for smoothing; topology-changing cavity operations need atomic claims and per-thread element storage. | Parallelize only after serial cavity operations are parity-tested. Use coloring for smoothing, ownership tokens for cavity transforms. |
-| `../papers/aggress.pdf` | Klingner, Shewchuk. *Aggressive Tetrahedral Mesh Improvement*. | Worst-element-first improvement using quality-vector comparison, smoothing, vertex insertion, boundary smoothing, boundary edge removal, and multi-face removal can push dihedral bounds far beyond ordinary cleanup. | Add local cavity quality-vector acceptance. Native tet must combine smoothing plus 2-to-3, 3-to-2, 4-to-4, edge-removal, boundary smoothing, and multi-face removal instead of relying on one rescue transform. |
-| `../papers/2000-03-SliverExudation.pdf` | Edelsbrunner, Guoy, Edelsbrunner, Sullivan, Üngör. *Sliver Exudation*. | Weighted Delaunay exudation removes slivers only when weights affect the triangulation; text extraction is partially garbled locally, so use the PDF directly for proof details. | Keep current exudation proxy disabled until regular-triangulation rebuild exists. Weight sampling without connectivity change is invalid. |
+| `../papers/source/pdf/01_klingner_2007_aggressive_tet.pdf` | Klingner, Shewchuk. *Aggressive Tetrahedral Mesh Improvement*. | Worst-element-first improvement using quality-vector comparison, smoothing, vertex insertion, boundary smoothing, boundary edge removal, and multi-face removal can push dihedral bounds far beyond ordinary cleanup. | Add local cavity quality-vector acceptance. Native tet must combine smoothing plus 2-to-3, 3-to-2, 4-to-4, edge-removal, boundary smoothing, and multi-face removal instead of relying on one rescue transform. |
+| `../papers/source/pdf/04_cheng_2000_sliver_exudation.pdf` | Edelsbrunner, Guoy, Edelsbrunner, Sullivan, Üngör. *Sliver Exudation*. | Weighted Delaunay exudation removes slivers only when weights affect the triangulation; text extraction is partially garbled locally, so use the PDF directly for proof details. | Keep current exudation proxy disabled until regular-triangulation rebuild exists. Weight sampling without connectivity change is invalid. |
 
 ## Verified File Hashes
 
@@ -26,8 +26,8 @@ in this directory. Do not redistribute copyrighted copies.
 | `leng2013.pdf` | `4fd57b97fde724d32e1f9640274a09f28a98e3535c76f363998d9894f0bb6378` |
 | `ni2017.pdf` | `18706c58281aed5742b68e03a71a5261a8c8725f4659e6a74d9e6be4c7a3b5b4` |
 | `1-s2.0-S0965997824001893-main.pdf` | `41e9f4379c7df6c94149cdda0cb98a9358488e72417456245dfe3568c3dfd809` |
-| `../papers/aggress.pdf` | `8ce37ebd848204da8c4adac9ee56912eb3c950d70d7c1243ee59e8d9afb0b0c8` |
-| `../papers/2000-03-SliverExudation.pdf` | `66ee9167b412ff10292b11f05801bae176262f3c78845e291ca2c4c212f70b13` |
+| `../papers/source/pdf/01_klingner_2007_aggressive_tet.pdf` | `8ce37ebd848204da8c4adac9ee56912eb3c950d70d7c1243ee59e8d9afb0b0c8` |
+| `../papers/source/pdf/04_cheng_2000_sliver_exudation.pdf` | `66ee9167b412ff10292b11f05801bae176262f3c78845e291ca2c4c212f70b13` |
 
 ## Required Native Architecture
 

@@ -31,7 +31,7 @@ $ARGUMENTS
    웹 검색이나 논문 기억보다 **이 원본을 직접 읽어라**. native_tet 은 이것의 포팅이므로
    *"레퍼런스는 이 술어를 쓰는데 우리는 다르다"* 가 가장 강력하고 논쟁 불가능한 근거다.
    (최대 성과였던 void-free filter 카드가 정확히 이 대조에서 나왔다.)
-3. `.claude/rules/` (coding-style, lessons-learned) + 해당 `agents/specs/*.md`.
+3. `.claude/rules/` (coding-style, lessons-learned) + 해당 `docs/contracts/*.md`.
 
 ## 1. ASSESS
 
@@ -39,7 +39,7 @@ $ARGUMENTS
 
 1. 테스트/CI 실패 (`pytest tests/ -q --ignore=backend`) — 단 아래 "알려진 결함" 제외
 2. **레퍼런스(vendored fTetWild) 와의 동작 불일치** — 최우선 후보
-3. `agents/specs/*.md` 대비 미구현
+3. `docs/contracts/*.md` 대비 미구현
 4. mock 으로만 검증되는 영역 → 실제 구현 전환
 5. 성능/안정성 (대용량 입력, 타임아웃, 메모리)
 

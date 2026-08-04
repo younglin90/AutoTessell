@@ -4,7 +4,7 @@
 **Status:** FULL_READ, pages 13/13, 2026-07-23 — **arXiv v1 (2103.07745v1, 2021-03) 기준.**
 저널판(TOG 2022)과 세부 편집 차이가 있을 수 있음(내용 골격은 동일 계열 후속 논문
 Pitzalis 2021이 "Livesu et al. 2021"로 인용하는 바로 그 스킴 세트).
-**PDF:** `papers/pdf/35_livesu_2022_optimal_dual_schemes.pdf`
+**PDF:** `docs/references/papers/source/pdf/35_livesu_2022_optimal_dual_schemes.pdf`
 (SHA-256 `06028227D40DE3FA08AC122C39A80A410F929D96EB7108793F04EE6994A09E15`)
 **Code:** CinoLib (MIT, `github.com/mlivesu/cinolib`)에 스킴+설치+dualization 수록.
 

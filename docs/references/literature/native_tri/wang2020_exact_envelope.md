@@ -11,7 +11,7 @@
   postprint also open). NYU Faculty Digital Archive handle `2451/61221`
   hosts the benchmark data (meshes, QSlim queries, fTetWild queries), not
   the paper.
-- Local copy: `papers/pdf/41_wang_2020_exact_envelope.pdf`,
+- Local copy: `docs/references/papers/source/pdf/41_wang_2020_exact_envelope.pdf`,
   SHA-256 `48376b1ae72fd9567b48d170938e361572134628c268361b07dd4e176044752d`.
 - Reference implementation: `https://github.com/wangbolun300/fast-envelope`
   (open source; a partial port also entered CGAL 5.3).
@@ -102,7 +102,7 @@ the intersection points stay **implicit**:
   triplets + reference plane), same homogenization trick.
 
 This is exactly the *indirect predicate* pattern formalized in Attene 2020
-(`papers/pdf/39_attene_2020_indirect_predicates.pdf`) — that paper is the
+(`docs/references/papers/source/pdf/39_attene_2020_indirect_predicates.pdf`) — that paper is the
 predicate layer beneath this one. Evaluation ladder per predicate call:
 
 1. semi-static filter (Meyer-Pion FPG-style; explicit epsilon constants and
@@ -224,7 +224,7 @@ over-refinement, `eps`-dependent cost) this paper documents inside fTetWild
 itself. A port of the prism construction + C1/C2/C3 test with LPI/TPI
 predicates would replace both the sampled check and any relax-eps healing
 heuristics. Requires: exact `orient3d` (Shewchuk/Geogram — see
-`papers/pdf/38_shewchuk_1997_robust_predicates.pdf`), the two custom
+`docs/references/papers/source/pdf/38_shewchuk_1997_robust_predicates.pdf`), the two custom
 predicates with their filter ladder, and expansion arithmetic. This is a
 meaningful native-first predicate-layer investment; recommend scheduling it
 as its own card rather than folding it into the tri work.

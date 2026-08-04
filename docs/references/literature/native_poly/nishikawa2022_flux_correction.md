@@ -4,7 +4,7 @@
 
 - Hiroaki Nishikawa, *A Flux Correction for Finite-Volume Discretizations: Achieving Second-Order Accuracy on Arbitrary Polyhedral Grids*, Journal of Computational Physics 462 (2022), 111481.
 - DOI: `10.1016/j.jcp.2022.111481`.
-- 상태: `FULL_READ` (27/27쪽, 2026-07-27). Elsevier author manuscript이며 첫 페이지의 Version of Record 링크와 원고 제목을 시각 검증했다. 보관본: `papers/pdf/55_nishikawa_2022_fv_flux_correction.pdf`.
+- 상태: `FULL_READ` (27/27쪽, 2026-07-27). Elsevier author manuscript이며 첫 페이지의 Version of Record 링크와 원고 제목을 시각 검증했다. 보관본: `docs/references/papers/source/pdf/55_nishikawa_2022_fv_flux_correction.pdf`.
 
 ## 핵심 결과
 

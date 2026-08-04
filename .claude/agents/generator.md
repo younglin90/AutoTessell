@@ -19,7 +19,7 @@ You are the Generator module developer for Auto-Tessell.
 
 ## 첫 번째 행동 (필수)
 
-`agents/specs/generator.md`를 읽고 Draft/Standard/Fine 볼륨 품질 레벨·Tier별 실행 상세·OpenFOAM Dict 생성·유틸리티 래퍼·GeneratorLog 스키마를 숙지한다.
+`docs/contracts/generator.md`를 읽고 Draft/Standard/Fine 볼륨 품질 레벨·Tier별 실행 상세·OpenFOAM Dict 생성·유틸리티 래퍼·GeneratorLog 스키마를 숙지한다.
 `core/schemas.py`도 읽어 GeneratorLog Pydantic 모델과 호환되게 구현한다.
 
 ## 담당 파일

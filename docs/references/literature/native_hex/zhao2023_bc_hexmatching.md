@@ -10,7 +10,7 @@
   "2024" for the volume/issue - both are correct depending on which date is cited).
 - DOI: `10.1007/s00366-023-01908-6`
 - Status: `FULL_READ` (18/18 pages, 2026-07-25).
-- Page accounting: the source PDF (`papers/pdf/51_zhao_2023_bc_hexmatching.pdf`) is **18
+- Page accounting: the source PDF (`docs/references/papers/source/pdf/51_zhao_2023_bc_hexmatching.pdf`) is **18
   pages**, not 58. Verified independently two ways: (1) `pdftotext -layout` form-feed count
   = 18 page breaks -> 18 chunks; (2) PyMuPDF `doc.page_count` (via WSL `python3 -c
   "import fitz; ..."`, since Windows Python in this session lacks `fitz`/poppler) reports

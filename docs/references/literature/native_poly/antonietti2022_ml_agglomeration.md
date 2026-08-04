@@ -5,7 +5,7 @@
 - P.F. Antonietti (MOX, Politecnico di Milano), F. Dassi (Milano-Bicocca), E. Manuzzi (MOX).
 - *Journal of Computational Physics* 469 (2022) 111531.
 - DOI: `10.1016/j.jcp.2022.111531`
-- Local PDF: `papers/pdf/23_antonietti_2022_ml_agglomeration.pdf`
+- Local PDF: `docs/references/papers/source/pdf/23_antonietti_2022_ml_agglomeration.pdf`
 - Status: `FULL_READ` (22/22 pages, 2026-07-23).
 - **Title correction.** The local filename says "ml_agglomeration", but the verified
   title is about polyhedral grid **refinement** (splitting cells), not agglomeration
@@ -192,7 +192,7 @@ bit-identical.
    suite worth mining for the poly evaluator.
 3. Bassi, Botti, Colombo, Di Pietro, Tesini, *On the flexibility of agglomeration
    based physical space DG discretizations*, JCP 231 (2012) 45-65 — already
-   extracted locally (`papers/md/18_bassi_2012_extract.txt`).
+   extracted locally (`docs/references/papers/source/text/18_bassi_2012_extract.txt`).
 4. Berrone, Borio, D'Auria, *Refinement strategies for polygonal meshes applied to
    adaptive VEM discretization*, Finite Elem. Anal. Des. 186 (2021) 103502 —
    deterministic direction-based polygonal refinement (the paper's non-ML basis).

@@ -46,7 +46,7 @@ native_tet 중간 영구 게이트 묶음은 184 s에서 출력 없이 시간 �
 | poly | Kim & Chung 2015, polyhedral untangling | https://doi.org/10.1007/s00366-014-0379-5, FULL_READ/user PDF | P1 INCLUDE | local condition-number untangling은 보조 수단. topology-invalid/concave star failure를 geometry optimizer 하나로 숨기면 안 됨 |
 | poly | Nishikawa 2022, FV flux correction on non-planar polyhedra | https://doi.org/10.1016/j.jcp.2022.111481, FULL_READ/author manuscript | P0 INCLUDE | 비평면 face의 FV 오차 보정은 solver adapter 카드로 분리. invalid poly cell이나 face-pairing 실패를 통과시키는 근거가 아님 |
 
-사용자 제공 PDF인 Xu 2017, Wei 2015, Zheng 2025는 Windows Downloads에서 확인했고, 프로젝트의 papers/pdf/52_*, 53_*, 54_*로 문헌 보관 체계에도 복사되어 있다. 본문·수식·제한점을 읽은 뒤, 세 논문 모두 surface movement와 품질 trade-off를 명시적으로 기록했다.
+사용자 제공 PDF인 Xu 2017, Wei 2015, Zheng 2025는 Windows Downloads에서 확인했고, 프로젝트의 docs/references/papers/source/pdf/52_*, 53_*, 54_*로 문헌 보관 체계에도 복사되어 있다. 본문·수식·제한점을 읽은 뒤, 세 논문 모두 surface movement와 품질 trade-off를 명시적으로 기록했다.
 
 ## 3. 다음 방법 카드
 
@@ -133,8 +133,8 @@ Xu/Wei 논문은 표면 거리와 품질을 단일 스칼라로 섞지 않고 lo
 
 참고로 아래 논문은 프로젝트 내부 PDF와 완독 노트가 있으므로 다시 받을 필요가 없다.
 
-- 10.1007/s00366-009-0145-2 — Ledoux & Shepherd 2010, `papers/pdf/28_ledoux_2010_pillowing_sheet.pdf` (15/15 `FULL_READ`)
-- 10.1016/j.advengsoft.2014.05.005 — Elsheikh et al. 2014, `papers/pdf/45_elsheikh_2014_octree_transition_preconditioning.pdf` (15/15 `FULL_READ`)
+- 10.1007/s00366-009-0145-2 — Ledoux & Shepherd 2010, `docs/references/papers/source/pdf/28_ledoux_2010_pillowing_sheet.pdf` (15/15 `FULL_READ`)
+- 10.1016/j.advengsoft.2014.05.005 — Elsheikh et al. 2014, `docs/references/papers/source/pdf/45_elsheikh_2014_octree_transition_preconditioning.pdf` (15/15 `FULL_READ`)
 - 10.1016/j.cad.2013.05.004 — Leng 2013
 - 10.1016/j.cagd.2017.02.004 — Ni 2017
 - 10.1016/j.cad.2014.09.003 — Wei 2015

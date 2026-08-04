@@ -5,7 +5,7 @@
 - F. Juretić (AVL-AST, Zagreb) and A. D. Gosman (CD-Adapco, London).
 - *Numerical Heat Transfer, Part B: Fundamentals*, vol. 57, no. 6, 2010, 414-439.
 - DOI: `10.1080/10407791003685155`
-- Local copy: `papers/pdf/17_juretic_2010_fv_error_cell_shape.pdf`
+- Local copy: `docs/references/papers/source/pdf/17_juretic_2010_fv_error_cell_shape.pdf`
 - Status: `FULL_READ` (27/27 PDF pages = journal pp. 414-439). Read 2026-07-23.
 - Provenance: outgrowth of Juretić's Imperial College PhD (ref [40]) under Gosman;
   same lineage as Jasak's thesis [32], i.e., the direct theoretical ancestry of

@@ -3,7 +3,7 @@
  * No three.js / no external libs (project policy: "외부 라이브러리에 의존하지
  * 않고 우리 코드로 직접 제작").  Renders triangle meshes (from STL surface
  * previews or polyMesh boundary faces) with flat shading, orbit/zoom/pan, a
- * wireframe overlay and a jet quality colormap that mirrors the Godot/Qt
+ * wireframe overlay and a jet quality colormap that mirrors the Qt
  * viewer (non-ortho/85, skew/8, aspect (ar-1)/99).
  */
 (function (global) {

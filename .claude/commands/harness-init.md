@@ -13,11 +13,11 @@ description: |
 ### 1. 스펙 전체 로딩 (필수 — 컨텍스트에 없는 파일만 읽을 것)
 
 1. `CLAUDE.md`
-2. `agents/specs/analyzer.md`
-3. `agents/specs/preprocessor.md`
-4. `agents/specs/strategist.md`
-5. `agents/specs/generator.md`
-6. `agents/specs/evaluator.md`
+2. `docs/contracts/analyzer.md`
+3. `docs/contracts/preprocessor.md`
+4. `docs/contracts/strategist.md`
+5. `docs/contracts/generator.md`
+6. `docs/contracts/evaluator.md`
 
 ### 2. 디렉터리 + 공통 스키마 생성
 

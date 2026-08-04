@@ -5,7 +5,7 @@
 **Year / Venue:** 2013, Computer-Aided Design 45(8):1182–1197
 **DOI:** `10.1016/j.cad.2013.05.004`
 **Pages read:** 16/16 (published journal version; extends IMR-20 2011 conference paper [27])
-**Status:** FULL_READ (PDF: `papers/pdf/11_leng_2013_geometric_flow_quality.pdf`)
+**Status:** FULL_READ (PDF: `docs/references/papers/source/pdf/11_leng_2013_geometric_flow_quality.pdf`)
 **Date:** 2026-07-23
 
 ## One-line summary

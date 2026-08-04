@@ -56,7 +56,7 @@ disagreement, nondeterminism, build warning, performance-cap miss, or
   Fast Robust Geometric Predicates*, Discrete & Computational Geometry 18
   (1997), DOI
   [10.1007/PL00009321](https://doi.org/10.1007/PL00009321).  The local archived
-  full text `papers/pdf/38_shewchuk_1997_robust_predicates.pdf` and the author's
+  full text `docs/references/papers/source/pdf/38_shewchuk_1997_robust_predicates.pdf` and the author's
   public PDF were available.  The paper establishes why range failure can
   invalidate discrete geometric decisions.  No implementation was copied.
 - The official [CGAL repository](https://github.com/CGAL/cgal) and exact-kernel

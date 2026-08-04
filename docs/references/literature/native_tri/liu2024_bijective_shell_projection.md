@@ -7,7 +7,7 @@
 - *ACM Transactions on Graphics*, 43(4), Article 59, 13 pages, July 2024
   (SIGGRAPH 2024 journal track).
 - DOI: `10.1145/3658207`.
-- Local full text: `papers/pdf/31_liu_2024_bijective_shell_projection.pdf`.
+- Local full text: `docs/references/papers/source/pdf/31_liu_2024_bijective_shell_projection.pdf`.
 - Review status: `FULL_READ` on 2026-07-23. Honest page accounting: the local
   PDF contains **13 pages total** (the task brief's "385 pages" warning did not
   match this file). All 13 pages were text-extracted and read: main paper body

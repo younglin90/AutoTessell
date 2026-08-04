@@ -222,7 +222,7 @@ FPG paths are Geogram code, not the Attene repository. The only local Attene
 artifacts found are the paper note and PDF:
 
 - [`attene2020_indirect_predicates.md`](attene2020_indirect_predicates.md)
-- `papers/pdf/39_attene_2020_indirect_predicates.pdf`
+- `docs/references/papers/source/pdf/39_attene_2020_indirect_predicates.pdf`
 
 ### Upstream availability
 

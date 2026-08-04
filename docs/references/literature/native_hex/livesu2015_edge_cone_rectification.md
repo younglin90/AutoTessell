@@ -5,7 +5,7 @@
 - Marco Livesu, Alla Sheffer, Nicholas Vining, Marco Tarini, *Practical Hex-Mesh Optimization via Edge-Cone Rectification*, ACM Transactions on Graphics 34(4), Art. 71 (SIGGRAPH 2015).
 - DOI: `10.1145/2766905`
 - Legal open manuscript: <https://www.cs.ubc.ca/labs/imager/tr/2015/untangler/downloads/untangler.pdf> (authors' project page).
-- Local copy: `papers/pdf/36_livesu_2015_edge_cone_rectification.pdf`, SHA-256 `54e61f8497bebe3c292b36bcee3e97707a8eb2ecd8147d72e6506952a80af81a`.
+- Local copy: `docs/references/papers/source/pdf/36_livesu_2015_edge_cone_rectification.pdf`, SHA-256 `54e61f8497bebe3c292b36bcee3e97707a8eb2ecd8147d72e6506952a80af81a`.
 - Status: `FULL_READ` (11/11 pages, 2026-07-23).
 - Reference material: results archive `untangler_res.zip` on the same project page (input/output mesh pairs for every experiment).
 

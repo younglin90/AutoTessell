@@ -33,16 +33,6 @@ jobs:
       run: |
         pyinstaller auto_tessell.spec --noconfirm
 
-    - name: Set up Godot
-      uses: chickensoft-games/setup-godot@v2
-      with:
-        version: 4.3.0 # Godot 버전
-
-    - name: Export Godot GUI
-      run: |
-        mkdir dist\gui
-        godot --headless --path godot/ --export-release "Windows Desktop" ..\dist\gui\auto-tessell-gui.exe
-
     - name: Install Inno Setup
       run: |
         # Inno Setup은 윈도우 러너에 기본 설치되어 있을 확률이 높습니다.

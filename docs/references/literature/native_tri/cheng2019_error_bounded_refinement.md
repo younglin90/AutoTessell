@@ -7,7 +7,7 @@
 - *Computers & Graphics*, Special Section on SMI 2019. Received 11 March 2019,
   revised 17 May 2019, accepted 21 May 2019.
 - DOI: `10.1016/j.cag.2019.05.019`.
-- Local full text: `papers/pdf/19_cheng_2019_error_bounded_remeshing.pdf`.
+- Local full text: `docs/references/papers/source/pdf/19_cheng_2019_error_bounded_remeshing.pdf`.
 - Review status: `FULL_READ` on 2026-07-23. Pages 11/11 text-extracted and read
   (the local file is the 11-page "ARTICLE IN PRESS" journal proof, not the
   92-page double-spaced manuscript the task brief anticipated). All sections,

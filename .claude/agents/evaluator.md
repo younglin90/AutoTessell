@@ -19,7 +19,7 @@ You are the Evaluator module developer for Auto-Tessell.
 
 ## 첫 번째 행동 (필수)
 
-`agents/specs/evaluator.md`를 읽고 checkMesh 파싱 항목·자체 정량 지표·Hard/Soft FAIL 기준·권고사항 생성 규칙·QualityReport 스키마를 숙지한다.
+`docs/contracts/evaluator.md`를 읽고 checkMesh 파싱 항목·자체 정량 지표·Hard/Soft FAIL 기준·권고사항 생성 규칙·QualityReport 스키마를 숙지한다.
 `core/schemas.py`도 읽어 QualityReport Pydantic 모델과 호환되게 구현한다.
 
 ## 담당 파일

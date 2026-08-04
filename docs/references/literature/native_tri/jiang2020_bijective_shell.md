@@ -9,7 +9,7 @@
 - DOI: `10.1145/3414685.3417769`.
 - Open access: NYU GCL author copy,
   `https://cims.nyu.edu/gcl/papers/2020-BijectivePrism.pdf`.
-- Local full text: `papers/pdf/42_jiang_2020_bijective_shell.pdf`
+- Local full text: `docs/references/papers/source/pdf/42_jiang_2020_bijective_shell.pdf`
   (SHA-256 `3d2c43f7909015a26b54cfdef3c9518cae9007290981712b0b2ac39a8efb02dd`).
 - Reference implementation:
   `https://github.com/jiangzhongshi/bijective-projection-shell` (C++; Eigen,

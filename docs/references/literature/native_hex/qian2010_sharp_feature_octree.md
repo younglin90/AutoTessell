@@ -4,7 +4,7 @@
 
 - Jin Qian, Yongjie Zhang, *Sharp Feature Preservation in Octree-Based Hexahedral Mesh Generation for CAD Assembly Models*, International Meshing Roundtable 19 (2010).
 - DOI: `10.1007/978-3-642-15414-0_15`.
-- 상태: `FULL_READ` (18/18쪽, 2026-07-27). 사용자 제공 출판본을 `papers/pdf/56_qian_zhang_2010_sharp_feature_octree_hex.pdf`로 보관했다.
+- 상태: `FULL_READ` (18/18쪽, 2026-07-27). 사용자 제공 출판본을 `docs/references/papers/source/pdf/56_qian_zhang_2010_sharp_feature_octree_hex.pdf`로 보관했다.
 - 시각 검증: 첫 페이지를 렌더링해 제목, 저자, sharp curve/patch 및 two-step pillowing 초록을 확인했다.
 
 ## 파이프라인

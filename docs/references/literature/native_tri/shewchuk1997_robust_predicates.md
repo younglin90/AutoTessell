@@ -11,7 +11,7 @@
   55 pages)" for the DCG 18(3):305-363 entry), linked from the canonical
   access path recorded in `citation_snowball_batch2.md`
   (https://www.cs.cmu.edu/~quake/robust.html).
-- Local copy: `papers/pdf/38_shewchuk_1997_robust_predicates.pdf`.
+- Local copy: `docs/references/papers/source/pdf/38_shewchuk_1997_robust_predicates.pdf`.
   SHA-256: `5f047fd41666e53f6015497f68e42152e3a9d8d04556ab27f8b6fc92c74117d7`
   (556,447 bytes, 59 PDF pages = cover + abstract + 55 report pages).
 - Reference C code `predicates.c` is public domain, linked from the same page;

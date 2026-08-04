@@ -5,7 +5,7 @@
 - Qiang Du, Vance Faber, and Max Gunzburger.
 - *SIAM Review*, Vol. 41, No. 4, 1999, pp. 637-676.
 - DOI: `10.1137/s0036144599352836`
-- Local copy: `papers/pdf/15_du_1999_cvt_review.pdf`.
+- Local copy: `docs/references/papers/source/pdf/15_du_1999_cvt_review.pdf`.
 - Status: `FULL_READ` (40/40 pages, 2026-07-23). Note: the task brief listed
   28 pages; the actual PDF is the full 40-page SIAM Review article. All 40
   pages were extracted and read.

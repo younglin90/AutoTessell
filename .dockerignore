@@ -6,7 +6,6 @@ __pycache__
 dist/
 build/
 *.egg-info/
-godot/.godot/
 data/
 node_modules/
 .next/

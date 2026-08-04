@@ -9,7 +9,7 @@
   revised 29 April 2024, accepted 21 May 2024, online 31 May 2024.
 - DOI: `10.1016/j.cag.2024.103949`.
 - Local full text:
-  `papers/pdf/26_liu_2024_sharp_feature_remeshing.pdf`.
+  `docs/references/papers/source/pdf/26_liu_2024_sharp_feature_remeshing.pdf`.
 - Review status: `FULL_READ` on 2026-07-23. Pages 11/11 (the local PDF is the
   11-page published journal version, not a 60-page manuscript). All pages were
   text-extracted with PyMuPDF and read in full: title/authors/DOI, Algorithms

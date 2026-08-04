@@ -22,7 +22,7 @@ CFD 용 메쉬이므로 boundary layer (BL) 통합이 필수. 단순 매개변�
 - planner 한 round 의 시간 cap: **40분** (orchestrator 의 660s wall cap 에서 예외 — planner 는 별도 budget).
 - 그 안에서 다음 활동 모두 수행 가능 (필요 시):
   - 관련 SOTA 논문 검색 (WebSearch / WebFetch / arxiv / cfd-paper-search 스킬 호출)
-  - 논문 PDF 다운로드 + 핵심 알고리즘/수식 발췌 → `papers/` 디렉터리 정리
+  - 논문 PDF 다운로드 + 핵심 알고리즘/수식 발췌 → `docs/references/papers/` 디렉터리 정리
   - 기존 코드 (`core/generator/native_*`) 의 알고리즘적 격차 정량 분석
   - 본 카드의 이론적 근거 (수식, 수렴/안정성 분석) 정리
   - 카드 시퀀스 (2-10 cards roadmap) 설계 후 다음 1 카드만 추출
@@ -35,8 +35,8 @@ CFD 용 메쉬이므로 boundary layer (BL) 통합이 필수. 단순 매개변�
 2. `harness/last_fail.txt` — 직전 fail 사유 (있으면 그 원인을 알고리즘 차원에서 재해석).
 3. `harness/attempts_catalog.md` — 누적 시도 카탈로그. 동일 패턴 3회 이상 반복 시 알고리즘 차원의 escape 강제.
 4. `harness/history/` — 합격 카드 archive (이미 푼 문제 재시도 금지).
-5. `papers/` (있으면) — 이미 정리한 논문 노트.
-6. `agents/specs/generator.md` — 엔진별 정책.
+5. `docs/references/papers/` (있으면) — 이미 정리한 논문 노트.
+6. `docs/contracts/generator.md` — 엔진별 정책.
 
 ## 핵심 SOTA 레퍼런스 (출발점, 필요 시 직접 fetch)
 
@@ -81,9 +81,9 @@ planner 는 다음 흐름을 실행할 수 있다:
 
 1. `WebSearch` — 키워드 (예: "tetrahedral mesh sliver removal envelope 2024", "polyhedral CFD mesh boundary layer arxiv 2023").
 2. arxiv / openalex / dblp / semantic scholar 에서 후보 5-10편 추림.
-3. 가장 관련 높은 1-3편 PDF 다운로드 (`papers/pdf/`).
-4. 자체 변환 도구 `papers/pdf_to_md.py` 로 마크다운 변환 (`papers/md/`).
-5. 핵심 발췌 (수식 / 자료구조 / 수렴 조건 / 실험 셋업) 를 `papers/<paper-id>.md` 에 정리.
+3. 가장 관련 높은 1-3편 PDF 다운로드 (`docs/references/papers/source/pdf/`).
+4. 자체 변환 도구 `papers/pdf_to_md.py` 로 마크다운 변환 (`docs/references/papers/source/text/`).
+5. 핵심 발췌 (수식 / 자료구조 / 수렴 조건 / 실험 셋업) 를 `docs/references/papers/<paper-id>.md` 에 정리.
 6. 그 정리에서 **현 코드와의 격차 1개**만 식별하여 1 카드로 응축.
 
 `cfd-paper-search` 스킬이 있으면 그 흐름을 그대로 사용.
@@ -178,7 +178,7 @@ timeout 90 python3 -m pytest tests/test_native_<eng>_<area>.py -q
 
 ## 산출 외에 매 round 갱신 권장
 
-- `papers/<paper-id>.md` (논문 정리) — 신규 algorithmic escape 카드면 1편 정리.
+- `docs/references/papers/<paper-id>.md` (논문 정리) — 신규 algorithmic escape 카드면 1편 정리.
 - `harness/roadmap.md` (선택) — 현 시퀀스의 카드 개요 + 진행도.
 
 ## 응답 텍스트

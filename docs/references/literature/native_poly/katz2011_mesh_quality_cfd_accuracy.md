@@ -5,7 +5,7 @@
 - Aaron Katz and Venkateswaran Sankaran (US Army Aeroflightdynamics Directorate).
 - *Journal of Computational Physics* 230 (2011) 7670-7686.
 - DOI: `10.1016/j.jcp.2011.06.023`
-- Local PDF: `papers/pdf/16_katz_2011_mesh_quality_cfd_accuracy.pdf`
+- Local PDF: `docs/references/papers/source/pdf/16_katz_2011_mesh_quality_cfd_accuracy.pdf`
 - Status: `FULL_READ` (17/17 PDF pages, journal pages 7670-7686), read 2026-07-23.
 - Visual check: pages 7, 10, 13, and 15 were rendered and inspected. Table 1
   (source-discretization rates), Fig. 7 (isotropic convergence), Fig. 10 (stretched

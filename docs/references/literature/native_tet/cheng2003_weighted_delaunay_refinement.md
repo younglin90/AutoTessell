@@ -5,7 +5,7 @@
 - Siu-Wing Cheng and Tamal K. Dey, *SIAM Journal on Computing*, Vol. 33, No. 1,
   pp. 69-93, 2003.
 - DOI: https://doi.org/10.1137/S0097539703418808
-- PDF read: `papers/pdf/09_cheng_2003_weighted_delaunay_refinement.pdf`
+- PDF read: `docs/references/papers/source/pdf/09_cheng_2003_weighted_delaunay_refinement.pdf`
 - Status: `FULL_READ` (25/25 pages), 2026-07-23. Full text extracted and read:
   definitions, algorithm `QualMesh`, all lemmas/theorems (3.2-3.7, 4.1-4.3,
   5.1-5.2, 6.1-6.6, 7.1-7.12), proofs, and conclusions.

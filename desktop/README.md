@@ -36,7 +36,7 @@ npm run dist         # → desktop/electron/dist/AutoTessell-Shell-<ver>-Setup.e
   (`net use`/`subst` to a local mirror) or run from a local clone. The **running**
   app tolerates UNC — `main.js` spawns Python with `shell:false`, `cwd=%TEMP%`,
   and `PYTHONPATH=<repo>` (the server is cwd-independent).
-- Icon: `desktop/electron/assets/icon.ico` (generated from `godot/assets/icon.svg`).
+- Icon: `desktop/electron/assets/icon.ico` (checked-in Electron asset).
 
 ## Quick Start
 

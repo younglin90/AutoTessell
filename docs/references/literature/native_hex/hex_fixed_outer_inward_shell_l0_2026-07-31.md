@@ -36,7 +36,7 @@ recover marker-owned state.
   and limits this local-normal card to a conservative L0 fixture.
 - Ye et al., *Bijective and high-order meshing of boundary layers*, Journal of
   Computational Physics, 2025, DOI `10.1016/j.jcp.2025.113744`. The project
-  copy `papers/pdf/61_ye_2025_bijective_prismatic_bl.pdf` was read. It uses an
+  copy `docs/references/papers/source/pdf/61_ye_2025_bijective_prismatic_bl.pdf` was read. It uses an
   initially thin positive layer and orientation-preserving optimization. Its
   global nonlinear solve is outside this card. The paper's experimental code
   URL, `github.com/yhfISnaive/2D-viscous-mesh-generation`, returned 404, so its

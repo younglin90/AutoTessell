@@ -8,7 +8,7 @@
   DOI confirmed 2026-07-25 via native_hex transition-sheet snowball:
   `10.1016/j.cad.2026.104073`. No re-read needed; content already covered
   from the arXiv preprint above).
-- Local PDF: `papers/pdf/37_tong_hexopt_arxiv.pdf`,
+- Local PDF: `docs/references/papers/source/pdf/37_tong_hexopt_arxiv.pdf`,
   SHA-256 `1bc0f38e0d500fa8f01e3c6f74ec2f63c0a2fa23dfc81cdb79cc6b881819f54e`.
 - Code + meshes: <https://github.com/CMU-CBML/HexOpt> (CMU CBML group).
 - Status: `FULL_READ` (10/10 pages, 2026-07-23).

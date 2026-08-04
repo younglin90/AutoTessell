@@ -6,7 +6,7 @@
   Hexahedral Meshing*, Computer Graphics Forum 38(5) (SGP 2019), pp. 135-149.
 - DOI: `10.1111/cgf.13795`
 - Legal open manuscript: <https://cims.nyu.edu/gcl/papers/2019-OctreeMeshing.pdf>
-- Local PDF: `papers/pdf/33_gao_2019_feature_octree_hex.pdf`
+- Local PDF: `docs/references/papers/source/pdf/33_gao_2019_feature_octree_hex.pdf`
   (SHA-256 `992d72ad3bd94e83f904d1b87949430d22675c686de7190531af14c552aba8f2`)
 - Status: `FULL_READ` (15/15 pages, 2026-07-23). Pages 13-15 are references.
 - Reference implementation vendored in-repo: `Feature-Preserving-Octree-Hex-Meshing/`.

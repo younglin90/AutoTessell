@@ -5,7 +5,7 @@
 - F. Bassi, L. Botti, A. Colombo, D.A. Di Pietro, P. Tesini.
 - *Journal of Computational Physics* 231 (2012) 45-65.
 - DOI: `10.1016/j.jcp.2011.08.018`
-- Local copy: `papers/pdf/18_bassi_2012_agglomeration_dg.pdf`
+- Local copy: `docs/references/papers/source/pdf/18_bassi_2012_agglomeration_dg.pdf`
 - Status: `FULL_READ` (pages 21/21, read 2026-07-23). Text extracted via pypdf;
   all 21 pages read including figures' captions and both result tables.
 - **Screening correction:** the row for this paper in

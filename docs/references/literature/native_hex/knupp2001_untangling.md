@@ -4,7 +4,7 @@
 
 - Patrick M. Knupp, *Hexahedral and Tetrahedral Mesh Untangling*, Engineering with Computers 17, pp. 261-268, 2001.
 - DOI: `10.1007/s003660170006`
-- Local PDF: `papers/pdf/27_knupp_2001_untangling.pdf`
+- Local PDF: `docs/references/papers/source/pdf/27_knupp_2001_untangling.pdf`
 - Status: `FULL_READ` (8/8 pages, 2026-07-23).
 - Read context: forward sweep (`forward_citation_sweep_2026-07-23.md`, section 2) screened this as
   P2/CONTEXT with the claim "the two P0 papers [Edge-Cone Rectification 2015, HexOpt 2410.11656]

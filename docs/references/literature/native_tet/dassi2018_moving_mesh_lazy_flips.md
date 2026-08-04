@@ -4,7 +4,7 @@
 **Venue:** Computer-Aided Design (Elsevier), special issue (eds. Canann, Owen, Si)
 **DOI:** `10.1016/j.cad.2017.11.010`
 **Pages read:** 12/12 (in-press journal PDF; the local file is 12 two-column pages, not 40)
-**Status:** FULL_READ (`papers/pdf/13_dassi_2018_moving_mesh_lazy_flips.pdf`)
+**Status:** FULL_READ (`docs/references/papers/source/pdf/13_dassi_2018_moving_mesh_lazy_flips.pdf`)
 **Date:** 2026-07-23
 
 ## Summary

@@ -11,7 +11,7 @@
 - Open access: author-hosted PDF at
   `https://web.uvic.ca/~teseo/profile/publications/toolkit/2022-WildMeshingToolkit.pdf`
   (path recorded in `citation_snowball_batch2.md`, section E).
-- Local copy: `papers/pdf/43_jiang_2022_wildmeshing_toolkit.pdf`,
+- Local copy: `docs/references/papers/source/pdf/43_jiang_2022_wildmeshing_toolkit.pdf`,
   SHA-256 `5afddbf56bc06adefb34e2ab28e3a3fad0d67b394672cc1dbaae3090255aef42`.
 - Code: `https://github.com/wildmeshing/wildmeshing-toolkit` (open source).
 - Review status: `FULL_READ` on 2026-07-23. All 14 pages text-extracted and

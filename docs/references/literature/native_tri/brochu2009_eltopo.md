@@ -6,7 +6,7 @@
 - *SIAM Journal on Scientific Computing*, 31(4), 2472-2493, 2009.
 - DOI: `10.1137/080737617`.
 - Local full text (author copy, UBC):
-  `papers/pdf/40_brochu_2009_eltopo.pdf`
+  `docs/references/papers/source/pdf/40_brochu_2009_eltopo.pdf`
   (SHA-256 `f833318e8ec9af6e6e19bd3c0429f5a413bf03b1d6e79e814418f4fabacc387f`,
   downloaded from `https://www.cs.ubc.ca/~rbridson/docs/brochu-sisc2009-eltopo.pdf`).
 - Review status: `FULL_READ` on 2026-07-23. Pages 24/24 of the author PDF were

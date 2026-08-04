@@ -8,7 +8,7 @@
   26 November 2004.
 - DOI: `10.1016/j.cma.2004.11.025`.
 - Local full text:
-  `papers/pdf/20_frey_2005_anisotropic_cfd_adaptation.pdf`.
+  `docs/references/papers/source/pdf/20_frey_2005_anisotropic_cfd_adaptation.pdf`.
 - Review status: `FULL_READ` on 2026-07-23. Pages 15/15. All 15 pages were
   text-extracted; pages 4, 5, 6, 9, and 10 were rendered at 2x resolution and
   the error-bound equations (3)-(9), the unit-mesh relations (10)-(12), the

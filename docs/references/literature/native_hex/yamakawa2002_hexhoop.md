@@ -4,7 +4,7 @@
 
 - Soji Yamakawa and Kenji Shimada, *HEXHOOP: Modular Templates for Converting a Hex-Dominant Mesh to an ALL-Hex Mesh*, Engineering with Computers 18: 211-228, 2002 (Springer-Verlag London).
 - DOI: `10.1007/s003660200019`
-- Local PDF: `papers/pdf/29_yamakawa_2002_hexhoop.pdf`
+- Local PDF: `docs/references/papers/source/pdf/29_yamakawa_2002_hexhoop.pdf`
 - Status: `FULL_READ` (18/18 pages, 2026-07-23).
 - Note: the paper is marked **patent pending** (front page footnote). Any direct implementation should check patent status first; the 1995/1998 whisker-weaving patent US5768156 cited in the references shows this group's ecosystem did patent meshing methods.
 

@@ -4,7 +4,7 @@
 
 - R. V. Garimella, M. S. Shephard, *Generation of Tetrahedral Meshes with Multiple Elements through Thin Sections*, Engineering with Computers 15 (1999), 181-197.
 - DOI: `10.1007/s003660050013`.
-- 상태: `FULL_READ` (17/17쪽, 2026-07-27). 사용자 제공 출판본을 `papers/pdf/57_garimella_shephard_1999_thin_sections.pdf`로 보관했다.
+- 상태: `FULL_READ` (17/17쪽, 2026-07-27). 사용자 제공 출판본을 `docs/references/papers/source/pdf/57_garimella_shephard_1999_thin_sections.pdf`로 보관했다.
 - 시각 검증: 첫 페이지를 렌더링해 제목, 저자, 권호, 초록과 thin-section 예시를 확인했다.
 
 ## 논문의 실제 문제 정의

@@ -8,7 +8,7 @@
 - DOI: `10.1007/s00366-025-02241-w`
 - Affiliation: State Key Lab of CAD&CG, Zhejiang University (Shuming Gao group — same
   group as Wu/Gao sweep decomposition and Zheng 2020 dual-surface block decomposition).
-- Local PDF: `papers/pdf/30_chen_2026_hex_quality.pdf`
+- Local PDF: `docs/references/papers/source/pdf/30_chen_2026_hex_quality.pdf`
 - Status: `FULL_READ` (23/23 pages, 2026-07-23). Note: the screening queue listed this
   as a 66-page manuscript; the actual published PDF is 23 pages, all read.
 - Forward-sweep provenance: filed under section 4 (hex-dominant honesty) of

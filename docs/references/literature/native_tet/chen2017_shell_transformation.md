@@ -5,7 +5,7 @@
 **Year / Venue:** 2017, Applied Mathematical Modelling 51, pp. 764–790
 **DOI:** `10.1016/j.apm.2017.07.011`
 **Pages read:** 27/27 (full PDF incl. appendix proofs and references)
-**Status:** FULL_READ (project PDF: `papers/pdf/10_chen_2017_shell_transformation.pdf`)
+**Status:** FULL_READ (project PDF: `docs/references/papers/source/pdf/10_chen_2017_shell_transformation.pdf`)
 **Date:** 2026-07-23
 
 ## Core algorithm

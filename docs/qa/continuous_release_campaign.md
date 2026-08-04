@@ -210,7 +210,7 @@ ledger commit itself necessarily advances `HEAD`.
 
 ## DOI and provenance record
 
-Supplied PDFs indexed in `papers/PAPER_INDEX.md` and
+Supplied PDFs indexed in `docs/references/papers/PAPER_INDEX.md` and
 `docs/references/literature/master_bibliography.csv`. Current campaign uses paper
 ideas only; no external implementation code is copied. `third_party/` is out of
 scope. Future MIT-core boundary follows

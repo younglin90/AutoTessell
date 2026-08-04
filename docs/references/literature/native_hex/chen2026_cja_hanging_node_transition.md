@@ -8,7 +8,7 @@
 - Affiliation: Department of Aeronautics & Astronautics, Fudan University, Shanghai.
 - DOI: `10.1016/j.cja.2026.104154`. Received 5 Sep 2025, revised 9 Mar 2026, accepted
   9 Mar 2026.
-- Local PDF: `papers/pdf/46_chen_2026_cja_hanging_node_transition.pdf`.
+- Local PDF: `docs/references/papers/source/pdf/46_chen_2026_cja_hanging_node_transition.pdf`.
 - **Status: `FULL_READ`, 2026-07-25. Honest page accounting: the PDF has 37 pages total
   (confirmed by `pypdf` page-tree count, cross-checked against `pdftotext` form-feed
   count), not 161 as the task brief assumed — that number does not match this file.**

@@ -5,7 +5,7 @@
 - Marco Feder (Univ. of Pisa), Andrea Cangiani (SISSA), Luca Heltai (Univ. of Pisa).
 - *Journal of Computational Physics* 526 (2025) 113773.
 - DOI: `10.1016/j.jcp.2025.113773`
-- Local PDF: `papers/pdf/21_r3mg_2025_rtree_agglomeration_multigrid.pdf`
+- Local PDF: `docs/references/papers/source/pdf/21_r3mg_2025_rtree_agglomeration_multigrid.pdf`
 - Status: `FULL_READ` (pages 23/23, read 2026-07-23). Note: the task brief listed
   51 pages; the actual published PDF is 23 pages, all read via full-text
   extraction. Figures were not rendered (poppler unavailable); all figure

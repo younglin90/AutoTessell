@@ -1,2 +1,0 @@
-PPP9b (beta2118) FAIL: tet worst_mq=0.055 (fid=100040) below threshold 0.067.
-Voronoi continuous tie-break unintentionally degrades tet mesh quality edge case.

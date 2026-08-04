@@ -5,7 +5,7 @@
 - Y. Pan and P.-O. Persson (UC Berkeley / LBNL).
 - *Journal of Computational Physics* 449 (2022) 110775. Available online 18 Oct 2021.
 - DOI: `10.1016/j.jcp.2021.110775`
-- Local PDF: `papers/pdf/22_pan_2022_agglomeration_dg.pdf`
+- Local PDF: `docs/references/papers/source/pdf/22_pan_2022_agglomeration_dg.pdf`
 - Status: `FULL_READ` (12/12 pages), read 2026-07-23.
 - Screening correction: `gap_search_3d_agglomeration.md` characterizes this paper as
   "aspect-ratio-aware agglomerate selection on 3D unstructured meshes". That is

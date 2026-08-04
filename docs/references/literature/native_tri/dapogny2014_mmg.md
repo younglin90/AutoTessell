@@ -8,7 +8,7 @@
 - DOI: `10.1016/j.jcp.2014.01.005`.
 - Open access: HAL `hal-00804636`,
   `https://hal.sorbonne-universite.fr/hal-00804636/file/domrem2.pdf`.
-- Local full text: `papers/pdf/44_dapogny_2014_mmg.pdf`.
+- Local full text: `docs/references/papers/source/pdf/44_dapogny_2014_mmg.pdf`.
 - SHA-256:
   `2083a639c9d9aa931742292e789c612fa30014e404286222fe26b5c84d191055`.
 - Review status: `FULL_READ` on 2026-07-23. Pages 25/25 (HAL cover + 24

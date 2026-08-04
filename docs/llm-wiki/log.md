@@ -36,7 +36,7 @@ tags: [wiki-log]
 
 ## 2026-07-26 — literature-ingest — 사용자 제공 hex 논문 3편 보관·전문 판독
 
-- `xu2018.pdf`, `wei2015.pdf`, `1-s2.0-S0010448524001520-main.pdf`를 `papers/pdf/52_...`부터 `54_...`까지 보관했다. 원본과 보관본의 SHA-256을 대조해 세 파일 모두 byte-identical임을 확인했다.
+- `xu2018.pdf`, `wei2015.pdf`, `1-s2.0-S0010448524001520-main.pdf`를 `docs/references/papers/source/pdf/52_...`부터 `54_...`까지 보관했다. 원본과 보관본의 SHA-256을 대조해 세 파일 모두 byte-identical임을 확인했다.
 - `10.1016/j.cag.2017.07.002`(Xu et al. 2017), `10.1016/j.cad.2014.09.003`(Wei et al. 2015), `10.1016/j.cad.2024.103825`(Zheng et al. 2025)를 전 페이지 읽고 제목·초록·알고리즘·도식·실험·한계를 확인했다.
 - Xu의 local-region 저장/rollback, Wei의 현재 iteration boundary/feature constraint, Zheng의 feature-aware sheet collapse/inflation을 native_hex의 다음 진단 순서에 반영했다. generic ECR/sheet repair 구현은 아직 열지 않았다.
 

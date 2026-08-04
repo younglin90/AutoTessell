@@ -4,7 +4,7 @@
 **Authors:** Yifu Wang, Junji Wang, BoHan Wang, Yifei Wang, Jianjun Chen (Zhejiang University, School of Aeronautics and Astronautics)
 **Year / Venue:** 2024 — Advances in Engineering Software 198 (2024) 103782 (Elsevier)
 **DOI:** `10.1016/j.advengsoft.2024.103782`
-**Pages read:** 12/12 (journal layout of `papers/pdf/14_wang_2024_parallel_tet_improvement.pdf`; the task brief's "36 pages" refers to a preprint pagination — the archived PDF is the final 12-page journal version, read in full)
+**Pages read:** 12/12 (journal layout of `docs/references/papers/source/pdf/14_wang_2024_parallel_tet_improvement.pdf`; the task brief's "36 pages" refers to a preprint pagination — the archived PDF is the final 12-page journal version, read in full)
 **Status:** FULL_READ
 **Date:** 2026-07-23
 

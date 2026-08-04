@@ -5,7 +5,7 @@
 - Marco Attene, CNR-IMATI, Genova.
 - *Computer-Aided Design*, 126, article 102856, 2020.
 - DOI: `10.1016/j.cad.2020.102856`.
-- Local full text: `papers/pdf/39_attene_2020_indirect_predicates.pdf`
+- Local full text: `docs/references/papers/source/pdf/39_attene_2020_indirect_predicates.pdf`
   (author post-print, arXiv:2105.09772v2, 23 Jan 2025, 9 pages; the page
   footer states "Authors post-print - Elsevier").
 - SHA-256:

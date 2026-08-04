@@ -5,7 +5,7 @@
 **Year / Venue:** 2012, Computer-Aided Design 44(5):400–412
 **DOI:** `10.1016/j.cad.2012.01.002`
 **Pages read:** 13/13 (full article; the "54-page" count in the task brief was incorrect — the PDF is the 13-page journal article)
-**Status:** FULL_READ (PDF: `papers/pdf/08_wang_2012_feature_sensitive_bcc.pdf`, text-extracted via PyMuPDF)
+**Status:** FULL_READ (PDF: `docs/references/papers/source/pdf/08_wang_2012_feature_sensitive_bcc.pdf`, text-extracted via PyMuPDF)
 **Date:** 2026-07-23
 
 ## Core algorithm
