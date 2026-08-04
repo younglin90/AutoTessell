@@ -258,7 +258,8 @@ if(BUILD_NATIVE_METRICS)
 endif()
 
 if(BUILD_NATIVE_QUALITY_WITNESS)
-  pybind11_add_module(native_quality_witness native_quality_witness/native_quality_witness_bind.cpp)
+  pybind11_add_module(native_quality_witness native_quality_witness/native_quality_witness_bind.cpp
+      native_quality_witness/native_quality_witness_v3.cpp)
   autotessell_configure_first_party_native(native_quality_witness)
 endif()
 

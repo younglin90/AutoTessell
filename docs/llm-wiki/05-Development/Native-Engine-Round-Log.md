@@ -1928,3 +1928,19 @@ compile, and diff checks passed. Next: TRI+QUAD mixed-topology authority.
 - Next: native-all-production-gate-061
 - Evidence: docs/qa/rounds/native-all-production-gate-060/
 
+## native-all-production-gate-061 — partial
+
+- Closed: 2026-08-04T14:34:49+00:00
+- Goal: native-all-production-gate-061
+- Result: planner_only_readonly_quality_witness_v3_card_recorded_agent_spawn_api_unavailable
+- Next: native-all-production-gate-062
+- Evidence: docs/qa/rounds/native-all-production-gate-061/
+
+## native-all-production-gate-062 — partial
+
+- Closed: 2026-08-04T15:03:06+00:00
+- Goal: Implement
+- Result: 062_native_quality_witness_v3_cpp23_clean_build_and_27_focused_tests_pass
+- Next: native-all-production-gate-063
+- Evidence: docs/qa/rounds/native-all-production-gate-062/
+
