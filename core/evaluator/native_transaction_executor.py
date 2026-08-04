@@ -68,6 +68,18 @@ def rollback_authoritative_transaction(
     return dict(native.rollback_transaction_v1(dict(transaction), reason))
 
 
+
+def run_authoritative_writer_transaction(
+    transaction: Mapping[str, Any],
+    writer_callback: Any,
+    reread_callback: Any,
+) -> dict[str, Any]:
+    native = _native()
+    if native is None:
+        return _unavailable("executor_native_kernel_unavailable")
+    return dict(native.run_writer_transaction_v1(
+        dict(transaction), writer_callback, reread_callback
+    ))
 def _unavailable(reason: str) -> dict[str, Any]:
     return {
         "accepted": False,
@@ -88,4 +100,5 @@ __all__ = [
     "validate_persisted_reread",
     "publish_authoritative_transaction",
     "rollback_authoritative_transaction",
+    "run_authoritative_writer_transaction",
 ]

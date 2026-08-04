@@ -263,4 +263,26 @@ py::dict rollback_transaction_v1(const py::dict& transaction, const std::string&
     py::dict out = transaction; out["transaction_state"] = "rolled_back"; out["published"] = false; out["candidate_discarded"] = true; out["rollback_required"] = false; out["rollback_reason"] = reason; journalize(out); return out;
 }
 
+
+py::dict run_writer_transaction_v1(
+    const py::dict& transaction,
+    const py::function& writer_callback,
+    const py::function& reread_callback) {
+    try {
+        if (!transaction.contains("transaction_state") || transaction["transaction_state"].cast<std::string>() != "staging") return refuse("executor_capability_reused");
+        py::object candidate_object = writer_callback(transaction);
+        if (!py::isinstance<py::dict>(candidate_object)) return refuse("executor_writer_manifest_mismatch");
+        const auto candidate = candidate_object.cast<py::dict>();
+        py::dict staged = validate_candidate_v1(transaction, candidate);
+        if (!staged["accepted"].cast<bool>()) return staged;
+        py::object disk_object = reread_callback(staged);
+        if (!py::isinstance<py::dict>(disk_object)) return refuse("executor_candidate_disk_mismatch");
+        py::dict reread = validate_disk_reread_v1(staged, disk_object.cast<py::dict>());
+        if (!reread["accepted"].cast<bool>()) return reread;
+        return publish_transaction_v1(reread);
+    } catch (const std::exception&) {
+        py::dict rolled_back = rollback_transaction_v1(transaction, "executor_writer_callback_exception");
+        return rolled_back["accepted"].cast<bool>() ? rolled_back : refuse("executor_writer_callback_exception");
+    }
+}
 }  // namespace native_transaction_executor

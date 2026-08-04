@@ -11,4 +11,5 @@ PYBIND11_MODULE(native_transaction_executor, module) {
     module.def("validate_disk_reread_v1", &native_transaction_executor::validate_disk_reread_v1);
     module.def("publish_transaction_v1", &native_transaction_executor::publish_transaction_v1);
     module.def("rollback_transaction_v1", &native_transaction_executor::rollback_transaction_v1);
+    module.def("run_writer_transaction_v1", &native_transaction_executor::run_writer_transaction_v1);
 }

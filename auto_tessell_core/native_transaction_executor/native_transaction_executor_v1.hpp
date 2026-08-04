@@ -27,4 +27,9 @@ pybind11::dict rollback_transaction_v1(
     const pybind11::dict& transaction,
     const std::string& reason);
 
+pybind11::dict run_writer_transaction_v1(
+    const pybind11::dict& transaction,
+    const pybind11::function& writer_callback,
+    const pybind11::function& reread_callback);
+
 }  // namespace native_transaction_executor
