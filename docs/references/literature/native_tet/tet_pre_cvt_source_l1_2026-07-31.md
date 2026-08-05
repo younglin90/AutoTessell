@@ -44,5 +44,5 @@ configuration.  Neither result permits a rollback, fallback, or relaxation.
 ## Scope
 
 No generator, predicate, threshold, refusal, writer, transaction, routing,
-target, boundary-layer, fallback, dependency, or `third_party/` behavior is
+target, boundary-layer, fallback, dependency, or `vendor/dependencies/` behavior is
 modified.  This card makes no topology remedy or release claim.

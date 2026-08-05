@@ -63,6 +63,7 @@ def smooth_interior(
     n_iter: int = 2,
     relax: float = 0.5,
     quality_guard: bool = False,
+    quality_queue: bool = False,
 ) -> SmoothResult:
     """pts 를 in-place 로 업데이트. locked 외 vertex 만 이동.
 
@@ -83,6 +84,7 @@ def smooth_interior(
             np.asarray(locked_vertex_ids, dtype=np.int64),
             n_iter=int(n_iter),
             relax=float(relax),
+            use_worst_cell_queue=bool(quality_queue),
         )
         if native_result is not None:
             native_points, native_stats = native_result
@@ -153,8 +155,10 @@ def smooth_interior(
 
         if quality_guard:
             new_minq = _min_q(pts)
-            # min_q 가 유의미하게 (>5%) 하락하면 revert.
-            if prev_minq > 1e-6 and new_minq < prev_minq * 0.95:
+            # Quality-first guard: only numerical epsilon-scale loss is
+            # tolerated. A percentage loss can hide a release-blocking
+            # sliver, so revert any material global-minimum degradation.
+            if prev_minq > 1e-6 and new_minq < prev_minq:
                 pts[:] = prev_snapshot   # type: ignore[arg-type]
                 qopt_rejected_quality += int(valid.sum())
                 break

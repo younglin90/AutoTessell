@@ -48,7 +48,7 @@ are ambiguous.  Both must fail closed before `polyMesh` publication.
   rollback model informed the transaction boundary.
 
 No external code was copied.  The implementation uses the existing
-first-party `orientation_signs` robust-predicate wrapper.  `third_party/` is
+first-party `orientation_signs` robust-predicate wrapper.  `vendor/dependencies/` is
 unchanged.  No DOI needed for this card was inaccessible.
 
 ## Baseline diagnosis

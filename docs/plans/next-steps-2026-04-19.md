@@ -107,7 +107,7 @@ M  desktop/qt_app/error_recovery.py
 **방법:** `git add -p` 로 hunk 단위 선택. 너무 복잡하면 `git stash` 후 차례로 재적용.
 
 ### 1B. 외부 디렉토리 제외 확인
-`AlgoHex/`, `Feature-Preserving-Octree-Hex-Meshing/`, `HOHQMesh/`, `VoroCrust/`, `bin/`, `pdmt/`, `voro/`, `tessell-mesh/build_make/_deps/*`, `installer/staging/`, `octree.vtk` 전부 untracked. `.gitignore` 에 명시 추가해서 실수로 커밋 방지.
+`AlgoHex/`, `Feature-Preserving-Octree-Hex-Meshing/`, `HOHQMesh/`, `VoroCrust/`, `bin/`, `pdmt/`, `voro/`, `engines/legacy/tessell_mesh/build_make/_deps/*`, `installer/staging/`, `octree.vtk` 전부 untracked. `.gitignore` 에 명시 추가해서 실수로 커밋 방지.
 
 ### 1C. Push
 ```bash

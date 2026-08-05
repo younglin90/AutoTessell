@@ -15,7 +15,7 @@ timeout ambiguous: later modules had no result, and a single slow process hid
 the rest of the corpus.
 
 This card adds validation infrastructure only.  It does not change mesh code,
-test thresholds, fixtures, routing, dependencies, or `third_party/`.  The
+test thresholds, fixtures, routing, dependencies, or `vendor/dependencies/`.  The
 runner fixes a clean Git HEAD and tree, collects the unchanged tests, assigns
 modules to stable shards, and executes every module in its own POSIX process
 group.  A timeout kills that process group, records `timeout`, and continues

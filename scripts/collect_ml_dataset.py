@@ -5,9 +5,9 @@
 
 Usage:
     python3 scripts/collect_ml_dataset.py
-    python3 scripts/collect_ml_dataset.py --n-samples-per-mesh 200 --output models/ml_dataset.npz
+    python3 scripts/collect_ml_dataset.py --n-samples-per-mesh 200 --output assets/models/ml_dataset.npz
 
-Output: models/ml_dataset.npz with keys:
+Output: assets/models/ml_dataset.npz with keys:
     features: (N, 20) — extract_tet_features 출력.
     qualities: (N,) — Klingner mean-ratio quality (0-1).
 """
@@ -33,7 +33,7 @@ def main() -> int:
         help="대신 사용할 절대 STL 디렉터리 (override --stl-glob).",
     )
     ap.add_argument(
-        "--output", default="models/ml_dataset.npz",
+        "--output", default="assets/models/ml_dataset.npz",
         help="output .npz 경로.",
     )
     ap.add_argument(

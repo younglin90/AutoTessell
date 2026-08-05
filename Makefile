@@ -37,12 +37,12 @@ typecheck:  ## TypeScript type check (no emit)
 .PHONY: test-count
 test-count:  ## Show current test file counts (dynamic)
 	@echo "root tests:" $$(find tests -name 'test_*.py' | wc -l)
-	@echo "backend unit tests:" $$(find backend/tests -name 'test_*.py' | wc -l)
-	@echo "backend integration tests:" $$(find backend/integration -name 'test_*.py' | wc -l)
+	@echo "backend unit tests:" $$(find products/web/api/tests -name 'test_*.py' | wc -l)
+	@echo "backend integration tests:" $$(find products/web/api/integration -name 'test_*.py' | wc -l)
 
 .PHONY: baseline-check
 baseline-check:  ## Check baseline drift (version/test-count stale strings)
-	@! rg -n "0\.1\.0|331\+|458\+|621 tests|89 tests" README.md PLAN.md SPEC.md backend/main.py desktop/server.py
+	@! rg -n "0\.1\.0|331\+|458\+|621 tests|89 tests" README.md PLAN.md SPEC.md products/web/api/main.py desktop/server.py
 
 .PHONY: version-check
 version-check:  ## Check app-version consistency across key files
@@ -70,7 +70,7 @@ checks-strict: version-check baseline-check docs-check owner-check test-count  #
 .PHONY: smoke-check
 smoke-check:  ## Run minimal cross-track health tests
 	@$(PYTHON) -m pytest -q tests/test_desktop_server.py -k health
-	@$(PYTHON) -m pytest -q backend/tests/test_main_endpoints.py
+	@$(PYTHON) -m pytest -q products/web/api/tests/test_main_endpoints.py
 
 .PHONY: gui-offscreen-smoke
 gui-offscreen-smoke:  ## Smoke-run Qt GUI in offscreen mode (no display needed)

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AutoTessell</title>
-    <link rel="stylesheet" href="styles.css?v=27" />
+    <link rel="stylesheet" href="styles.css?v=28" />
   </head>
   <body>
     <!-- ============ CUSTOM TITLEBAR ============ -->
@@ -126,15 +126,23 @@
           <h3>주요 파라미터</h3>
           <label class="row">
             <span>목표 셀 수 N <i class="ttip" title="최종 격자 갯수 목표. 엔진이 이 값에 맞춰 셀 크기를 자동 결정 (상한으로도 적용). 0 = 자동.">ⓘ</i></span>
-            <input id="max_cells" type="number" min="0" step="100" value="100" />
+            <input id="max_cells" type="number" min="0" step="100" value="0" />
           </label>
           <label class="row">
             <span>BL 레이어 수 <i class="ttip" title="벽면 프리즘 레이어 수. 0 = 비활성(draft).">ⓘ</i></span>
-            <input id="bl_layers" type="number" min="0" max="20" step="1" value="3" />
+            <input id="bl_layers" type="number" min="0" max="20" step="1" value="0" />
           </label>
           <label class="row">
             <span>BL 확장비 <i class="ttip" title="레이어가 벽에서 멀어질수록 두꺼워지는 배율 (등비 성장). layer i 두께 = 첫 레이어 두께 × 확장비^i. cfMesh/snappyHexMesh 기본값과 동일한 1.2.">ⓘ</i></span>
-            <input id="bl_growth_ratio" type="number" min="1" max="3" step="0.05" value="1.2" />
+            <input id="bl_growth_ratio" type="number" min="1" max="3" step="0.05" placeholder="계약에서 입력" />
+          </label>
+          <label class="row">
+            <span>BL 첫 높이 [m]</span>
+            <input id="bl_first_height" type="number" min="0" step="0.0001" placeholder="layers >= 1 시 입력" />
+          </label>
+          <label class="row">
+            <span>BL wall selector</span>
+            <input id="bl_wall_selector" type="text" placeholder="physical group / CAD face / STL patch" />
           </label>
           <label class="row">
             <span>표면 셀 크기 [m] <i class="ttip" title="0 = 자동 (characteristic_length 기반).">ⓘ</i></span>
@@ -167,6 +175,21 @@
           <label class="check"><input id="force_remesh" type="checkbox" /> 리메쉬 강제</label>
           <label class="check"><input id="allow_ai_fallback" type="checkbox" /> AI 표면 재생성 (GPU)</label>
           <label class="check"><input id="dry_run" type="checkbox" /> Dry-run (전략까지만)</label>
+
+          <h3>전체 입력 계약</h3>
+          <p class="hint">서버 schema가 제공하는 Advanced field card를 직접 조절할 수 있습니다. Expert JSON은 반복 selector/engine 옵션의 import/export 경로입니다.</p>
+          <div id="source-ledger-status" class="hint">source authority ledger 대기</div>
+          <div id="contract-field-cards" class="contract-field-cards"></div>
+          <div class="contract-array-head"><span>Boundary layer cards</span><button id="add-boundary-layer" class="btn btn-mini" type="button">+ BL</button></div>
+          <div id="boundary-layer-cards" class="contract-array-cards"></div>
+          <div class="contract-array-head"><span>Local control cards</span><button id="add-local-control" class="btn btn-mini" type="button">+ local</button></div>
+          <div id="local-control-cards" class="contract-array-cards"></div>
+          <p class="hint">모든 sizing/quality/BL/local-control/engine 옵션은 아래 버전형 JSON으로도 직접 입력할 수 있습니다.</p>
+          <textarea id="input_contract_json" class="contract-editor" spellcheck="false" placeholder="서버 schema의 JSON template을 불러오는 중…"></textarea>
+          <div class="contract-actions">
+            <button id="input_contract_template" class="btn btn-ghost" type="button">계약 템플릿</button>
+            <span id="input_contract_status" class="hint">schema 연결 대기</span>
+          </div>
         </details>
 
         <div class="actions">
@@ -317,6 +340,6 @@
 
     <script src="viewer.js?v=27"></script>
     <script src="ui.js?v=27"></script>
-    <script src="app.js?v=27"></script>
+    <script src="app.js?v=28"></script>
   </body>
 </html>

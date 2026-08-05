@@ -247,9 +247,9 @@ P-series + AI(D) + E + F + G + H + I 누적 ~46 카드. 592+ tests PASS.
 ### 문서 (BETA2599, 2609, 2618)
 
 - **D7**: `docs/env_flags_beta2581_2598.md` — 10 env flag 통합 가이드.
-- **G9**: `docs/USAGE.md` — 9-섹션 통합 사용 가이드.
+- **G9**: `docs/guides/usage.md` — 9-섹션 통합 사용 가이드.
 - **H9**: `docs/algorithms/index.md` — 17 알고리즘 reference + 출처.
-- **F4**: `docs/ccmio_format_spec.md` — Siemens CCMIO 형식 spec.
+- **F4**: `docs/reference/formats/ccmio.md` — Siemens CCMIO 형식 spec.
 
 ### 인프라 (BETA2611, 2621, 2624)
 

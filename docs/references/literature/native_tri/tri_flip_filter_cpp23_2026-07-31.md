@@ -47,7 +47,7 @@ also falls back to that oracle.
   accessible as bibliographic and abstract evidence.
 
 No DOI required by this card was inaccessible.  The retained code is an
-independent first-party implementation.  `third_party/` is unchanged.
+independent first-party implementation.  `vendor/dependencies/` is unchanged.
 
 ## Frozen baseline and acceptance
 
@@ -80,7 +80,7 @@ before final validation:
 Rollback: any decision, order, hash, topology, shape, feature, boundary,
 provenance, or transaction-gate mismatch; malformed result acceptance;
 nondeterminism; invalid element; build warning; primary performance miss; or
-`third_party/` change.
+`vendor/dependencies/` change.
 
 Complexity for one frozen-state scan changes from repeated full candidate
 construction and whole-mesh valence rescans, effectively
@@ -120,7 +120,7 @@ Validation:
 - isolated GCC 13.3 `-std=c++23 -O3 -Wall -Wextra -Wpedantic -Werror` Release
   build with `-j1`: zero warnings;
 - new benchmark/test files: Black and Ruff pass;
-- `git diff --check` and `third_party/` diff: pass / zero.
+- `git diff --check` and `vendor/dependencies/` diff: pass / zero.
 
 Reproduce:
 

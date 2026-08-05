@@ -114,5 +114,5 @@ and cap.
 - strict isolated type check and focused Ruff/bytecode checks pass;
 - target cell count and boundary-layer behavior are unchanged.
 
-The composite adds no native ABI and no external code. `third_party/` is
+The composite adds no native ABI and no external code. `vendor/dependencies/` is
 unchanged. Future MIT-core eligibility is preserved.

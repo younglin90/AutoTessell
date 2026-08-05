@@ -34,7 +34,7 @@ dev_storage/
 tessell.db
 tessell.db-shm
 tessell.db-wal
-backend/__tracked_surface.stl
+products/web/api/__tracked_surface.stl
 
 # bkit
 .bkit/
@@ -82,21 +82,19 @@ auto_tessell_core/build/
 auto_tessell_core/*.so
 
 # External research/reference checkouts and generated dependency trees
-/AlgoHex/
-/Feature-Preserving-Octree-Hex-Meshing/
-/HOHQMesh/
-/VoroCrust/
-/pdmt/
-/voro/
-/bin/
+/vendor/reference/
+/artifacts/
+/research/archive/
+/vendor/reference/
 /installer/staging/
 /octree.vtk
-/tessell-mesh/build_make/_deps/
+/engines/legacy/tessell_mesh/build_make/_deps/
+/engines/legacy/tessell_mesh/build_make/
 
 # Next.js reference UI
-b_aYczSLScZNH/.next/
-b_aYczSLScZNH/node_modules/
-b_aYczSLScZNH/tsconfig.tsbuildinfo
+products/web/reference-ui/.next/
+products/web/reference-ui/node_modules/
+products/web/reference-ui/tsconfig.tsbuildinfo
 
 # CFD paper search — large PDFs & converted text (keep summaries only)
 docs/references/papers/source/pdf/
@@ -111,7 +109,7 @@ docs/references/papers/source/text/
 /.omc/
 /CMakeFiles/
 /tmp/
-/harness/runs/
+/research/quality-harness/runs/
 /autoresearch-results/
 tests/bench_quality_matrix_*.jsonl
 tests/stl/bench_*_eval_result.json

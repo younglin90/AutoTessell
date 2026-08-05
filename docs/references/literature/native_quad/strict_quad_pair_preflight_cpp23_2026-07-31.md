@@ -32,7 +32,7 @@ Neither paper supplies AutoTessell's immutable source coordinates, feature and
 physical-payload provenance, output writer, failure contract, or general
 strict-quad extraction.  No algorithm, code, output, dependency, or threshold
 was copied.  The only retained independent idea is fail-closed preflight
-before a future strict output attempt.  `third_party/` is unchanged.
+before a future strict output attempt.  `vendor/dependencies/` is unchanged.
 
 ## Contract
 

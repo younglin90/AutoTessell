@@ -45,7 +45,7 @@ Timeout is `UNVERIFIED`, not an attribution result.
 
 Only this report-only marker module, test, and note change.  No production
 generator, predicate, threshold, strict refusal, writer, transaction, routing,
-default, target-cell, CMake, or `third_party/` code changes.
+default, target-cell, CMake, or `vendor/dependencies/` code changes.
 
 Kill or roll back if marker data is attached without exact unique hashes,
 changes an original audit invocation/result, permits output, or changes

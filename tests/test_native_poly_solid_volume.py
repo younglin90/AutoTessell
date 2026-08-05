@@ -70,7 +70,7 @@ ONCE per module and all four gates read from the shared measurement.
 
 Do NOT widen tolerances without re-measuring; do NOT flip these permanent
 gates back to xfail. POLY-S3 fixed void; POLY-S4 fixed volume (all four
-solid-invariant gates are now permanent) — see ``harness/plan_poly1.md`` /
+solid-invariant gates are now permanent) — see ``research/quality-harness/plan_poly1.md`` /
 ``plan_poly3.md`` / ``plan_poly4.md`` for the card sequence.
 """
 

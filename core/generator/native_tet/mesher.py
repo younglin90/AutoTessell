@@ -842,6 +842,9 @@ def generate_native_tet(
     # Generic tet callers leave this unset and retain the legacy contract.
     min_final_vertices: int | None = None,
     enable_same_side_retriangulation: bool | None = None,
+    # Release callers may explicitly permit the external pytetwild fallback.
+    # None preserves the legacy environment-controlled behavior.
+    allow_external_fallback: bool | None = None,
     # beta410 — progress_cb(stage: str, pct: float, info: dict): 진행 보고.
     progress_cb: "Any" = None,
     # beta140 Phase E2 — curvature-adaptive sizing (split/collapse 기준).
@@ -849,6 +852,14 @@ def generate_native_tet(
     # beta500 — anisotropic metric 활성 (curvature-aligned SPD tensor).
     use_anisotropic_metric: bool = False,
     anisotropic_ratio: float = 0.5,
+    # 035-C — explicit C++ metric seed route. All three inputs are required
+    # when enabled; no hidden identity/spacing/budget default is introduced.
+    enable_metric_seed: bool = False,
+    metric_seed_diagonal: tuple[float, float, float] | list[float] | np.ndarray | None = None,
+    metric_seed_spacing: float | None = None,
+    metric_seed_max_candidates: int | None = None,
+    # 035-D — deterministic worst-cell CSR optimizer for interior vertices.
+    enable_worst_cell_queue: bool = True,
     adaptive_min_ratio: float = 0.25,
     adaptive_max_ratio: float = 2.0,
     adaptive_curvature_gain: float = 2.0,
@@ -1447,6 +1458,25 @@ def generate_native_tet(
 
     bmin = V.min(axis=0); bmax = V.max(axis=0)
     diag = float(np.linalg.norm(bmax - bmin))
+    _metric_seed_diag: np.ndarray | None = None
+    _metric_seed_h: float | None = None
+    _metric_seed_budget: int | None = None
+    if enable_metric_seed:
+        if metric_seed_diagonal is None or metric_seed_spacing is None or metric_seed_max_candidates is None:
+            raise ValueError(
+                "enable_metric_seed requires metric_seed_diagonal, "
+                "metric_seed_spacing, and metric_seed_max_candidates"
+            )
+        _metric_seed_diag = np.asarray(metric_seed_diagonal, dtype=np.float64)
+        if _metric_seed_diag.shape != (3,) or not np.all(np.isfinite(_metric_seed_diag)) or np.any(_metric_seed_diag <= 0.0):
+            raise ValueError("metric_seed_diagonal must be three finite positive values")
+        _metric_seed_h = float(metric_seed_spacing)
+        _metric_seed_budget = int(metric_seed_max_candidates)
+        if not np.isfinite(_metric_seed_h) or _metric_seed_h <= 0.0 or _metric_seed_budget <= 0:
+            raise ValueError("metric_seed_spacing and metric_seed_max_candidates must be positive")
+        if ((target_edge_length is None or target_edge_length <= 0.0)
+                and (target_cells is None or int(target_cells) <= 0)):
+            target_edge_length = _metric_seed_h
     if target_edge_length is None or target_edge_length <= 0:
         # beta330: target_cells 가 지정되면 bbox volume 기반 heuristic 으로
         # target_edge 유도. 정사면체 V ≈ edge^3 / (6√2) ≈ 0.118 × edge^3.
@@ -1489,7 +1519,9 @@ def generate_native_tet(
             span = (bmax - bmin).prod()
             if span > 0 and n_target > 0:
                 te_cap = float((span / (0.118 * n_target)) ** (1.0 / 3.0))
-                if te_cap > target_edge_length:
+                if (_requested_target_edge_length is None
+                        and _requested_target_cells is None
+                        and te_cap > target_edge_length):
                     log.info(
                         "native_tet_target_edge_auto_tune",
                         prev=round(float(target_edge_length), 5),
@@ -1520,7 +1552,28 @@ def generate_native_tet(
     )
 
     # 1) 시드 = 표면 vertex + 내부 uniform grid
-    grid = _seed_points_uniform(bmin, bmax, float(target_edge_length))
+    if enable_metric_seed:
+        from core.utils.native_extensions import import_native_extension
+        try:
+            metric_seed_kernel = import_native_extension("native_tet_metric_seed")
+            grid = np.asarray(
+                metric_seed_kernel.generate_metric_bcc_candidates(
+                    np.asarray(bmin, dtype=np.float64),
+                    np.asarray(bmax, dtype=np.float64),
+                    _metric_seed_diag,
+                    float(_metric_seed_h),
+                    int(_metric_seed_budget),
+                ),
+                dtype=np.float64,
+            )
+        except Exception as exc:
+            log.error("native_tet_metric_seed_refused", reason=str(exc)[:240])
+            return NativeTetResult(False, time.perf_counter() - t0, message=f"metric seed refused: {exc}")
+        if grid.ndim != 2 or grid.shape[1] != 3 or not np.all(np.isfinite(grid)):
+            return NativeTetResult(False, time.perf_counter() - t0, message="metric seed returned invalid candidates")
+        log.info("native_tet_metric_seed", n_candidates=int(grid.shape[0]), spacing=float(_metric_seed_h), max_candidates=int(_metric_seed_budget))
+    else:
+        grid = _seed_points_uniform(bmin, bmax, float(target_edge_length))
     # grid 중 outside 제거 (아니면 bbox 밖으로 tet 이 많이 생김).
     # C-QUAL-5 / beta2392 — env AUTO_TESSELL_SEED_GWN=1 이면 Jacobson 2013
     # generalized winding number (SI-robust) 사용.
@@ -2434,6 +2487,8 @@ def generate_native_tet(
             locked_vertex_ids=np.asarray(locked_new, dtype=np.int64),
             n_iter=int(smooth_iterations),
             relax=float(smooth_relax),
+            quality_guard=True,
+            quality_queue=bool(enable_worst_cell_queue),
         )
 
         try:
@@ -6541,7 +6596,11 @@ def generate_native_tet(
             grade in ("C", "D", "?")
             or (_phase_bc_skip and target_cells is not None and int(target_cells) > 0)
         )
-        and os.environ.get("AUTO_TESSELL_P4C_PYTETWILD", "1") != "0"
+        and (
+            allow_external_fallback
+            if allow_external_fallback is not None
+            else os.environ.get("AUTO_TESSELL_P4C_PYTETWILD", "1") != "0"
+        )
     ):
         try:
             import pytetwild  # noqa: PLC0415

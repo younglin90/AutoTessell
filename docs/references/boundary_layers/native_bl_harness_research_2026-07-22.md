@@ -43,7 +43,7 @@ First card: `POLY-BL-SHELL1`. Wire `POLY-WALL1` provenance into shared BL/transi
 
 ## Runner Setup
 
-Set `planner.command` and `improver.command` in `harness/native_bl_quality_loop.json` to argument arrays for the available agent runner. Supported placeholders are `{brief}` and `{output}` for planner; `{brief}`, `{plan}`, `{output}`, and `{engine}` for improvers. Then run:
+Set `planner.command` and `improver.command` in `research/quality-harness/native_bl_quality_loop.json` to argument arrays for the available agent runner. Supported placeholders are `{brief}` and `{output}` for planner; `{brief}`, `{plan}`, `{output}`, and `{engine}` for improvers. Then run:
 
 ```bash
 python3 scripts/run_native_bl_quality_loop.py prepare

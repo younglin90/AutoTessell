@@ -16,7 +16,7 @@
 - [ ] `make baseline-check`
 - [ ] `make docs-check`
 - [ ] `make test-count`
-- [ ] `make smoke-check` (when touching backend/desktop paths)
+- [ ] `make smoke-check` (when touching products/web/api/desktop paths)
 
 ## Ownership/Docs
 

@@ -870,6 +870,183 @@ py::array_t<double> indexed_wall_collision_distances(
     return result;
 }
 
+
+py::array_t<bool> centroid_overlap_mask(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& radii,
+    const double epsilon)
+{
+    if (points.ndim() != 2 || points.shape(1) != 3
+        || radii.ndim() != 1 || radii.shape(0) != points.shape(0)) {
+        throw std::invalid_argument("points must be Nx3 and radii must be N");
+    }
+    if (!std::isfinite(epsilon) || epsilon < 0.0) {
+        throw std::invalid_argument("epsilon must be finite and non-negative");
+    }
+    const auto point_view = points.unchecked<2>();
+    const auto radius_view = radii.unchecked<1>();
+    const size_t count = static_cast<size_t>(points.shape(0));
+    py::array_t<bool> result(points.shape(0));
+    auto result_view = result.mutable_unchecked<1>();
+    if (count == 0U) return result;
+    double max_radius = 0.0;
+    for (size_t index = 0U; index < count; ++index) {
+        for (int axis = 0; axis < 3; ++axis) {
+            if (!std::isfinite(point_view(static_cast<py::ssize_t>(index), axis))) {
+                throw std::invalid_argument("points must be finite");
+            }
+        }
+        const double radius = radius_view(static_cast<py::ssize_t>(index));
+        if (!std::isfinite(radius) || radius < 0.0) {
+            throw std::invalid_argument("radii must be finite and non-negative");
+        }
+        max_radius = std::max(max_radius, radius);
+        result_view(static_cast<py::ssize_t>(index)) = false;
+    }
+    if (!(max_radius > 0.0)) return result;
+    std::unordered_map<GridKey, std::vector<size_t>, GridKeyHash> buckets;
+    buckets.max_load_factor(0.7F);
+    buckets.reserve(count);
+    const double inverse_cell_size = 1.0 / max_radius;
+    std::vector<GridKey> keys(count);
+    {
+        py::gil_scoped_release release;
+        for (size_t index = 0U; index < count; ++index) {
+            const auto row = static_cast<py::ssize_t>(index);
+            keys[index] = GridKey{
+                grid_coordinate(point_view(row, 0), inverse_cell_size),
+                grid_coordinate(point_view(row, 1), inverse_cell_size),
+                grid_coordinate(point_view(row, 2), inverse_cell_size)};
+            buckets[keys[index]].push_back(index);
+        }
+        const double epsilon_squared = epsilon * epsilon;
+        for (size_t index = 0U; index < count; ++index) {
+            const double radius = radius_view(static_cast<py::ssize_t>(index));
+            if (!(radius > 0.0)) continue;
+            const auto& key = keys[index];
+            bool blocked = false;
+            for (std::int64_t dx = -1; dx <= 1 && !blocked; ++dx) {
+                for (std::int64_t dy = -1; dy <= 1 && !blocked; ++dy) {
+                    for (std::int64_t dz = -1; dz <= 1 && !blocked; ++dz) {
+                        const auto bucket = buckets.find(
+                            GridKey{key.x + dx, key.y + dy, key.z + dz});
+                        if (bucket == buckets.end()) continue;
+                        for (const size_t other : bucket->second) {
+                            if (other == index) continue;
+                            const auto row = static_cast<py::ssize_t>(index);
+                            const auto other_row = static_cast<py::ssize_t>(other);
+                            const double px = point_view(row, 0) - point_view(other_row, 0);
+                            const double py_value = point_view(row, 1) - point_view(other_row, 1);
+                            const double pz = point_view(row, 2) - point_view(other_row, 2);
+                            const double distance_squared = px * px + py_value * py_value + pz * pz;
+                            if (distance_squared > epsilon_squared
+                                && distance_squared < radius * radius) {
+                                blocked = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            result_view(static_cast<py::ssize_t>(index)) = blocked;
+        }
+    }
+    return result;
+}
+
+
+py::array_t<bool> centroid_query_overlap_mask(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& query_points,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& query_radii,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& source_points,
+    const double epsilon)
+{
+    if (query_points.ndim() != 2 || query_points.shape(1) != 3
+        || query_radii.ndim() != 1 || query_radii.shape(0) != query_points.shape(0)
+        || source_points.ndim() != 2 || source_points.shape(1) != 3) {
+        throw std::invalid_argument("query/source points and query radii have invalid shapes");
+    }
+    if (!std::isfinite(epsilon) || epsilon < 0.0) {
+        throw std::invalid_argument("epsilon must be finite and non-negative");
+    }
+    const auto query = query_points.unchecked<2>();
+    const auto radii = query_radii.unchecked<1>();
+    const auto source = source_points.unchecked<2>();
+    const size_t query_count = static_cast<size_t>(query_points.shape(0));
+    const size_t source_count = static_cast<size_t>(source_points.shape(0));
+    py::array_t<bool> result(query_points.shape(0));
+    auto output = result.mutable_unchecked<1>();
+    double max_radius = 0.0;
+    for (size_t i = 0U; i < query_count; ++i) {
+        for (int axis = 0; axis < 3; ++axis) {
+            if (!std::isfinite(query(static_cast<py::ssize_t>(i), axis))) {
+                throw std::invalid_argument("query points must be finite");
+            }
+        }
+        const double radius = radii(static_cast<py::ssize_t>(i));
+        if (!std::isfinite(radius) || radius < 0.0) {
+            throw std::invalid_argument("query radii must be finite and non-negative");
+        }
+        max_radius = std::max(max_radius, radius);
+        output(static_cast<py::ssize_t>(i)) = false;
+    }
+    if (source_count == 0U || !(max_radius > 0.0)) return result;
+    std::unordered_map<GridKey, std::vector<size_t>, GridKeyHash> buckets;
+    buckets.max_load_factor(0.7F);
+    buckets.reserve(source_count);
+    const double inverse_cell_size = 1.0 / max_radius;
+    {
+        py::gil_scoped_release release;
+        for (size_t j = 0U; j < source_count; ++j) {
+            for (int axis = 0; axis < 3; ++axis) {
+                if (!std::isfinite(source(static_cast<py::ssize_t>(j), axis))) {
+                    throw std::invalid_argument("source points must be finite");
+                }
+            }
+            const auto row = static_cast<py::ssize_t>(j);
+            const GridKey key{
+                grid_coordinate(source(row, 0), inverse_cell_size),
+                grid_coordinate(source(row, 1), inverse_cell_size),
+                grid_coordinate(source(row, 2), inverse_cell_size)};
+            buckets[key].push_back(j);
+        }
+        const double epsilon_squared = epsilon * epsilon;
+        for (size_t i = 0U; i < query_count; ++i) {
+            const double radius = radii(static_cast<py::ssize_t>(i));
+            if (!(radius > 0.0)) continue;
+            const auto row = static_cast<py::ssize_t>(i);
+            const GridKey key{
+                grid_coordinate(query(row, 0), inverse_cell_size),
+                grid_coordinate(query(row, 1), inverse_cell_size),
+                grid_coordinate(query(row, 2), inverse_cell_size)};
+            bool blocked = false;
+            for (std::int64_t dx = -1; dx <= 1 && !blocked; ++dx) {
+                for (std::int64_t dy = -1; dy <= 1 && !blocked; ++dy) {
+                    for (std::int64_t dz = -1; dz <= 1 && !blocked; ++dz) {
+                        const auto bucket = buckets.find(
+                            GridKey{key.x + dx, key.y + dy, key.z + dz});
+                        if (bucket == buckets.end()) continue;
+                        for (const size_t j : bucket->second) {
+                            const auto other = static_cast<py::ssize_t>(j);
+                            const double px = query(row, 0) - source(other, 0);
+                            const double py_value = query(row, 1) - source(other, 1);
+                            const double pz = query(row, 2) - source(other, 2);
+                            const double distance_squared = px * px + py_value * py_value + pz * pz;
+                            if (distance_squared > epsilon_squared
+                                && distance_squared < radius * radius) {
+                                blocked = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            output(row) = blocked;
+        }
+    }
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_bl, module)
@@ -898,6 +1075,19 @@ PYBIND11_MODULE(native_bl, module)
         py::arg("directions"),
         py::arg("triangle_vertex_ids"),
         py::arg("max_distance") = std::numeric_limits<double>::infinity(),
+        py::arg("epsilon") = 1e-12);
+    module.def(
+        "centroid_query_overlap_mask",
+        &centroid_query_overlap_mask,
+        py::arg("query_points"),
+        py::arg("query_radii"),
+        py::arg("source_points"),
+        py::arg("epsilon") = 1e-12);
+    module.def(
+        "centroid_overlap_mask",
+        &centroid_overlap_mask,
+        py::arg("points"),
+        py::arg("radii"),
         py::arg("epsilon") = 1e-12);
     module.def(
         "layer_front_summary",

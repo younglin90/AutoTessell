@@ -3,7 +3,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FRONTEND_DIR="$SCRIPT_DIR/b_aYczSLScZNH"
+FRONTEND_DIR="$SCRIPT_DIR/products/web/reference-ui"
 BACKEND_PORT="${AUTOTESSELL_PORT:-9720}"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 

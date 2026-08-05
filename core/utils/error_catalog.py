@@ -208,7 +208,7 @@ _CATALOG: dict[ErrorCode, ErrorSpec] = {
         causes=("AUTO_TESSELL_ML_SMOOTH_MODEL 환경변수 미설정", "잘못된 경로"),
         solutions=(
             "scripts/train_quality_predictor.py 로 학습 후 배포",
-            "models/ml_smooth_model.pt 경로 확인",
+            "assets/models/ml_smooth_model.pt 경로 확인",
             "--ml-smooth-model PATH 명시",
         ),
     ),

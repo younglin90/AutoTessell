@@ -9,7 +9,7 @@ tags: [repository, map]
 
 # 저장소 지도
 
-조사한 스냅샷에는 `core/`, `cli/`, `desktop/`, `backend/`에 약 417개 Python 파일, root에 약 220개 test module, 200개가 넘는 문서 파일이 있다.
+조사한 스냅샷에는 `core/`, `cli/`, `desktop/`, `products/web/api/`에 약 417개 Python 파일, root에 약 220개 test module, 200개가 넘는 문서 파일이 있다.
 
 | 경로 | 책임 |
 |---|---|
@@ -23,13 +23,13 @@ tags: [repository, map]
 | `core/utils/` | geometry, predicate, provenance, OpenFOAM IO, export, acceleration |
 | `cli/` | Click command와 terminal workflow |
 | `desktop/` | Qt, local FastAPI, web UI, Electron |
-| `frontend/` | Next.js SaaS frontend |
-| `backend/` | SaaS API, DB, worker, payment, storage, 별도 mesh adapter |
+| `products/web/app/` | Next.js SaaS frontend |
+| `products/web/api/` | SaaS API, DB, worker, payment, storage, 별도 mesh adapter |
 | `auto_tessell_core/` | pybind11/C/C++ extension build |
 | `tests/` | unit, integration, permanent gate, STL corpus, benchmark |
 | `scripts/` | validation, benchmark, smoke, 운영 entry |
-| `harness/` | 연구 plan, run, probe, mutable evidence |
+| `research/quality-harness/` | 연구 plan, run, probe, mutable evidence |
 | `docs/references/literature/` | 완독 note, evidence matrix, 통합 개발 계획 |
-| `third_party/`와 참조 source tree | vendored/comparison 구현, 자동 product path 아님 |
+| `vendor/dependencies/`와 참조 source tree | vendored/comparison 구현, 자동 product path 아님 |
 
 중요 symbol은 [[Source Map|소스 지도]]에서 바로 찾을 수 있다.

@@ -25,7 +25,7 @@ Layer Meshes*, ACM TOMS 49(1), 2023, DOI `10.1145/3577196`, informs only the
 fixed-boundary and fail-closed acceptance principles. No paper or external
 implementation source, constant, data structure, or generated artifact was
 copied. Direct dependencies are pybind11 (BSD-3-Clause) and the C++ standard
-library. `third_party/` is unchanged.
+library. `vendor/dependencies/` is unchanged.
 
 ## Exact API and validation contract
 
@@ -167,7 +167,7 @@ stronger `0.5x` evidence target.
 - direct parity, deterministic fixture, and ABI validation tests: PASS;
 - exact native ABI contract and source-evidence manifest: required before
   integration;
-- `third_party/`, production Python imports, routing, writer, and CMake target
+- `vendor/dependencies/`, production Python imports, routing, writer, and CMake target
   changes: zero.
 
 ## Limits

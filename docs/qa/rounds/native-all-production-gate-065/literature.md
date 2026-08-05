@@ -23,7 +23,7 @@ What single bounded core method moves all native products and the surface mesher
    - Metric-conforming surface growth and exterior advancing front center validity in anisotropic curved layers. Its reported method is two-dimensional, not a general 3-D proof.
    - Transfer: metric-consistent staged validation and atomic rollback; no 3-D threshold extrapolation.
 
-3. H. Ye et al., *Robust full-layer prismatic mesh generation based on bijective mapping*, JCP 524 (2025) 113744, DOI `10.1016/j.jcp.2025.113744`; `papers/pdf/61_ye_2025_bijective_prismatic_bl.pdf`.
+3. H. Ye et al., *Robust full-layer prismatic mesh generation based on bijective mapping*, JCP 524 (2025) 113744, DOI `10.1016/j.jcp.2025.113744`; `docs/references/papers/source/pdf/61_ye_2025_bijective_prismatic_bl.pdf`.
    - Full layers need global positive-volume/bijectivity safeguards; local termination makes poor residual transitions.
    - Transfer: full-layer commit-or-rollback, not an assertion existing writers implement Ye's mapping.
 

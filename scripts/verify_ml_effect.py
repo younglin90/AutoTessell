@@ -71,8 +71,8 @@ def run_mesh(stl_path: Path, env_overrides: dict[str, str]) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--stl", default="tests/stl/03_hard_bracket.stl")
-    ap.add_argument("--ml-model", default="models/ml_smooth_model.pt")
-    ap.add_argument("--bl-model", default="models/bl_predictor.pt")
+    ap.add_argument("--ml-model", default="assets/models/ml_smooth_model.pt")
+    ap.add_argument("--bl-model", default="assets/models/bl_predictor.pt")
     args = ap.parse_args()
 
     repo = Path(__file__).resolve().parents[1]

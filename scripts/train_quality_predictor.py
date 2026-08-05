@@ -1,13 +1,13 @@
 """D2 / beta2594 — quality predictor train + 배포 스크립트.
 
-D1 (collect_ml_dataset.py) 가 만든 npz 로 50-epoch 학습 → models/ml_smooth_model.pt 배포.
-이후 AUTO_TESSELL_ML_SMOOTH_MODEL=models/ml_smooth_model.pt 로 활성화.
+D1 (collect_ml_dataset.py) 가 만든 npz 로 50-epoch 학습 → assets/models/ml_smooth_model.pt 배포.
+이후 AUTO_TESSELL_ML_SMOOTH_MODEL=assets/models/ml_smooth_model.pt 로 활성화.
 
 Usage:
     python3 scripts/train_quality_predictor.py
     python3 scripts/train_quality_predictor.py --epochs 100 --batch-size 128
 
-Output: models/ml_smooth_model.pt (state_dict + meta).
+Output: assets/models/ml_smooth_model.pt (state_dict + meta).
 """
 from __future__ import annotations
 
@@ -18,8 +18,8 @@ from pathlib import Path
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", default="models/ml_dataset.npz")
-    ap.add_argument("--output", default="models/ml_smooth_model.pt")
+    ap.add_argument("--dataset", default="assets/models/ml_dataset.npz")
+    ap.add_argument("--output", default="assets/models/ml_smooth_model.pt")
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--lr", type=float, default=1e-3)

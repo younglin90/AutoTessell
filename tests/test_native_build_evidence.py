@@ -166,7 +166,7 @@ def test_generated_manifest_verifies_hashes_identity_and_exact_abi(
         cxx_standard=23,
         configuration=_release_configuration(),
     )
-    assert len(manifest["modules"]) == 8
+    assert len(manifest["modules"]) == 15
     assert manifest["source_identity"] == archive_identity
     assert manifest["configuration"] == _release_configuration()
     verified = subject.verify_build_evidence(
@@ -265,7 +265,7 @@ def test_first_party_release_profile_is_statically_complete_and_adapter_free() -
         "native_tet_qopt",
     ]
     profile_start = cmake.index("if(AUTOTESSELL_INSTALL_FIRST_PARTY_NATIVE)\n")
-    profile_end = cmake.index("# ── Paths", profile_start)
+    profile_end = cmake.index("set(CINOLIB_DIR", profile_start)
     profile = cmake[profile_start:profile_end]
     helper_start = cmake.index("function(autotessell_configure_first_party_native target_name)")
     helper_end = cmake.index("endfunction()", helper_start)

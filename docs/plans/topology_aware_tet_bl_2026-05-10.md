@@ -20,7 +20,7 @@ timeout 1800 python3 tests/stl/verify_autoresearch_mesh_matrix.py
 
 Acceptance: `tet_failed_case_count == 0`, exact `bl_used_layers == 3`, no
 wrong-tier fallback success counting, and the evaluator gates in
-`agents/specs/evaluator.md` stay authoritative.
+`docs/contracts/evaluator.md` stay authoritative.
 
 ## Current State
 
@@ -892,7 +892,7 @@ The remaining 37 rejected components split:
 
 ### BLR-9c-d (p-2) — quality-level audit
 
-The evaluator caps from ``agents/specs/evaluator.md``:
+The evaluator caps from ``docs/contracts/evaluator.md``:
 
 ::
 
@@ -1614,7 +1614,7 @@ treatment — beyond the scope of the cap-only sub-series.
 ### BLR-9c-d (p-6) — final 21/21 with correct evaluator thresholds
 
 **Critical fix**: the bench harness was using
-``agents/specs/evaluator.md`` thresholds (85° hard cap), but the
+``docs/contracts/evaluator.md`` thresholds (85° hard cap), but the
 production ``core/evaluator/report.py`` line 222-252 *bumps* the
 hard caps for tet tiers at draft / standard:
 

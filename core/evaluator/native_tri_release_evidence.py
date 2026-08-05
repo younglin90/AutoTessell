@@ -27,6 +27,13 @@ def certify_native_tri_release_result(
         return {"authoritative":False,"rejection_reason":f"arrays_invalid:{type(exc).__name__}"}
     raw_sha=hashlib.sha256(source_file.read_bytes()).hexdigest() if source_file.is_file() and not source_file.is_symlink() else None
     source_sha=getattr(result,"source_file_sha256",None)
+    certificate_sha=getattr(result,"source_certificate_sha256",None)
+    semantic_ledger_sha=getattr(result,"source_semantic_ledger_sha256",None)
+    certificate_binding=bool(
+        certificate_sha is None
+        or (isinstance(certificate_sha,str) and certificate_sha.strip()
+            and isinstance(semantic_ledger_sha,str) and semantic_ledger_sha.strip())
+    )
     provenance=tuple(getattr(result,"source_face_provenance",()))
     face_provenance=bool(
         len(provenance)==len(output_faces)
@@ -51,6 +58,7 @@ def certify_native_tri_release_result(
         and getattr(result,"transaction_applied",False)
         and source_sha is not None and source_sha==raw_sha
         and getattr(result,"source_provenance_authoritative",False)
+        and certificate_binding
         and surface.valid and shape_preserved and feature_preserved
         and patch_preserved and physical_groups_preserved and provenance_complete
     )
@@ -58,6 +66,9 @@ def certify_native_tri_release_result(
         "status":"measured_authoritative_native_tri_surface" if authoritative else "reject_native_tri_surface_authority",
         "authoritative":authoritative,
         "source_sha256":source_sha,
+        "source_certificate_sha256":certificate_sha,
+        "semantic_ledger_sha256":semantic_ledger_sha,
+        "certificate_binding":certificate_binding,
         "source_shape_sha256":_combine(getattr(result,"source_vertices_sha256",None),getattr(result,"source_faces_sha256",None)),
         "output_shape_sha256":_combine(getattr(result,"output_vertices_sha256",None),getattr(result,"output_faces_sha256",None)),
         "feature_sha256":getattr(result,"source_feature_sha256",None),

@@ -113,4 +113,4 @@ Torch reachable regression (`cube_star`, one iteration, step 0.05):
   focused run was 46.75 s, so the fixed 15% regression limit is satisfied.
 - Targeted strict mypy still reports 15 pre-existing annotations/`Any` errors
   in `amips.py`; this card introduced no new reported item.
-- `third_party/`: untouched.
+- `vendor/dependencies/`: untouched.

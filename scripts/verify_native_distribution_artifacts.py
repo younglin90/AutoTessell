@@ -22,7 +22,7 @@ EXPECTED_MODULES = {
 }
 FORBIDDEN_MODULES = {"cfmesh_native", "cinolib_hex", "ftetwild", "robusthex"}
 FORBIDDEN_SOURCE_PREFIXES = (
-    "third_party/",
+    "vendor/dependencies/",
     "AlgoHex/",
     "Feature-Preserving-Octree-Hex-Meshing/",
     "HOHQMesh/",
@@ -91,7 +91,7 @@ def verify_wheel(path: Path) -> None:
     modules = {name for item in names if (name := _module_name(item)) is not None}
     assert modules == EXPECTED_MODULES, f"wheel native modules: {sorted(modules)}"
     assert not modules.intersection(FORBIDDEN_MODULES)
-    assert not any("/third_party/" in f"/{item}" for item in names)
+    assert not any("/vendor/dependencies/" in f"/{item}" for item in names)
     assert any(item.endswith(".dist-info/licenses/LICENSE") for item in names)
     assert any(item.endswith(".dist-info/licenses/NOTICE") for item in names)
     assert manifest["schema"] == 1

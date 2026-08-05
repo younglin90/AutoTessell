@@ -6,7 +6,7 @@ Base: `65add70d05207ffa1ea4b5b26ba858db37a04a6e`
 
 Scope: star-validity witness selection only.  No mesh point, face, owner,
 neighbour, boundary, tolerance, routing, target-cell, source-geometry, or
-`third_party/` change.
+`vendor/dependencies/` change.
 
 ## Hypothesis and fixed acceptance
 
@@ -105,7 +105,7 @@ On a 20,000-cell valid tetrahedron census, seven-run native medians were:
   package-dependent GPL/LGPL.  Both are research references only.
 
 The projection and final-recheck implementation is independently authored.
-No external code, generated artifact, dependency, or `third_party/` file was
+No external code, generated artifact, dependency, or `vendor/dependencies/` file was
 copied or modified.  This preserves the future MIT native-core boundary.
 
 ## Verification and remaining blockers

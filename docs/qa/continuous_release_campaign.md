@@ -22,7 +22,7 @@ ledger commit itself necessarily advances `HEAD`.
 - worktrees: `1` (primary only)
 - working tree: clean
 - submodules: no modified submodule reported
-- `third_party/`: no modification reported
+- `vendor/dependencies/`: no modification reported
 - archived prior experimental branches: `/home/younglin90/work/claude_code/AutoTessell-archive-20260730/`
 
 ### Known retained evidence
@@ -114,7 +114,7 @@ ledger commit itself necessarily advances `HEAD`.
 - Prior tet failed experiments remain archived:
   `failed-tet-vvv3b-topology.patch` and `failed-tet-vvv10-topology.patch`.
 - Current Git before this ledger write: clean `master`, primary worktree plus one
-  active native-poly worktree. No `third_party/` change reported.
+  active native-poly worktree. No `vendor/dependencies/` change reported.
 
 ### Gate re-evaluation
 
@@ -176,7 +176,7 @@ ledger commit itself necessarily advances `HEAD`.
   The export change itself makes no geometry or routing decision. Archive patch:
   `0001-fix-native-remesh-export-face-remesh-public-API.patch`
   (`sha256:52cba2e93181900f5a9f1e24e359389911cac48c0e5d64b3b8849a344f56fafd`).
-- No card changed `third_party/`. Active worktrees remain deliberate campaign
+- No card changed `vendor/dependencies/`. Active worktrees remain deliberate campaign
   state; they prevent a Repository Gate PASS.
 
 ### Gate re-evaluation
@@ -212,7 +212,7 @@ ledger commit itself necessarily advances `HEAD`.
 
 Supplied PDFs indexed in `docs/references/papers/PAPER_INDEX.md` and
 `docs/references/literature/master_bibliography.csv`. Current campaign uses paper
-ideas only; no external implementation code is copied. `third_party/` is out of
+ideas only; no external implementation code is copied. `vendor/dependencies/` is out of
 scope. Future MIT-core boundary follows
 `docs/licensing/mit-core-transition-policy.md`.
 
@@ -253,7 +253,7 @@ scope. Future MIT-core boundary follows
   retried successfully. No user source file was reset, checked out, or deleted.
 - Before next-card creation, `master` had one clean primary worktree, branch
   `master` only, no dirty or untracked files, no submodule change, no
-  `third_party/` diff, and `git diff --check` passed. Archived clean recovery
+  `vendor/dependencies/` diff, and `git diff --check` passed. Archived clean recovery
   worktrees and merged branches were removed exactly. New cycle worktrees are
   limited to the three active cards below.
 
@@ -354,7 +354,7 @@ scope. Future MIT-core boundary follows
   archived then removed exactly.  Tet archive:
   `tet-strict-topology-duplicate-repair-380a0cda/0001-fix-native-tet-duplicate-group-topology-repair.patch`
   (`sha256:52fc3314c95bf75993dd4e1eec845cf91a841f788c19464b0e7fe6cfb0557947`).
-  No `third_party/` file changed.
+  No `vendor/dependencies/` file changed.
 
 ### Research record
 
@@ -443,7 +443,7 @@ scope. Future MIT-core boundary follows
 - All four integrated lanes were rebased or conflict-reviewed against current
   `master`, post-merge tested, archive-verified, then removed exactly.  The
   current repository scan has one primary worktree, `master` only, a clean
-  working tree, `git diff --check` pass, and no `third_party/` diff.
+  working tree, `git diff --check` pass, and no `vendor/dependencies/` diff.
 - Strict global mypy is still baseline-blocked: invoking it for the changed quad
   module follows the import graph and reports `2784` existing errors in `152`
   files.  This card introduced no reported new focused type error; the global
@@ -476,7 +476,7 @@ scope. Future MIT-core boundary follows
   only as diagnostic.  Do not weaken real topology or shape gates.
 - In parallel, research and select one bounded native-hex, native-poly, and
   native-tri/quad card from current Gate-4/5/7/10 deficits.  No external code
-  reuse and no `third_party/` modification.
+  reuse and no `vendor/dependencies/` modification.
 - Run an immutable-head validation baseline only after the next integration
   cycle; retain all unrun/full-suite gates as `UNVERIFIED`.
 
@@ -520,7 +520,7 @@ scope. Future MIT-core boundary follows
   Compaction requires an elevated Windows session after WSL shutdown and an
   offline VHDX backup.
 - `git diff --check` and `git fsck --full` pass.  `git fsck` reports historical
-  dangling objects only; no prune or aggressive GC was run.  No `third_party/`
+  dangling objects only; no prune or aggressive GC was run.  No `vendor/dependencies/`
   file changed.
 
 ### Gate re-evaluation
@@ -587,7 +587,7 @@ scope. Future MIT-core boundary follows
   `D:\\AutoTessell-cleanup-backup-20260730\\research-bundles`; the latest
   SHA-256 values are `c2171ae8bf62f8ad9c44d843007b6fea7bd926d01a49deeed8f11c71600185c3`
   and `0ff2d85abc6a0b8f6b603d72a01235efc3454d5e9a5bb14ec92b9d162d9d4d0f`.
-  No `third_party/` file changed.
+  No `vendor/dependencies/` file changed.
 
 ### Gate re-evaluation
 
@@ -648,7 +648,7 @@ scope. Future MIT-core boundary follows
   `109057201c762129b791e798c69a2f6f9cf017bf7d744e771287c3598651b40d`,
   and `c48de3ff8db731b228ddb3721c5d34580a28e88bbfd2e925023f07f41900be85`.
   The obsolete protected Tet worktree was also proven merged, bundled, and
-  removed.  No `third_party/` file changed.
+  removed.  No `vendor/dependencies/` file changed.
 
 ### Gate re-evaluation
 
@@ -699,7 +699,7 @@ scope. Future MIT-core boundary follows
   pass.  Full-validation lane remains required.  The card bundle verifies at
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-poly-tet-incidence-1-875f676c.bundle`,
   SHA-256 `18309759d9787bda4a3c064446c91ea1dfe037474f01735b08a64bc962a7b527`.
-  Worktree and branch were removed after integration.  No `third_party/`
+  Worktree and branch were removed after integration.  No `vendor/dependencies/`
   source changed.
 - CGAL 6.2 and OpenVolumeMesh topology documentation were reviewed for data
   structure principles.  No external implementation was copied; code and
@@ -748,7 +748,7 @@ scope. Future MIT-core boundary follows
   dict-returning edge-map hypothesis is prohibited.  Recoverable bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-quad-edge-incidence-rejected.bundle`,
   SHA-256 `215957ab39e8e9f5d5a93ef6215bcdb3c424fb7f861648d4604eca479755eecc`.
-  Its worktree and branch were removed.  `master` source and `third_party/`
+  Its worktree and branch were removed.  `master` source and `vendor/dependencies/`
   were unchanged.
 
 ### Next automatic action
@@ -779,7 +779,7 @@ scope. Future MIT-core boundary follows
 - Bundle verification passes at
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-quad-fused-preflight-1-1217f038.bundle`,
   SHA-256 `71af03d3da90d6f012bed091a2b926020a3ac9321043e94f3c74a2eaf4cdbd51`.
-  Worktree and branch were removed.  `third_party/` remains unchanged.
+  Worktree and branch were removed.  `vendor/dependencies/` remains unchanged.
 
 ### Gate re-evaluation
 
@@ -820,7 +820,7 @@ scope. Future MIT-core boundary follows
   tier before candidate acceptance.  A higher-quality candidate that loses any
   immutable source coordinate is rejected; the next tier is attempted, and the
   original native mesh remains if all tiers reject.  No tolerance, snapping,
-  source-corner insertion, topology repair, or `third_party/` modification was
+  source-corner insertion, topology repair, or `vendor/dependencies/` modification was
   added.  Target-cell count remains subordinate to this shape gate.
 - Twelve independent stochastic P4C cube runs pass the `8/8` corner contract;
   four runs took the longer retry path.  Focused source/surface/Phase-A/Phase-C/
@@ -839,7 +839,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-15 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Eight native targets previously build warning-clean on Ubuntu/GCC 13; platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused Tet suite passes; immutable-head full suite missing. |
 | 4 Shape preservation | UNVERIFIED | Known P4C exact-corner acceptance hole is closed across 12 repeats; full corpus and exact surface-ledger integration remain. |
@@ -883,7 +883,7 @@ scope. Future MIT-core boundary follows
 - Focused binding, topology, adverse-input, and sphere tests pass `52`; merged
   master batch passes `40`.  A separate full polyMesh-validity fixture exceeded
   `124 s`, so complete validation remains `UNVERIFIED` rather than inferred.
-- The C++23 target builds warning-free with GCC 13.3.  No `third_party/` file,
+- The C++23 target builds warning-free with GCC 13.3.  No `vendor/dependencies/` file,
   threshold, face order, owner/neighbour order, patch label, or provenance rule
   changed.  pybind11 and CGAL documentation were architectural references only;
   no external code was copied.
@@ -896,7 +896,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-16 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Changed C++23 target builds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused/post-merge suites pass; a validity fixture timed out and immutable-head full suite is missing. |
 | 4 Shape preservation | UNVERIFIED | Poly output is byte-identical; full corpus and P4C source-surface transaction remain. |
@@ -932,7 +932,7 @@ scope. Future MIT-core boundary follows
   tier is tried.  Boundary component count is logged but not forced to one,
   because disconnected source components are valid inputs.
 - No topology repair, snapping, threshold relaxation, external implementation,
-  or `third_party/` edit was introduced.  The exact source-vertex gate remains
+  or `vendor/dependencies/` edit was introduced.  The exact source-vertex gate remains
   earlier in the same acceptance conjunction.  Target-cell tuning remains
   deferred behind shape/topology.
 - Focused source/topology tests report `14 passed`; eight independent P4C
@@ -947,7 +947,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-17 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Existing native audit target is warning-clean on Ubuntu/GCC 13; platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused/post-merge Tet suites pass; immutable-head full suite missing. |
 | 4 Shape preservation | UNVERIFIED | Exact source presence and candidate topology are gated; final P4C shape metrics remain stale and full ledger/corpus is missing. |
@@ -986,7 +986,7 @@ scope. Future MIT-core boundary follows
   cannot create a success claim.  No mesh coordinate/connectivity is changed.
 - Exact and displaced-corner evidence tests pass.  Focused pre-merge reports
   `9 passed`, wider strict shape/topology reports `7 passed`, and post-merge
-  repeats `7 passed`.  No `third_party/` file changed.
+  repeats `7 passed`.  No `vendor/dependencies/` file changed.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-tet-final-shape-evidence-1-93d1972d.bundle`,
   SHA-256 `4450588858c62f78ecec2bdbcb74bd9a99ec8d0aa86c5e02a87106288dda9e63`.
@@ -996,7 +996,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-18 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | No native target changed this card; supported platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused/post-merge shape suites pass; immutable-head full suite missing. |
 | 4 Shape preservation | UNVERIFIED | Known P4C final metric gap is closed on cube; exact full surface-ledger corpus remains. |
@@ -1041,7 +1041,7 @@ scope. Future MIT-core boundary follows
   wider extension/no-drop tests pass `24`; non-sphere dual contracts pass
   `15`; post-merge native rebuild plus focused regression passes `25`.
 - GCC 13.3 C++23 build is warning-free.  No tolerance, topology, geometry,
-  provenance, public result, `third_party/` file, or external code changed.
+  provenance, public result, `vendor/dependencies/` file, or external code changed.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-poly-star-validity-1-be7fb679.bundle`,
   SHA-256 `f966ebfc06303d2f41d3de615d37c11ddb63e1a68b597ff50327d712ea71bbee`.
@@ -1051,7 +1051,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-19 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Changed C++23 target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused/wider/post-merge Poly suites pass; immutable-head full suite missing. |
 | 4 Shape preservation | UNVERIFIED | Six Poly outputs are byte-identical; full all-engine corpus remains. |
@@ -1099,7 +1099,7 @@ scope. Future MIT-core boundary follows
   post-merge native rebuild and focused suites pass `45`.  Dense random
   triangles now expose the exact-candidate Python narrow bottleneck and make
   the wider batch about `106 s`; next card ports narrow predicates separately.
-- GCC 13.3 C++23 build is warning-free.  `third_party/`, geometry, thresholds,
+- GCC 13.3 C++23 build is warning-free.  `vendor/dependencies/`, geometry, thresholds,
   adjacency policy, and external dependencies remain unchanged.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-si-broadphase-1-853c6799.bundle`,
@@ -1110,7 +1110,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-20 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused/wider/post-merge suites pass; immutable-head full suite missing. |
 | 4 Shape preservation | UNVERIFIED | Native large-mesh broad phase is complete; full corpus evidence remains. |
@@ -1154,7 +1154,7 @@ scope. Future MIT-core boundary follows
   metrics/self-intersection/surface-defect suites pass `75`.  Two unrelated
   existing all-NaN metric warnings remain.
 - GCC 13.3 C++23 build is warning-free.  No fast-math, threshold, geometry,
-  adjacency policy, `third_party/`, external code, or dependency changed.
+  adjacency policy, `vendor/dependencies/`, external code, or dependency changed.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-si-narrowphase-1-a29b322a.bundle`,
   SHA-256 `0f1b48d03ed5c634de1e1d9005450583b3a5cf0ea9a5aac2fb3e1da8755e3928`.
@@ -1164,7 +1164,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-21 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused/wider/post-merge suites pass; immutable-head full suite missing. |
 | 4 Shape preservation | UNVERIFIED | Exact native candidate+narrow results preserve both Python contracts; full corpus remains. |
@@ -1209,7 +1209,7 @@ scope. Future MIT-core boundary follows
   object while the same checker log reports `0`) and is not a ray-kernel
   regression.
 - GCC 13.3 C++23 build is warning-free.  Geometry, layer request semantics,
-  epsilon, fast-math, parallel reduction, dependencies, and `third_party/`
+  epsilon, fast-math, parallel reduction, dependencies, and `vendor/dependencies/`
   remain unchanged.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-ray-kernel-1-bacd281a.bundle`,
@@ -1220,7 +1220,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-22 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused/post-merge suites pass; baseline poly-hybrid checker defect and immutable-head full suite remain. |
 | 4 Shape preservation | UNVERIFIED | Ray hit policy is parity-tested; full wall-envelope corpus remains. |
@@ -1271,7 +1271,7 @@ scope. Future MIT-core boundary follows
   numerical-quality tests pass `81` with the already reproduced poly-hybrid
   checker disagreement deselected.
 - GCC 13.3 C++23 build is warning-free.  No geometry, connectivity, patch,
-  requested layer, epsilon, fast-math, dependency, or `third_party/` change.
+  requested layer, epsilon, fast-math, dependency, or `vendor/dependencies/` change.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-indexed-collision-1-de5fa5d7.bundle`,
   SHA-256 `6ab50458d8f6cb32a4fb9d95edcd0de17a0d427b6a37bb663f1937444b0c8bce`.
@@ -1281,7 +1281,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-23 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused and representative suites pass; baseline poly-hybrid checker defect and immutable-head full suite remain. |
 | 4 Shape preservation | UNVERIFIED | Wall collision search is conservative and wall coordinates unchanged; full corpus remains. |
@@ -1332,7 +1332,7 @@ scope. Future MIT-core boundary follows
 - Post-merge native metrics/checker/poly-transition validation passes `66`; two
   pre-existing all-NaN reduction warnings remain.
 - GCC 13.3 C++23 build is warning-free.  No geometry, gate threshold,
-  dependency, or `third_party/` change.
+  dependency, or `vendor/dependencies/` change.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-checker-volume-audit-1-b99966a8.bundle`,
   SHA-256 `1f5f0dc6af744848e3d0da8b8894ab8454e4dc3d02533850deba84094e727ed3`.
@@ -1342,7 +1342,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-24 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Changed native target rebuilds warning-free on Ubuntu/GCC 13; supported platform matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused audit/checker suites pass; invalid hybrid regression remains and immutable-head full suite is missing. |
 | 4 Shape preservation | UNVERIFIED | Audit is read-only; full corpus remains. |
@@ -1393,7 +1393,7 @@ scope. Future MIT-core boundary follows
   defects and five tet-subdivision contract defects.  They are queued, not
   hidden or threshold-relaxed.
 - No native geometry threshold, topology rule, dependency, external source, or
-  `third_party/` file changed.
+  `vendor/dependencies/` file changed.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\poly-bl-duplicate-guard-1-01f1a34e.bundle`,
   SHA-256 `34139717d032f2faaa8b3521aad6428705561c1a5a29d422470c8036eb2b8386`.
@@ -1403,7 +1403,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-25 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | No native ABI changed in this card; supported build matrix remains incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused/post-merge pass; eight baseline failures and immutable-head full suite remain. |
 | 4 Shape preservation | UNVERIFIED | Single-tet surface coordinates preserved and duplicate mutation blocked; full corpus remains. |
@@ -1448,7 +1448,7 @@ scope. Future MIT-core boundary follows
 - Focused post-merge persistence/provenance/checker/transition validation passes
   `43`.  The wider native BL regression passes `172` in `153.71 s`.
 - No surface point, topology contract, quality threshold, dependency, external
-  source, or `third_party/` file changed.
+  source, or `vendor/dependencies/` file changed.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-persistence-1-2110b1eb.bundle`,
   SHA-256 `11ee2994d2f0ff492c28e6018e5578ed930ea1f39525c4d4e55f128ef10a7975`.
@@ -1458,7 +1458,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-26 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | No native ABI changed in this card; supported build matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused and wider BL suites pass; five baseline tet-subdivision contract failures and full suite remain. |
 | 4 Shape preservation | UNVERIFIED | Final wall-envelope evidence now matches persisted geometry; full corpus remains. |
@@ -1510,7 +1510,7 @@ scope. Future MIT-core boundary follows
   This closes a false-skip risk in isolated native ABI validation.
 - GCC 13.3 strict C++23 build is warning-free; compiler extensions are disabled.
   No topology threshold, wall geometry, dependency, external source, or
-  `third_party/` file changed.
+  `vendor/dependencies/` file changed.
 - Full two-commit bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-front-summary-2-f255ca78.bundle`,
   SHA-256 `b1e1c6b55200218ec0393ccf9c14693465b3cc1fcc69fb744910fa900569c090`.
@@ -1520,7 +1520,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-27 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | GCC 13.3 strict C++23 target warning-free; supported OS/compiler matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Native/fallback/wider BL suites pass; immutable-head full suite remains. |
 | 4 Shape preservation | UNVERIFIED | Generated polyMesh byte parity passes; full corpus remains. |
@@ -1566,7 +1566,7 @@ scope. Future MIT-core boundary follows
   writer validation passes `125`; generated five-file polyMesh byte parity is
   retained.  GCC 13.3 strict C++23 build is warning-free.
 - No wall geometry, topology threshold, patch semantics, dependency, external
-  source, or `third_party/` file changed.
+  source, or `vendor/dependencies/` file changed.
 - Full-history bundle:
   `D:\AutoTessell-cleanup-backup-20260730\research-bundles\native-bl-edge-adjacency-1-5c619751.bundle`,
   SHA-256 `41dcdae73b010dfad4693440833992c6775f4ddfa0c523ca17264c9588632d89`.
@@ -1576,7 +1576,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-28 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | GCC 13.3 strict C++23 target warning-free; platform/compiler matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Focused/wider BL suites pass; immutable-head full suite remains. |
 | 4 Shape preservation | UNVERIFIED | Full generated polyMesh byte parity passes; full corpus remains. |
@@ -1658,7 +1658,7 @@ scope. Future MIT-core boundary follows
 
 | Gate | Status | Cycle-29 evidence / next evidence |
 |---|---|---|
-| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `third_party/` diff. |
+| 1 Repository | PASS | One primary worktree, `master` only, clean before this ledger update; no `vendor/dependencies/` diff. |
 | 2 Build | UNVERIFIED | Tet and Poly targets build warning-free with GCC 13.3 strict C++23; supported matrix incomplete. |
 | 3 Automated tests | UNVERIFIED | Both focused suites pass; known Tet baseline failure and timed-out heavy Poly/full suite remain. |
 | 4 Shape preservation | UNVERIFIED | Strict CDT counts and classified Poly topology/provenance parity pass; full corpus remains. |
@@ -1707,7 +1707,7 @@ scope. Future MIT-core boundary follows
   public-domain source compiled with `-fno-fast-math`.
 - The source archive contains all eight binding sources, CMake configuration,
   Python sources, Shewchuk source, GPL `LICENSE`/`NOTICE`, and the distribution
-  inventory/provenance records.  It contains no adapter source, `third_party/`,
+  inventory/provenance records.  It contains no adapter source, `vendor/dependencies/`,
   compiled binary, build/cache data, or worktree snapshot.
 - `215cb01c` adopts PEP 639 `GPL-3.0-or-later` metadata and restricts license-file
   discovery to the root `LICENSE` and `NOTICE`.  This closes leakage of ignored
@@ -2092,7 +2092,7 @@ scope. Future MIT-core boundary follows
 | 10 Robustness | UNVERIFIED | New malformed ABI/topology and residual non-star cases fail closed; adverse corpus remains incomplete. |
 | 11 Performance | UNVERIFIED | Hex and Tri card budgets pass; frozen all-engine end-to-end budgets remain. |
 | 12 Packaging | FAIL | Windows wheel/installer/UI/uninstall matrix remains. |
-| 13 License/provenance | UNVERIFIED | Independent first-party C++23 changes and no `third_party/` edits; global inventory still has unresolved rows. |
+| 13 License/provenance | UNVERIFIED | Independent first-party C++23 changes and no `vendor/dependencies/` edits; global inventory still has unresolved rows. |
 | 14 Documentation/operations | UNVERIFIED | Card evidence is current; release/rollback operations remain incomplete. |
 | 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
 
@@ -2221,7 +2221,7 @@ scope. Future MIT-core boundary follows
 | 10 Robustness | UNVERIFIED | Mixed-scale, stale-ABI, inverted-cell, and source-substitution cases are covered; adverse corpus remains incomplete. |
 | 11 Performance | UNVERIFIED | All Cycle-36/37 card budgets pass; frozen all-engine end-to-end budgets remain. |
 | 12 Packaging | FAIL | Windows wheel/installer/UI/uninstall matrix remains. |
-| 13 License/provenance | UNVERIFIED | Changes are independent first-party C++23/Python with no `third_party/` edits; global inventory remains. |
+| 13 License/provenance | UNVERIFIED | Changes are independent first-party C++23/Python with no `vendor/dependencies/` edits; global inventory remains. |
 | 14 Documentation/operations | UNVERIFIED | Evidence is current; release and rollback operations remain incomplete. |
 | 15 Release candidate | UNVERIFIED | Depends on all preceding gates. |
 
@@ -2239,7 +2239,7 @@ scope. Future MIT-core boundary follows
 
 - Common contract cards restored stale CVT and WildMesh dependency/build
   contracts.  The current first-party native build manifest verifies all eight
-  modules at `e5a2e4aa` under GCC 13.3 / C++23.  No `third_party/` file changed.
+  modules at `e5a2e4aa` under GCC 13.3 / C++23.  No `vendor/dependencies/` file changed.
 - Native Poly gained C++23 batched hull-face assembly and an immutable sharded
   L3 runner.  The frozen sphere path is byte deterministic and the native block
   is `4.271x` faster; the full 225-node Poly census still reports one failure,
@@ -2307,7 +2307,7 @@ scope. Future MIT-core boundary follows
 | 10 Robustness | UNVERIFIED | New fail-closed cases are covered; adverse corpus remains incomplete. |
 | 11 Performance | UNVERIFIED | Card budgets pass; frozen end-to-end engine budgets remain. |
 | 12 Packaging | FAIL | Windows wheel/installer/UI/install/uninstall matrix remains. |
-| 13 License/provenance | UNVERIFIED | Card provenance is recorded and `third_party/` is unchanged; resolved inventory/notices/source-offer proof remains. |
+| 13 License/provenance | UNVERIFIED | Card provenance is recorded and `vendor/dependencies/` is unchanged; resolved inventory/notices/source-offer proof remains. |
 | 14 Documentation/operations | UNVERIFIED | Checkpoints are current; installation, troubleshooting, release, and rollback evidence remains incomplete. |
 | 15 Release candidate | UNVERIFIED | Depends on Gates 1--14 and a versioned clean artifact/checksum manifest. |
 
@@ -2396,7 +2396,7 @@ scope. Future MIT-core boundary follows
   non-empty canonical declaration; invalid non-source declarations fail closed.
 - Independent review accepted the card.  Post-merge certificate, shell-
   provenance, and local-guard tests pass `17/17`; no routing, default, mesh
-  output, threshold, or `third_party/` change occurred.
+  output, threshold, or `vendor/dependencies/` change occurred.
 - Bundle:
   `/mnt/d/AutoTessell-cleanup-backup-20260730/research-bundles/triquad49-source-certificate-4da76b27.bundle`
   SHA-256 `d1765878c8117a681b1e9a228d4e7159033b197911ff2790ac9a580fdd63bc3b`.
@@ -2452,7 +2452,7 @@ is deliberately secondary.
   triangle or triangular handoff; legacy `native_quad_dominant` is always
   `candidate_mixed`, even when its triangle remainder is empty.  Post-merge
   contract plus native-quad tests pass `59/59`; routing, defaults, output,
-  UI, and `third_party/` remain unchanged.
+  UI, and `vendor/dependencies/` remain unchanged.
 - `542314e1` wraps BETA2825 degenerate removal in an immutable-source
   transaction.  Commit requires candidate component bijection, source-face
   preservation, zero unowned source facets, and nonincreasing inversion.
@@ -2596,7 +2596,7 @@ is deliberately secondary.
   `42c7bf053c7a3ee8ebef2ea235d29565a25d3851e00178d11fa0431b8da1b234`.
 - Both integrated research worktrees and their merged branches were removed
   only after bundle creation.  The sole registered research worktree is the
-  protected, unmerged Poly DEFER stack.  `third_party/` remains unchanged.
+  protected, unmerged Poly DEFER stack.  `vendor/dependencies/` remains unchanged.
 - Native C++ source identity evidence verifies all eight declared modules on
   GCC `13.3.0` / C++23 for `0cf28a3a`; this is source identity evidence, not a
   clean supported-platform Release-build claim.
@@ -2651,7 +2651,7 @@ Gate 6 stays `FAIL` and secondary by policy.  Gates 2--3 and 7--15 remain
   `46ca16d5c081c65415f2f608d28f33ec2b6cc29c1752bfeb37e0ed9217dd9e6c`.
 - The Cycle-54 C++ temporary Release build and all merged Cycle-54 worktrees
   and branches were removed after their bundle evidence was created.  Poly
-  remains the sole protected DEFER worktree.  `third_party/` remains unchanged.
+  remains the sole protected DEFER worktree.  `vendor/dependencies/` remains unchanged.
 
 ### Cycle-54 gate re-evaluation
 
@@ -2697,7 +2697,7 @@ gates retain their prior `FAIL`/`UNVERIFIED` state pending mechanical evidence.
   refusal and writer artifact `0` remain unchanged.  Bundle SHA-256:
   `7525adf67dd5d4d48642d92817f29625fea085c553981be6c0f2705e58f7998a`.
 - All Cycle-55 merged worktrees and branches were removed after bundle evidence.
-  Poly remains the only protected DEFER worktree; `third_party/` remains
+  Poly remains the only protected DEFER worktree; `vendor/dependencies/` remains
   unchanged.
 
 ### Cycle-55 gate re-evaluation
@@ -2821,7 +2821,7 @@ provenance gate.
   bijection and source faces, has unowned faces `0`, inverted tets `0`, and
   reduces same-side debt `108 -> 0`.
 - Strict topology is unchanged.  Target cells remain secondary.  No
-  `third_party/` modification is included.
+  `vendor/dependencies/` modification is included.
 - Ruff is `UNVERIFIED`: `109` pre-existing `mesher.py` violations.
 
 ### Release state
@@ -2930,7 +2930,7 @@ provenance gate.
 
 ### Release state
 
-- Default remains OFF.  No pipeline, UI, writer, routing, `third_party/`, or
+- Default remains OFF.  No pipeline, UI, writer, routing, `vendor/dependencies/`, or
   Gate change; Gates 1--15 remain unmet and no Gate is `PASS`.
 - Next action: a dedicated Tri+Quad writer transaction and its explicit route
   only after a writer artifact contract preserves the separate arrays and all
@@ -2991,7 +2991,7 @@ provenance gate.
 
 ### Release state
 
-- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `vendor/dependencies/`
   change is included.
 - Next action: define a public authoritative-source ingress and independent
   route contract; do not infer authority or alter existing native-Tri,
@@ -3026,7 +3026,7 @@ provenance gate.
 
 ### Release state
 
-- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `vendor/dependencies/`
   change is included.
 - Next action: define real external authoritative-source ingress and an
   independent strict-Quad route contract; do not infer authority or alter
@@ -3058,7 +3058,7 @@ provenance gate.
 
 ### Release state
 
-- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `vendor/dependencies/`
   change is included.
 - Native-Tri product next action: require a real operator transaction with
   authoritative source patch/feature/physical evidence, exact edited-face
@@ -3071,7 +3071,7 @@ provenance gate.
 ### Fresh native Release build evidence
 
 - No code change.  Fresh build root `/tmp/autotessell-cycle100-release` used
-  source `tessell-mesh`, Release configuration, Python/tests `OFF`, and
+  source `engines/legacy/tessell_mesh`, Release configuration, Python/tests `OFF`, and
   parallelism `2`.
 - Advisor runner `c1`: configure `PASS` in `43.52 s`; build `PASS` in
   `114.54 s`.  Produced native artifacts include `libtessell_mesh_core.a` and
@@ -3081,7 +3081,7 @@ provenance gate.
 
 ### Release state
 
-- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `vendor/dependencies/`
   change is included.
 - Next action: inventory supported native configurations and run their clean
   builds before any Gate-2 promotion claim.
@@ -3104,7 +3104,7 @@ provenance gate.
 
 ### Release state
 
-- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `third_party/`
+- No Gate changes to `PASS`; Gates 1--15 remain unmet.  No `vendor/dependencies/`
   change is included.
 - Next action: acquire and verify Ninja only with authorization, or define
   generator-neutral support evidence before relying on this Release profile.
@@ -3135,7 +3135,7 @@ provenance gate.
   `-x`-masked execution, and dynamic-xfail E2E/OpenFOAM/STEP paths remain
   `UNVERIFIED` and cannot be treated as release evidence.
 - No product, routing, default, topology, surface, provenance, or
-  `third_party/` behavior changed.
+  `vendor/dependencies/` behavior changed.
 - Next action: retain the reconciled marker inventory and obtain finite,
   non-masking evidence for the remaining Gate-3 paths before any promotion.
 - `allowed_to_stop: false` remains binding.
@@ -3186,7 +3186,7 @@ provenance gate.
 ### Release state
 
 - No Gate change to `PASS`; Gates 1--15 remain unmet.  No routing, default,
-  mesh, topology, surface, provenance, or `third_party/` behavior changed.
+  mesh, topology, surface, provenance, or `vendor/dependencies/` behavior changed.
 - Next action: implement immutable original-`S0` binding and a no-output /
   no-metric fail-closed evaluator substrate before running the matrix.
 - `allowed_to_stop: false` remains binding.
@@ -3444,7 +3444,7 @@ provenance gate.
 
 - The full first-party build and Gate 2 remain `UNVERIFIED`; targeted module
   compilation is not a full-build or release claim.  No product, route,
-  default, or `third_party/` behavior changed.
+  default, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 176 pre-merge checkpoint -- 2026-07-31
@@ -3474,7 +3474,7 @@ provenance gate.
 - Retained build directory:
   `/tmp/autotessell-c175-native-release-make`; runner evidence:
   `/tmp/autotessell-c175-native-release-current-runner-evidence.json`.  No
-  rerun was made and `third_party/` was unchanged.
+  rerun was made and `vendor/dependencies/` was unchanged.
 
 ### Release state
 
@@ -3568,7 +3568,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
-  product, route, default, or `third_party/` behavior changed.
+  product, route, default, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 165 pre-merge checkpoint -- 2026-07-31
@@ -3588,7 +3588,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
-  product, route, default, or `third_party/` behavior changed.
+  product, route, default, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 163 pre-merge checkpoint -- 2026-07-31
@@ -3608,7 +3608,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
-  product, route, default, or `third_party/` behavior changed.
+  product, route, default, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 161 pre-merge checkpoint -- 2026-07-31
@@ -3632,7 +3632,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
-  product, route, default, or `third_party/` behavior changed.
+  product, route, default, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 160 pre-merge checkpoint -- 2026-07-31
@@ -3654,7 +3654,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
-  product, route, default, or `third_party/` behavior changed.
+  product, route, default, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 159 pre-merge checkpoint -- 2026-07-31
@@ -3677,7 +3677,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
-  product, route, default, or `third_party/` behavior changed.
+  product, route, default, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 158 pre-merge checkpoint -- 2026-07-31
@@ -3700,7 +3700,7 @@ provenance gate.
 
 - This rebind does not promote Gate 4, Gate 9, or release to `PASS`.  Gates
   1--15 remain unmet.  No generator, product, route, default, or
-  `third_party/` behavior changed.
+  `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 157 pre-merge checkpoint -- 2026-07-31
@@ -3725,7 +3725,7 @@ provenance gate.
 
 - Native-Hex quality-report hash rebind remains pending.  No Gate is promoted
   to `PASS`; Gates 1--15 remain unmet.  No generator, product, route, default,
-  or `third_party/` behavior changed.
+  or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 156 pre-merge checkpoint -- 2026-07-31
@@ -3747,7 +3747,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No generator,
-  product, route, default, artifact production, or `third_party/` behavior
+  product, route, default, artifact production, or `vendor/dependencies/` behavior
   changed.
 - `allowed_to_stop: false` remains binding.
 
@@ -3762,7 +3762,7 @@ provenance gate.
 - The helper contract requires C++23, `CXX_EXTENSIONS OFF`, and platform
   `Werror`; `native_build_evidence` must depend on the exact first-party
   target variable.  This is a static drift guard only: no CMake production,
-  runtime, route, default, or `third_party/` behavior changed.
+  runtime, route, default, or `vendor/dependencies/` behavior changed.
 - Bounded validation runner: `PASS`, concurrency `1`, `5.304 s`, focused
   static build-evidence/inventory suites.  Evidence:
   `/tmp/autotessell-c155-native-release-static-contract-evidence.json`.
@@ -3784,7 +3784,7 @@ provenance gate.
 - Fresh source at `2dab0218` configured with Unix Makefiles, `Release`, the
   first-party native install profile, injected `pybind11_DIR`, and cfMesh,
   cinolib, fTetWild, and RobustHex all `OFF`.  The serial build target is
-  `native_build_evidence`; it neither configures nor builds `third_party/`.
+  `native_build_evidence`; it neither configures nor builds `vendor/dependencies/`.
 - The bounded validation runner passed at concurrency `1`: clean preflight
   `0.400 s`, configure `4.400 s`, serial build `81.337 s`, exact native-build
   contract verification `0.168 s`, and clean postflight `0.414 s`.
@@ -3798,7 +3798,7 @@ provenance gate.
 - Gate 2 remains `UNVERIFIED`: Ninja, other generators, operating systems,
   compilers, and supported-configuration matrix evidence remain absent.  No
   Gate is promoted to `PASS`; Gates 1--15 remain unmet.
-- `third_party/` is untouched.  `allowed_to_stop: false` remains binding.
+- `vendor/dependencies/` is untouched.  `allowed_to_stop: false` remains binding.
 
 ## Cycle 153 pre-merge checkpoint -- 2026-07-31
 
@@ -3809,7 +3809,7 @@ provenance gate.
   dependent build, and contract-verification jobs are `ERROR`; no build
   started and the runner is `UNVERIFIED`.
 - The clean preflight and postflight passed.  This failure supplies no Gate-2
-  build evidence and changes no source, route, default, or `third_party/`
+  build evidence and changes no source, route, default, or `vendor/dependencies/`
   behavior.
 
 ## Cycle 152 pre-merge checkpoint -- 2026-07-31
@@ -3854,7 +3854,7 @@ provenance gate.
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing,
   default, mesh-generation, topology relaxation, provenance authority claim,
-  or `third_party/` behavior changed.
+  or `vendor/dependencies/` behavior changed.
 - Next action: preserve this offline source lock; obtain independently
   authoritative source/feature/physical-group evidence before considering any
   production ingress.
@@ -4022,7 +4022,7 @@ provenance gate.
 
 - Gate 3 remains `UNVERIFIED`: complete full-suite and CI matrix evidence are
   absent.  No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No
-  routing, default, UI, mesh, provenance, or `third_party/` behavior changed.
+  routing, default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 142 pre-merge checkpoint -- 2026-07-31
@@ -4039,7 +4039,7 @@ provenance gate.
 ### Release state
 
 - Gate 3 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
-  remain unmet.  No routing, default, UI, mesh, provenance, or `third_party/`
+  remain unmet.  No routing, default, UI, mesh, provenance, or `vendor/dependencies/`
   behavior changed.
 - `allowed_to_stop: false` remains binding.
 
@@ -4057,7 +4057,7 @@ provenance gate.
 
 - Gate 3 remains `UNVERIFIED`: complete CI and full-suite matrix evidence are
   absent.  No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No
-  default, UI, mesh, provenance, or `third_party/` behavior changed.
+  default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 140 pre-merge checkpoint -- 2026-07-31
@@ -4077,7 +4077,7 @@ provenance gate.
 
 - Gate 3 remains `UNVERIFIED`: full suite and release matrix evidence remain
   incomplete.  No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No
-  routing, default, UI, mesh, provenance, or `third_party/` behavior changed.
+  routing, default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 139 pre-merge checkpoint -- 2026-07-31
@@ -4095,7 +4095,7 @@ provenance gate.
 ### Release state
 
 - Gate 3 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
-  remain unmet.  No default, UI, mesh, provenance, or `third_party/` behavior
+  remain unmet.  No default, UI, mesh, provenance, or `vendor/dependencies/` behavior
   changed.
 - `allowed_to_stop: false` remains binding.
 
@@ -4113,7 +4113,7 @@ provenance gate.
 ### Release state
 
 - Gates 1--15 remain unmet.  No routing, default, UI, mesh, provenance, or
-  `third_party/` behavior changed.
+  `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 136 pre-merge checkpoint -- 2026-07-31
@@ -4131,7 +4131,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing,
-  default, UI, mesh, provenance, or `third_party/` behavior changed.
+  default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 135 pre-merge checkpoint -- 2026-07-31
@@ -4149,7 +4149,7 @@ provenance gate.
 
 - Release remains incomplete and `UNVERIFIED`; no Gate is promoted to `PASS`.
   Gates 1--15 remain unmet.  No routing, default, UI, mesh, provenance, or
-  `third_party/` behavior changed.
+  `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 134 pre-merge checkpoint -- 2026-07-31
@@ -4167,7 +4167,7 @@ provenance gate.
 
 - Release remains incomplete and `UNVERIFIED`; no Gate is promoted to `PASS`.
   Gates 1--15 remain unmet.  No routing, default, UI, mesh, provenance, or
-  `third_party/` behavior changed.
+  `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 133 pre-merge checkpoint -- 2026-07-31
@@ -4185,7 +4185,7 @@ provenance gate.
 
 - Release evidence always remains `UNVERIFIED`; no Gate is promoted to `PASS`.
   Gates 1--15 remain unmet.  No routing, default, UI, mesh, provenance, or
-  `third_party/` behavior changed.
+  `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 131 pre-merge checkpoint -- 2026-07-31
@@ -4204,7 +4204,7 @@ provenance gate.
 ### Release state
 
 - No release or Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No
-  routing, default, UI, mesh, provenance, or `third_party/` behavior changed.
+  routing, default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 130 pre-merge checkpoint -- 2026-07-31
@@ -4225,7 +4225,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No UI, mesh,
-  provenance, or `third_party/` behavior changed.
+  provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 129 pre-merge checkpoint -- 2026-07-31
@@ -4242,7 +4242,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing,
-  default, UI, mesh, provenance, or `third_party/` behavior changed.
+  default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 128 pre-merge checkpoint -- 2026-07-31
@@ -4259,7 +4259,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing,
-  default, UI, mesh, provenance, or `third_party/` behavior changed.
+  default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 127 pre-merge checkpoint -- 2026-07-31
@@ -4276,7 +4276,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing,
-  default, UI, mesh, provenance, or `third_party/` behavior changed.
+  default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 126 pre-merge checkpoint -- 2026-07-31
@@ -4293,7 +4293,7 @@ provenance gate.
 ### Release state
 
 - No Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing,
-  default, UI, mesh, provenance, or `third_party/` behavior changed.
+  default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 125 pre-merge checkpoint -- 2026-07-31
@@ -4315,7 +4315,7 @@ provenance gate.
 ### Release state
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
-  remain unmet.  No routing, default, UI, mesh, provenance, or `third_party/`
+  remain unmet.  No routing, default, UI, mesh, provenance, or `vendor/dependencies/`
   behavior changed.
 - Unblock only with a bounded exact robust side predicate that reports boundary
   and tolerance uncertainty fail-closed for every signed sample.
@@ -4338,7 +4338,7 @@ provenance gate.
 
 - Gate 4 remains `UNVERIFIED`; all evidence retains `gate4_pass=false`.  No
   Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No routing, default,
-  UI, mesh, provenance, or `third_party/` behavior changed.
+  UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 123 pre-merge checkpoint -- 2026-07-31
@@ -4362,7 +4362,7 @@ provenance gate.
 
 - Gate 4 remains `UNVERIFIED`; all evidence retains `gate4_pass=false`.  No
   Gate is promoted to `PASS`; Gates 1--15 remain unmet.  No UI, mesh,
-  provenance, or `third_party/` behavior changed.
+  provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 122 pre-merge checkpoint -- 2026-07-31
@@ -4383,7 +4383,7 @@ provenance gate.
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, all evidence
   retains `gate4_pass=false`, and Gates 1--15 remain unmet.  No routing,
-  default, UI, mesh, provenance, or `third_party/` behavior changed.
+  default, UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 121 pre-merge checkpoint -- 2026-07-31
@@ -4411,7 +4411,7 @@ provenance gate.
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Signed/integral
   measures, features, patches, physical groups, and provenance remain open.
-  Gates 1--15 remain unmet.  No routing, default, UI, mesh, or `third_party/`
+  Gates 1--15 remain unmet.  No routing, default, UI, mesh, or `vendor/dependencies/`
   behavior changed.
 - Unblock only with a frozen authored mapping format, its source-byte and
   B-Rep-face cryptographic binding, and fail-closed native-Tet output-boundary
@@ -4436,7 +4436,7 @@ provenance gate.
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and all evidence
   retains `gate4_pass=false`.  Gates 1--15 remain unmet.  No routing, default,
-  UI, mesh, provenance, or `third_party/` behavior changed.
+  UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 119 pre-merge checkpoint -- 2026-07-31
@@ -4461,7 +4461,7 @@ provenance gate.
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and all evidence
   retains `gate4_pass=false`.  Gates 1--15 remain unmet.  No routing, default,
-  UI, mesh, provenance, or `third_party/` behavior changed.
+  UI, mesh, provenance, or `vendor/dependencies/` behavior changed.
 - `allowed_to_stop: false` remains binding.
 
 ## Cycle 118 pre-merge checkpoint -- 2026-07-31
@@ -4486,7 +4486,7 @@ provenance gate.
 
 - Gate 4 remains `UNVERIFIED`; all evidence retains `gate4_pass=false`.  No
   Gate is promoted to `PASS`, and Gates 1--15 remain unmet.  No routing,
-  default, UI, mesh, topology, provenance, or `third_party/` behavior changed.
+  default, UI, mesh, topology, provenance, or `vendor/dependencies/` behavior changed.
 - Next action: obtain the missing authoritative comparisons; timeout, error,
   missing, or invalid evidence remains `UNVERIFIED`.
 - `allowed_to_stop: false` remains binding.
@@ -4512,7 +4512,7 @@ provenance gate.
 - Gate 4 remains `UNVERIFIED`; all evidence retains `gate4_pass=false`.  No
   Gate is promoted to `PASS`, and Gates 1--15 remain unmet.  C118 actual-output
   rerun is pending.
-- No routing, default, UI, mesh, topology, provenance, or `third_party/`
+- No routing, default, UI, mesh, topology, provenance, or `vendor/dependencies/`
   behavior changed.
 - `allowed_to_stop: false` remains binding.
 
@@ -4537,7 +4537,7 @@ provenance gate.
 - Gate 4 remains `UNVERIFIED`; all attached evidence retains
   `gate4_pass=false`.  No Gate is promoted to `PASS`, and Gates 1--15 remain
   unmet.  C116 actual-output rerun remains pending.
-- No routing, default, UI, mesh, topology, provenance, or `third_party/`
+- No routing, default, UI, mesh, topology, provenance, or `vendor/dependencies/`
   behavior changed.
 - `allowed_to_stop: false` remains binding.
 
@@ -4557,7 +4557,7 @@ provenance gate.
 ### Release state
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15
-  remain unmet.  No default, routing, UI, mesh, provenance, or `third_party/`
+  remain unmet.  No default, routing, UI, mesh, provenance, or `vendor/dependencies/`
   behavior changed.
 - Next action: keep the strict transaction fail-closed and expand only through
   separately bounded evidence that preserves every topology invariant.
@@ -4581,7 +4581,7 @@ provenance gate.
 
 - No Tri+Quad release product and no Gate is promoted to `PASS`.  Gate 4
   remains `UNVERIFIED`; Gates 1--15 remain unmet.  No default, routing, UI,
-  mesh, provenance, or `third_party/` behavior changed.
+  mesh, provenance, or `vendor/dependencies/` behavior changed.
 - Next action: retain the independent authority/atomicity constraints and
   obtain product-level actual-output evidence before any product claim.
 - `allowed_to_stop: false` remains binding.
@@ -4604,7 +4604,7 @@ provenance gate.
 
 - No independent strict-Quad release product is promoted and no Gate is
   promoted to `PASS`.  Gate 4 remains `UNVERIFIED`; Gates 1--15 remain unmet.
-  No default, routing, UI, mesh, provenance, or `third_party/` behavior
+  No default, routing, UI, mesh, provenance, or `vendor/dependencies/` behavior
   changed.
 - Next action: retain fail-closed authoritative constraints and obtain the
   separate product-level actual-output evidence before any product claim.
@@ -4635,7 +4635,7 @@ provenance gate.
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15
   remain unmet.  No routing, default, UI, mesh-generation, topology-repair,
-  provenance, or `third_party/` behavior changed.
+  provenance, or `vendor/dependencies/` behavior changed.
 - Next action: add the missing authoritative contracts and actual-output matrix
   evidence.  Missing, timeout, error, or invalid evidence stays `UNVERIFIED`.
 - `allowed_to_stop: false` remains binding.
@@ -4662,7 +4662,7 @@ provenance gate.
 ### Release state
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15
-  remain unmet.  No `third_party/`, routing, default, mesh-generation,
+  remain unmet.  No `vendor/dependencies/`, routing, default, mesh-generation,
   topology-repair, or provenance behavior changed.
 - Next action: bind controlled metrics only to immutable actual-output
   artifacts, then add authoritative source contracts before considering the
@@ -4697,7 +4697,7 @@ provenance gate.
 - The draft pipeline quality verdict does not promote Gate 4.  Gate 4 remains
   `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15 remain unmet.
   No code, routing, default, mesh, topology-repair, provenance, or
-  `third_party/` behavior changed.
+  `vendor/dependencies/` behavior changed.
 - Next action: actual immutable-`S0` matrix needs authoritative
   self-intersection, directed/signed metrics, feature, topology comparison,
   patch, physical-group, and provenance evidence.  Missing, timeout, error,
@@ -4732,7 +4732,7 @@ provenance gate.
 - The pipeline quality verdict for this draft probe does not promote Gate 4.
   Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`, and Gates 1--15
   remain unmet.  No code, routing, default, mesh, topology-repair,
-  provenance, or `third_party/` behavior changed.
+  provenance, or `vendor/dependencies/` behavior changed.
 - Next action: implement the missing authoritative comparisons and rerun a
   bounded immutable-`S0` actual-output matrix.  Missing, timeout, error, or
   invalid evidence remains `UNVERIFIED`.
@@ -4767,7 +4767,7 @@ provenance gate.
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
   remain unmet.  No routing, default, mesh-generation, topology-repair,
-  provenance, or `third_party/` behavior changed.
+  provenance, or `vendor/dependencies/` behavior changed.
 - Next action: supply actual metric producers and bounded immutable-`S0`
   output-matrix evidence, including self-intersection, feature, patch,
   physical-group, and provenance authority checks.
@@ -4806,7 +4806,7 @@ provenance gate.
 ### Release state
 
 - Gate 4 remains `UNVERIFIED`; no Gate is promoted to `PASS`.  Gates 1--15
-  remain unmet.  No `third_party/` change is included.
+  remain unmet.  No `vendor/dependencies/` change is included.
 - Next action: implement the actual metric and topology/feature/patch corpus
   contract, then run the bounded actual-output matrix against immutable `S0`.
 - `allowed_to_stop: false` remains binding.
@@ -4884,7 +4884,7 @@ provenance gate.
 - Actual Hex quad/new-vertex B-Rep binding remains `DEFER`: stable output IDs
   and an authoritative CAD surface witness are absent.  Advisor validation
   runner: `PASS`, concurrency `1`, `4.27 s`, three suites.
-- Routing, defaults, C++, and `third_party/` remain unchanged.
+- Routing, defaults, C++, and `vendor/dependencies/` remain unchanged.
 
 ### Release state
 
@@ -4903,7 +4903,7 @@ provenance gate.
   exactly unavailable.  Every result remains nonaccepting with no candidate,
   mesh, or artifact.
 - Advisor validation runner: `PASS`, concurrency `1`, `4.23 s`, three suites.
-  Routing, defaults, C++, and `third_party/` remain unchanged.
+  Routing, defaults, C++, and `vendor/dependencies/` remain unchanged.
 
 ### Release state
 
@@ -4923,7 +4923,7 @@ provenance gate.
   physical-group claim is inferred.  Every result remains `accepted=false`,
   `candidate=false`, `mesh=false`, `artifact=0`.
 - Advisor validation runner: `PASS`, concurrency `1`, `6.06 s`, three suites.
-  Routing, defaults, C++, and `third_party/` remain unchanged.
+  Routing, defaults, C++, and `vendor/dependencies/` remain unchanged.
 
 ### Release state
 
@@ -4979,7 +4979,7 @@ provenance gate.
 - Disabled, incomplete, malformed, non-authoritative, duplicate, reversed,
   non-source, removed-feature, tampered, and nonmanifold inputs reject.  A
   complete row remains `accepted=false` and `product_claimed=false`.
-- No routing, default, C++, or `third_party/` change is included.  Advisor
+- No routing, default, C++, or `vendor/dependencies/` change is included.  Advisor
   validation runner: `PASS`, concurrency `1`, `4.68 s`, two focused suites.
 
 ### Release state
@@ -4998,7 +4998,7 @@ provenance gate.
 - Missing, malformed, non-authoritative, mixed-pair, reordered, or mismatched
   payloads reject.  A complete payload binding still records
   `accepted=false` and `product_claimed=false`.
-- No routing, default, C++, or `third_party/` change is included.  Advisor
+- No routing, default, C++, or `vendor/dependencies/` change is included.  Advisor
   validation runner: `PASS`, concurrency `1`, `5.84 s`, two focused suites.
 
 ### Release state
@@ -5018,7 +5018,7 @@ provenance gate.
   `accepted=false` and `product_claimed=false`.  Missing hard source evidence
   is feature, boundary, topology, physical group, and provenance; there is no
   `tri_quad` success/relabel or strict-quad change.
-- No routing, default, C++, or `third_party/` change is included.  Advisor
+- No routing, default, C++, or `vendor/dependencies/` change is included.  Advisor
   validation runner: `PASS`, concurrency `1`, `4.53 s`, three focused suites.
 
 ### Release state

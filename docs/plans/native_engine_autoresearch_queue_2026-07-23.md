@@ -81,7 +81,7 @@
    - BL 적용 후 타입 분포를 재계산해 보고, hexa dominant 주장 시 실제 hex 비율을 강제 표시.
 
 ### 독립 벤치
-- `test_native_hex` + `harness/bench_native_tet_matrix.json`에 대응되는 hex mode route log
+- `test_native_hex` + `research/quality-harness/bench_native_tet_matrix.json`에 대응되는 hex mode route log
 - orientation sensitivity: 30°/60°/90° 회전 반복에서 결과 타입 일관성/품질 열화율
 
 ## 4) Volume Poly 큐

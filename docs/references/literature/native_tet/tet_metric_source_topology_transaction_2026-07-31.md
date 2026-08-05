@@ -44,7 +44,7 @@ or quality-threshold change is allowed.
 
 CGAL and WildMeshing code are reference-only.  No external code or dependency
 is copied.  The implementation composes existing first-party audits and keeps
-`third_party/` unchanged.
+`vendor/dependencies/` unchanged.
 
 ## Baseline and observed transaction
 

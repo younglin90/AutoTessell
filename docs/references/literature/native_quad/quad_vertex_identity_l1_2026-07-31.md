@@ -88,4 +88,4 @@ buffers remain unchanged; native-present and native-absent paths agree.
 
 This card changes no input coordinates, topology, boundary, feature, physical
 group, provenance ordering, target-cell control, or boundary-layer behavior.
-`third_party/` is unchanged.
+`vendor/dependencies/` is unchanged.

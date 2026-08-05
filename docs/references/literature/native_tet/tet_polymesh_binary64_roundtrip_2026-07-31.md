@@ -59,7 +59,7 @@ Acceptance was declared before implementation:
   source facets and have zero inverted/degenerate tets;
 - point-file size remains at most 2x;
 - canonical cylinder wall time regresses by at most 10%;
-- quality thresholds remain unchanged and `third_party/` remains untouched.
+- quality thresholds remain unchanged and `vendor/dependencies/` remains untouched.
 
 Rollback conditions: any generic byte change, parser failure, connectivity or
 patch-file change, source/topology regression, point-file ratio above 2x, or
@@ -101,7 +101,7 @@ Implementation is a first-party extension of the existing writer's format
 parameter and call sites.  It uses the standard binary64 decimal round-trip
 bound; it is not derived from Ryū, meshio, fmt, OpenFOAM, or another external
 implementation.  No generated source, dependency code, GPL/AGPL code, or
-`third_party/` file was copied or modified.
+`vendor/dependencies/` file was copied or modified.
 
 ## Results
 

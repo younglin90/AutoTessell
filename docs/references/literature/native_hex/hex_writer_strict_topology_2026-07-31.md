@@ -94,7 +94,7 @@ post-audit branches on a valid mesh.
   (`1.0278x`). The 2.78% delta is within the declared no-extra-traversal
   expectation; output hashes were exactly equal and deterministic in both
   conditions.
-- `git diff --check`: pass. `third_party/` changes: zero.
+- `git diff --check`: pass. `vendor/dependencies/` changes: zero.
 
 The first full native-hex suite attempt hit the command wrapper's 120-second
 limit and was rerun with an explicit 600-second limit; the rerun passed. This

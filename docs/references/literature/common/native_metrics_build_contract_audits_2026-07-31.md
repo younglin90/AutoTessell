@@ -18,7 +18,7 @@ or ownership defect; the contract alone was stale.
 Add the existing two public symbols to `native_metrics` in
 `native_build_contract.json`, plus a static regression that records their
 strict no-conversion binding.  No native algorithm, Python route/default,
-output, mesh data, or `third_party/` source changes.
+output, mesh data, or `vendor/dependencies/` source changes.
 
 ## Evidence scope
 

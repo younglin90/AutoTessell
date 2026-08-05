@@ -1924,6 +1924,135 @@ py::tuple assemble_dual_hull_faces(
             std::move(result.face_order_ambiguous), {ambiguous_count}));
 }
 
+
+py::dict canonicalize_internal_winding_or_refuse(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points,
+    const py::sequence& faces,
+    const py::array_t<Label, py::array::c_style | py::array::forcecast>& owners,
+    const py::array_t<Label, py::array::c_style | py::array::forcecast>& neighbours,
+    const double tolerance)
+{
+    auto refused = [](const char* reason) {
+        py::dict result;
+        result["accepted"] = false;
+        result["status"] = "refused_rollback";
+        result["reason"] = reason;
+        result["reversed_indices"] = py::list();
+        return result;
+    };
+    if (points.ndim() != 2 || points.shape(1) != 3 || owners.ndim() != 1 ||
+        neighbours.ndim() != 1 || !std::isfinite(tolerance) || tolerance < 0.0)
+        return refused("invalid_canonicalization_inputs");
+    const size_t point_count = static_cast<size_t>(points.shape(0));
+    const RaggedFaces ragged = parse_ragged_faces(faces, point_count);
+    const size_t face_count = ragged.size();
+    if (static_cast<size_t>(owners.shape(0)) != face_count ||
+        static_cast<size_t>(neighbours.shape(0)) > face_count)
+        return refused("incidence_length_mismatch");
+
+    const auto* points_data = points.data();
+    const auto* owner_data = owners.data();
+    const auto* neighbour_data = neighbours.data();
+    Label max_cell = -1;
+    for (size_t fi = 0; fi < face_count; ++fi) max_cell = std::max(max_cell, owner_data[fi]);
+    for (size_t fi = 0; fi < static_cast<size_t>(neighbours.shape(0)); ++fi)
+        max_cell = std::max(max_cell, neighbour_data[fi]);
+    if (max_cell < 0) return refused("empty_cell_incidence");
+    const size_t cell_count = static_cast<size_t>(max_cell + 1);
+    std::vector<std::unordered_set<Label>> cell_vertices(cell_count);
+    for (size_t fi = 0; fi < face_count; ++fi) {
+        if (ragged.face(fi).size() < 3U || owner_data[fi] < 0 ||
+            owner_data[fi] >= static_cast<Label>(cell_count))
+            return refused("invalid_owner_or_face");
+        for (const Label vertex : ragged.face(fi))
+            cell_vertices[static_cast<size_t>(owner_data[fi])].insert(vertex);
+        if (fi < static_cast<size_t>(neighbours.shape(0))) {
+            const Label neighbour = neighbour_data[fi];
+            if (neighbour < 0 || neighbour >= static_cast<Label>(cell_count))
+                return refused("invalid_neighbour");
+            for (const Label vertex : ragged.face(fi))
+                cell_vertices[static_cast<size_t>(neighbour)].insert(vertex);
+        }
+    }
+    std::vector<std::array<double, 3>> centres(cell_count, {0.0, 0.0, 0.0});
+    for (size_t ci = 0; ci < cell_count; ++ci) {
+        if (cell_vertices[ci].empty()) return refused("cell_without_vertices");
+        for (const Label vertex : cell_vertices[ci]) {
+            const double* point = points_data + static_cast<size_t>(vertex) * 3U;
+            if (!std::isfinite(point[0]) || !std::isfinite(point[1]) ||
+                !std::isfinite(point[2]))
+                return refused("nonfinite_point");
+            centres[ci][0] += point[0];
+            centres[ci][1] += point[1];
+            centres[ci][2] += point[2];
+        }
+        const double inverse = 1.0 / static_cast<double>(cell_vertices[ci].size());
+        for (double& value : centres[ci]) value *= inverse;
+    }
+
+    py::list corrected_faces;
+    py::list reversed_indices;
+    py::list orientation_ledger;
+    for (size_t fi = 0; fi < face_count; ++fi) {
+        const std::span<const Label> face = ragged.face(fi);
+        bool reverse = false;
+        double q = 0.0;
+        double scale = 0.0;
+        if (fi < static_cast<size_t>(neighbours.shape(0))) {
+            std::array<double, 3> area{0.0, 0.0, 0.0};
+            const double* anchor = points_data + static_cast<size_t>(face[0]) * 3U;
+            for (size_t j = 1U; j + 1U < face.size(); ++j) {
+                const double* a = points_data + static_cast<size_t>(face[j]) * 3U;
+                const double* b = points_data + static_cast<size_t>(face[j + 1U]) * 3U;
+                const std::array<double, 3> va{a[0] - anchor[0], a[1] - anchor[1], a[2] - anchor[2]};
+                const std::array<double, 3> vb{b[0] - anchor[0], b[1] - anchor[1], b[2] - anchor[2]};
+                area[0] += va[1] * vb[2] - va[2] * vb[1];
+                area[1] += va[2] * vb[0] - va[0] * vb[2];
+                area[2] += va[0] * vb[1] - va[1] * vb[0];
+            }
+            const auto& owner_c = centres[static_cast<size_t>(owner_data[fi])];
+            const auto& neighbour_c = centres[static_cast<size_t>(neighbour_data[fi])];
+            const std::array<double, 3> d{
+                neighbour_c[0] - owner_c[0],
+                neighbour_c[1] - owner_c[1],
+                neighbour_c[2] - owner_c[2]};
+            const double area_norm = std::sqrt(area[0] * area[0] + area[1] * area[1] + area[2] * area[2]);
+            const double d_norm = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+            q = area[0] * d[0] + area[1] * d[1] + area[2] * d[2];
+            scale = area_norm * d_norm;
+            if (!(area_norm > 1e-30) || !(d_norm > 1e-30) || !std::isfinite(q) ||
+                !std::isfinite(scale) || !(std::abs(q) > tolerance * scale))
+                return refused("ambiguous_internal_orientation");
+            reverse = q < 0.0;
+        }
+        py::list output_face;
+        if (reverse) {
+            output_face.append(face[0]);
+            for (size_t j = face.size(); j-- > 1U;) output_face.append(face[j]);
+            reversed_indices.append(static_cast<Label>(fi));
+        } else {
+            for (const Label vertex : face) output_face.append(vertex);
+        }
+        corrected_faces.append(output_face);
+        py::dict ledger;
+        ledger["face_index"] = static_cast<Label>(fi);
+        ledger["action"] = reverse ? "reversed_internal_cycle" : "unchanged";
+        ledger["q"] = q;
+        ledger["scale"] = scale;
+        orientation_ledger.append(ledger);
+    }
+    py::dict result;
+    result["accepted"] = true;
+    result["status"] = "measured";
+    result["reason"] = "canonical_internal_orientation";
+    result["faces"] = corrected_faces;
+    result["reversed_indices"] = reversed_indices;
+    result["orientation_ledger"] = orientation_ledger;
+    result["boundary_cycles_immutable"] = true;
+    result["incidence_preserved"] = true;
+    return result;
+}
+
 }  // namespace
 
 PYBIND11_MODULE(native_polymesh, module)
@@ -1969,6 +2098,14 @@ PYBIND11_MODULE(native_polymesh, module)
         py::arg("faces"),
         py::arg("owners"),
         py::arg("cell_centroids"));
+    module.def(
+        "canonicalize_internal_winding_or_refuse",
+        &canonicalize_internal_winding_or_refuse,
+        py::arg("points"),
+        py::arg("faces"),
+        py::arg("owners"),
+        py::arg("neighbours"),
+        py::arg("tolerance") = 1e-12);
     module.def(
         "face_plane_geometry",
         &face_plane_geometry,

@@ -56,7 +56,7 @@ lossy float conversion; real numeric integral connectivity remains supported.
 Empty input retains its existing `빈 입력 mesh` failure.
 
 No target-cell, boundary-layer, quality threshold, acceptance, routing, or
-output topology behavior changes.  No `third_party/` file changed.
+output topology behavior changes.  No `vendor/dependencies/` file changed.
 
 ## Evidence
 

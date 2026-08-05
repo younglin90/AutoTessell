@@ -1,6 +1,6 @@
 """고도화 루프 검증 — 10개 어려운 thingi10k mesh × {tet, hex, poly} + BL = 30 runs.
 
-자동 생성된 ./harness/validate_30_results.json 을 다음 cycle 에서 비교.
+자동 생성된 ./research/quality-harness/validate_30_results.json 을 다음 cycle 에서 비교.
 
 사용:
     python3 tests/stl/validate_30_hard_meshes.py [--seed N] [--n-meshes M]

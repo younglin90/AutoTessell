@@ -19,7 +19,7 @@
      - `bin/`
      - `installer/staging/`
      - `octree.vtk`
-     - `tessell-mesh/build_make/_deps/`
+     - `engines/legacy/tessell_mesh/build_make/_deps/`
 
 2. **offscreen Qt 테스트 안정화**
    - `tests/conftest.py`에 autouse fixture를 추가했다.

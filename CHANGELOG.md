@@ -452,7 +452,7 @@ suite remained `33 passed`. No normal-layer placement was added.
 - `docs/plans/loop-cycle-snapshot-beta2494.md` (132 cards).
 - `docs/plans/loop-cycle-snapshot-beta2509.md` (147 cards).
 - `docs/plans/loop-cycle-snapshot-beta2518.md` (165 cards).
-- `docs/env_vars.md` 업데이트 (beta2473 기준).
+- `docs/guides/environment-variables.md` 업데이트 (beta2473 기준).
 
 ---
 
@@ -1574,7 +1574,7 @@ auto-tessell run wing.stl -o case --mesh-type hex_dominant --quality fine \
 ### Added
 
 - `tests/stl/bench_v04_<stamp>.json` snapshot 아카이빙 (30/30 matrix, 28 PASS).
-- `docs/bench_v04_beta27_drift.md`: beta23~31 구조 변경의 bench 영향 요약.
+- `docs/qa/historical/bench-v04-beta27-drift.md`: beta23~31 구조 변경의 bench 영향 요약.
   구조 변경이 matrix 성공률에 부정적 영향 없음을 기록.
 
 ---
@@ -2095,7 +2095,7 @@ BL 완성.
 
 ### Documentation
 
-- `agents/specs/*.md` 5 개 전체를 "라이브러리 참고 → 자체 코드화" 방향으로 재작성.
+- `docs/contracts/*.md` 5 개 전체를 "라이브러리 참고 → 자체 코드화" 방향으로 재작성.
   각 에이전트에 "현재 의존 / 참고 출처 / 자체 구현 목표" 3-열 로드맵 표 추가.
 - `CLAUDE.md` 재편: 핵심 철학 (native-first), mesh_type 3 카테고리, 재시도 루프
   제거, BL 타입별 분기 명시.

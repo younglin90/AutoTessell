@@ -1,0 +1,24 @@
+{
+  "schema": "autotessell/native-surface-bl-package-contract/v2",
+  "package": "native-surface-bl-front/v1",
+  "modules": [
+    {
+      "module": "native_surface_bl_folded_plate",
+      "source": "auto_tessell_core/surface_bl_front_shared/surface_bl_folded_plate_bind.cpp",
+      "public_symbols": [
+        "audit_filtered_collision",
+        "produce_actual_v2_folded_plate_ridge_v1"
+      ]
+    },
+    {
+      "module": "native_surface_bl_readback_verifier",
+      "source": "auto_tessell_core/surface_bl_front_shared/surface_bl_readback_verifier_bind.cpp",
+      "public_symbols": [
+        "verify_actual_xde_folded_evidence"
+      ]
+    }
+  ],
+  "shipping": "separate_optional_product",
+  "default_on": false,
+  "runtime_publication_eligible": false
+}

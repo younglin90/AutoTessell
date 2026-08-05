@@ -122,7 +122,7 @@ gotchas (lessons-learned.md especially — read it before touching anything).
   **Always do git operations from WSL native** (`wsl.exe -d ubuntu -- bash -c
   "cd /home/younglin90/work/claude_code/AutoTessell && ..."` or run directly
   if you already have a WSL/Linux shell) — the Windows-side bridge breaks on
-  `tessell-mesh/build_make/lib/libgeogram.so*` (`lstat: Function not
+  `engines/legacy/tessell_mesh/build_make/lib/libgeogram.so*` (`lstat: Function not
   implemented`) and produces spurious CRLF-vs-LF diffs.
 - **`git status` in this repo will show MANY modified files that are pure
   CRLF-line-ending noise, not real content**, left over from files having

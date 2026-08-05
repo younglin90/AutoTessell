@@ -4,7 +4,7 @@
 Scans the bench RUN_ROOT for completed cases and runs
 ``NativeMeshChecker`` directly on each polyMesh to report the
 max-non-orthogonality and other quality metrics, plus PASS/FAIL
-against the ``agents/specs/evaluator.md`` thresholds for the
+against the ``docs/contracts/evaluator.md`` thresholds for the
 chosen quality level.  Useful for monitoring an in-flight bench
 without waiting for the parent script to finish writing the
 summary TSV.

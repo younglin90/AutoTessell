@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 
 from scripts.collect_native_release_evidence import surface_audit
+from core.evaluator.native_release_matrix import REQUIRED_RELEASE_CASES
 
 
 def test_empty_spec_is_not_promoted(tmp_path: Path) -> None:
@@ -34,7 +35,7 @@ def test_empty_spec_is_not_promoted(tmp_path: Path) -> None:
     value = json.loads(report.read_text())
     assert result.returncode == 1
     assert value["status"] == "matrix_unverified"
-    assert len(value["matrix"]["missing_cases"]) == 20
+    assert len(value["matrix"]["missing_cases"]) == len(REQUIRED_RELEASE_CASES)
 
 
 def test_surface_artifact_is_audited_as_surface_not_openfoam_volume(tmp_path: Path) -> None:

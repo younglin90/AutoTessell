@@ -44,7 +44,7 @@ behavior are unchanged.
 
 The two inaccessible full texts and their access reasons must remain in the
 campaign DOI ledger.  The retained implementation is independent first-party
-C++23.  `third_party/` is unchanged.
+C++23.  `vendor/dependencies/` is unchanged.
 
 ## Frozen baseline and acceptance
 
@@ -73,7 +73,7 @@ Predeclared acceptance:
 Rollback: any source mutation; topology, wall, feature, orientation, quality,
 ordering, or provenance mismatch; malformed payload acceptance; invalid or
 non-finite output; nondeterminism; build warning; performance miss; or
-`third_party/` change.
+`vendor/dependencies/` change.
 
 Reproduce after a Release native build:
 

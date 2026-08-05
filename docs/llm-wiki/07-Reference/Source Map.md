@@ -50,5 +50,5 @@ tags: [source, symbols, navigation]
 - `cli/main.py::run` — 전체 CLI
 - `desktop/server.py` — local FastAPI job API
 - `desktop/qt_app/main_window.py::AutoTessellWindow` — Qt UI
-- `backend/main.py`, `backend/api/` — SaaS API
-- `frontend/app/` — Next.js UI
+- `products/web/api/main.py`, `products/web/api/api/` — SaaS API
+- `products/web/app/app/` — Next.js UI

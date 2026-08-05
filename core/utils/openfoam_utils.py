@@ -210,7 +210,7 @@ def run_openfoam(
     """OpenFOAM 유틸리티 실행.
 
     BETA2850 — default 차단. AutoTessell 의 mesh path 는 vendored cfMesh
-    (third_party/cfmesh/build/{cartesianMesh,tetMesh,pMesh}) + vendored
+    (vendor/dependencies/cfmesh/build/{cartesianMesh,tetMesh,pMesh}) + vendored
     fTetWild + 자체 native 구현으로 외부 OpenFOAM 의존 0 이 정책.
     이 함수가 호출되면 즉시 OpenFOAMError 로 raise → caller 가 native
     대체 path 로 fallback 해야 함.

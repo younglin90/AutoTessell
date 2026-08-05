@@ -849,6 +849,36 @@ def _build_bl_config(
         aspect_ratio_threshold=float(
             params.get("bl_aspect_ratio_threshold", _ar_default),
         ),
+        max_skewness=(
+            float(params["bl_max_skewness"])
+            if params.get("bl_max_skewness") is not None
+            else defaults.max_skewness
+        ),
+        max_non_orthogonality=(
+            float(params["bl_max_non_orthogonality"])
+            if params.get("bl_max_non_orthogonality") is not None
+            else defaults.max_non_orthogonality
+        ),
+        max_quality_aspect_ratio=(
+            float(params["bl_max_quality_aspect_ratio"])
+            if params.get("bl_max_quality_aspect_ratio") is not None
+            else defaults.max_quality_aspect_ratio
+        ),
+        min_face_weight=(
+            float(params["bl_min_face_weight"])
+            if params.get("bl_min_face_weight") is not None
+            else defaults.min_face_weight
+        ),
+        min_scaled_jacobian=(
+            float(params["bl_min_scaled_jacobian"])
+            if params.get("bl_min_scaled_jacobian") is not None
+            else defaults.min_scaled_jacobian
+        ),
+        min_first_layer_height=(
+            float(params["bl_min_first_layer_height"])
+            if params.get("bl_min_first_layer_height") is not None
+            else defaults.min_first_layer_height
+        ),
         # beta2287: y+ 자동 first_thickness 역산 경로.
         target_y_plus=target_y_plus,
         flow_velocity=float(
@@ -2286,6 +2316,7 @@ class LayersPostGenerator:
         ok = False
         msg = ""
         _bl_p2 = None  # beta76: NativeBLPhase2Stats (native_bl 경로에서만 채워짐)
+        _bl_receipt: dict[str, Any] = {}
         if engine in ("generate_boundary_layers", "gbl", "cfmesh_layers_post"):
             ok, msg = _run_generate_boundary_layers(
                 case_dir, num_layers, growth_ratio, first_thickness,
@@ -2333,6 +2364,20 @@ class LayersPostGenerator:
                                           quality_level=_quality_level)
                 _res = generate_native_bl(case_dir, cfg_bl)
                 ok, msg = bool(_res.success), str(_res.message)
+                try:
+                    import json as _json
+                    _quality = _json.loads(
+                        (case_dir / "native_bl_quality.json").read_text(encoding="utf-8")
+                    )
+                    _bl_receipt = {
+                        "schema": "autotessell/native-bl-receipt/v1",
+                        "requested": {"layers": int(num_layers)},
+                        "effective": _quality.get("boundary_layer", {}),
+                        "quality": _quality.get("quality_readback", {}),
+                        "status": "committed" if ok else "rejected",
+                    }
+                except Exception as _receipt_exc:
+                    _bl_receipt = {"schema": "autotessell/native-bl-receipt/v1", "status": "unavailable", "error": str(_receipt_exc)}
                 _bl_p2 = _extract_bl_phase2_stats(_res)
         elif engine in ("native_hex_bl", "hex_bl", "python_hex_bl"):
             ok, msg, n_quad = _run_native_hex_bl(
@@ -2359,6 +2404,102 @@ class LayersPostGenerator:
                     ok = bool(_res.success)
                     msg = f"native_hex_bl no quads; fallback: {_res.message}"
                     _bl_p2 = _extract_bl_phase2_stats(_res)
+        elif engine in ("tet_bl_subdivide", "tet_bl", "native_bl_tet") and bool(
+            params.get("native_tet_actual_contract", False)
+        ):
+            # Private-only actual contract route. The existing default route below
+            # remains byte-identical; this route refuses before publish when the
+            # source receipt or persisted C++ sidecar is absent.
+            try:
+                from core.evaluator.native_l2_evidence_audit import (
+                    audit_native_tet_polymesh_persisted_evidence,
+                )
+                from core.generator.native_tet.staged_runner import (
+                    run_tet_bl_contract_in_private_stage,
+                )
+                from core.layers.native_bl import BLConfig, generate_native_bl
+                from core.layers.tet_bl_subdivide import (
+                    subdivide_prism_layers_to_tet,
+                )
+                from core.generator.native_tet.capsule import (
+                    emit_native_tet_bl_capsule,
+                )
+                from core.generator.native_tet.front_qopt import (
+                    optimize_actual_tet_wall_front,
+                )
+            except Exception as exc:
+                ok, msg = False, f"native_tet_actual_contract_import_failed:{exc}"
+            else:
+                contract_authority = params.get("native_tet_source_authority")
+                contract_quality = _quality_level
+
+                def _actual_tet_bl_run(
+                    stage: Path, authority: dict[str, Any], _run_index: int
+                ) -> Any:
+                    cfg_bl = _build_bl_config(
+                        BLConfig, params, num_layers, growth_ratio,
+                        first_thickness, quality_level=contract_quality,
+                    )
+                    native_result = generate_native_bl(
+                        stage, cfg_bl, engine_tag="native_tet_actual_contract"
+                    )
+                    if not native_result.success:
+                        return native_result
+                    _qopt = optimize_actual_tet_wall_front(
+                        stage,
+                        authority=dict(authority),
+                        requested_layers=num_layers,
+                        max_iterations=int(params.get("tet_bl_front_qopt_iterations", 8)),
+                        correction_cap=float(params.get("tet_bl_front_qopt_correction_cap", 0.25)),
+                    )
+                    if not bool(_qopt.get("accepted", False)):
+                        return type("FailedTetBL", (), {
+                            "success": False,
+                            "message": str(_qopt.get(
+                                "reason",
+                                "native_tet_bl_front_qopt_unavailable:unknown",
+                            )),
+                        })()
+                    aspect_cap = float(params.get("tet_bl_aspect_cap", 100.0))
+                    subdivided = subdivide_prism_layers_to_tet(
+                        stage, backup_original=False, aspect_cap=aspect_cap,
+                    )
+                    if not bool(getattr(subdivided, "success", False)) or not bool(
+                        getattr(subdivided, "subdivision_applied", False)
+                    ):
+                        return type("FailedTetBL", (), {
+                            "success": False,
+                            "message": "native_tet_actual_contract_mixed_or_unsplit_output",
+                        })()
+                    _emitted, _capsule_message = emit_native_tet_bl_capsule(
+                        stage,
+                        authority=dict(authority),
+                        subdivided=subdivided,
+                        requested_layers=num_layers,
+                        growth_ratio=growth_ratio,
+                        first_thickness=first_thickness,
+                        quality_aspect_cap=aspect_cap,
+                    )
+                    if not _emitted:
+                        return type("FailedTetBL", (), {
+                            "success": False,
+                            "message": _capsule_message,
+                        })()
+                    return subdivided
+
+                contract = run_tet_bl_contract_in_private_stage(
+                    case_dir,
+                    run_callback=_actual_tet_bl_run,
+                    audit_callback=audit_native_tet_polymesh_persisted_evidence,
+                    source_authority=contract_authority,
+                    requested_layers=num_layers,
+                )
+                ok = bool(contract.published)
+                msg = (
+                    "native_tet_actual_contract published after C++ audit"
+                    if ok
+                    else f"native_tet_actual_contract refused: {contract.refused_reason}"
+                )
         elif engine in ("tet_bl_subdivide", "tet_bl", "native_bl_tet"):
             # v0.4 mesh_type=tet 전용: native_bl 로 prism 삽입 후 wedge 를 tet 3 개로
             # 분할. 결과는 전체 tet mesh.
@@ -2487,6 +2628,7 @@ class LayersPostGenerator:
             return TierAttempt(
                 tier=self.TIER_NAME, status="success", time_seconds=elapsed,
                 native_bl_phase2=_bl_p2,
+                parameter_receipt=_bl_receipt,
             )
         log.warning("tier_layers_post_failed", engine=engine, msg=msg, elapsed=elapsed)
         return TierAttempt(
@@ -2494,4 +2636,5 @@ class LayersPostGenerator:
             time_seconds=elapsed,
             error_message=f"{engine}: {msg}",
             native_bl_phase2=_bl_p2,
+            parameter_receipt=_bl_receipt,
         )

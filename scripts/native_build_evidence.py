@@ -102,8 +102,8 @@ def load_contract(path: Path) -> dict[str, Any]:
     if raw.get("schema") != 1 or not isinstance(raw.get("modules"), dict):
         raise EvidenceError(f"invalid native build contract: {path}")
     modules = raw["modules"]
-    if len(modules) != 8:
-        raise EvidenceError(f"native build contract requires exactly 8 modules, got {len(modules)}")
+    if len(modules) != 15:
+        raise EvidenceError(f"native build contract requires exactly 15 modules, got {len(modules)}")
     for name, entry in modules.items():
         if not isinstance(name, str) or not name.startswith("native_"):
             raise EvidenceError(f"invalid native module name in contract: {name!r}")

@@ -1481,6 +1481,15 @@ def generate_native_poly_voronoi(
         _budget_s = float(_os_poly.environ.get("AUTO_TESSELL_POLY_BUDGET_S", "90"))
         _t_budget_start = _t_budget.perf_counter()
         cur_seed = int(seed_density)
+        _edge_floor = float(np.linalg.norm(
+            np.asarray(vertices, dtype=np.float64).max(axis=0)
+            - np.asarray(vertices, dtype=np.float64).min(axis=0)
+        )) / 200.0
+        cur_edge = (
+            max(_edge_floor, float(target_edge_length))
+            if target_edge_length is not None and float(target_edge_length) > 0.0
+            else None
+        )
         for attempt in range(int(auto_escalate_max)):
             if _t_budget.perf_counter() - _t_budget_start > _budget_s:
                 log.warning(
@@ -1493,7 +1502,7 @@ def generate_native_poly_voronoi(
                 break
             r_attempt = _generate_native_poly_voronoi_inner(
                 vertices, faces, case_dir,
-                target_edge_length=target_edge_length,
+                target_edge_length=cur_edge if cur_edge is not None else target_edge_length,
                 seed_density=cur_seed,
                 n_lloyd=n_lloyd,
                 bl_layers=int(bl_layers),
@@ -1513,12 +1522,22 @@ def generate_native_poly_voronoi(
                 )
                 break
             cur_seed = max(int(cur_seed * 1.5), cur_seed + 4)
+            if cur_edge is not None:
+                previous_edge = cur_edge
+                cur_edge = max(_edge_floor, cur_edge / 1.5)
+                log.info(
+                    "native_poly_explicit_edge_escalation",
+                    attempt=int(attempt + 1),
+                    edge_old=round(previous_edge, 12),
+                    edge_new=round(cur_edge, 12),
+                    seed_density=int(cur_seed),
+                )
 
         # PPP2 — best-of-N 에 voronoi(p=4) 후보 추가.
         try:
             r_p4 = _generate_native_poly_voronoi_inner(
                 vertices, faces, case_dir,
-                target_edge_length=target_edge_length,
+                target_edge_length=cur_edge if cur_edge is not None else target_edge_length,
                 seed_density=cur_seed, n_lloyd=n_lloyd, lp_p=4.0,
                 bl_layers=int(bl_layers),
             )
@@ -1540,7 +1559,7 @@ def generate_native_poly_voronoi(
         try:
             r_clipped = _generate_native_poly_voronoi_inner(
                 vertices, faces, case_dir,
-                target_edge_length=target_edge_length,
+                target_edge_length=cur_edge if cur_edge is not None else target_edge_length,
                 seed_density=cur_seed, n_lloyd=n_lloyd, lp_p=2.0,
                 clip_boundary=True,
                 bl_layers=int(bl_layers),

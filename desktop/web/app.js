@@ -27,6 +27,12 @@
     resultMesh: null,
     viewMode: "surface",
     outputDir: null,
+    inputSchema: null,
+    inputTemplateText: "",
+    contractCardValues: {},
+    sourceLedger: null,
+    boundaryLayerCards: [],
+    localControlCards: [],
   };
 
   let viewer;
@@ -62,6 +68,334 @@
   }
   pollHealth();
   setInterval(pollHealth, 5000);
+
+  // The server owns the parameter metadata/default template. Electron and
+  // browser clients therefore share one contract without duplicating defaults.
+  async function loadInputContractSchema() {
+    try {
+      const r = await fetch(API + "/api/input-schema/v1", { cache: "no-store" });
+      if (!r.ok) throw new Error("schema " + r.status);
+      const schema = await r.json();
+      state.inputSchema = schema;
+      renderContractCards(schema);
+      const editor = $("input_contract_json");
+      const status = $("input_contract_status");
+      if (editor && !editor.value.trim()) {
+        editor.value = JSON.stringify(schema.template || {}, null, 2);
+        state.inputTemplateText = editor.value.trim();
+      }
+      if (status) status.textContent = "schema " + (schema.schema_version || "unknown") + " 연결됨";
+    } catch (e) {
+      const status = $("input_contract_status");
+      if (status) status.textContent = "schema 연결 실패: " + e.message;
+      log("warn", "입력 계약 schema 로드 실패: " + e.message);
+    }
+  }
+
+  function setJsonPointer(root, pointer, value) {
+    const parts = pointer.split('/').filter(Boolean);
+    if (!parts.length) return;
+    let node = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const key = parts[i];
+      if (!node[key] || typeof node[key] !== 'object' || Array.isArray(node[key])) node[key] = {};
+      node = node[key];
+    }
+    node[parts[parts.length - 1]] = value;
+  }
+
+  function renderContractCards(schema) {
+    const root = $('contract-field-cards');
+    if (!root || !Array.isArray(schema.field_descriptors)) return;
+    root.textContent = '';
+    for (const descriptor of schema.field_descriptors) {
+      if (['boundary_layers', 'local_controls'].includes(descriptor.section)) continue;
+      const card = document.createElement('label');
+      card.className = 'contract-field-card';
+      const title = document.createElement('span');
+      title.textContent = descriptor.label + (descriptor.unit ? ' [' + descriptor.unit + ']' : '');
+      const help = document.createElement('small');
+      help.textContent = descriptor.help || descriptor.pointer;
+      const input = document.createElement(
+        descriptor.control === 'textarea' ? 'textarea' : 'input'
+      );
+      if (descriptor.control === 'textarea') {
+        input.rows = 2;
+        input.placeholder = 'JSON array/object';
+      } else {
+        input.type = descriptor.control === 'checkbox' ? 'checkbox' : (descriptor.control === 'number' ? 'number' : 'text');
+      }
+      input.placeholder = descriptor.default_policy === 'unset' ? 'unset' : '';
+      if (descriptor.minimum !== null && input.type === 'number') input.min = descriptor.minimum;
+      input.dataset.touched = '0';
+      input.addEventListener('input', () => {
+        input.dataset.touched = '1';
+        let value;
+        if (input.type === 'checkbox') value = input.checked;
+        else if (input.value.trim() === '') return;
+        else if (descriptor.value_type === 'integer') value = Math.trunc(Number(input.value));
+        else if (descriptor.value_type === 'number') value = Number(input.value);
+        else if (descriptor.value_type === 'json') {
+          try {
+            value = JSON.parse(input.value);
+            input.dataset.invalid = '0';
+          } catch {
+            input.dataset.invalid = '1';
+            return;
+          }
+        }
+        else value = input.value;
+        state.contractCardValues[descriptor.pointer] = value;
+      });
+      card.append(title, input, help);
+      root.append(card);
+    }
+  }
+
+  function selectorKinds() {
+    const ns = state.sourceLedger && state.sourceLedger.selector_namespaces;
+    return ["stl_facet", "cad_face", "cad_edge"].filter((kind) => ns && ns[kind] && ns[kind].available);
+  }
+
+  function parseSelectorIds(text) {
+    return String(text || "").split(",").map((x) => Number(x.trim())).filter((x) => Number.isInteger(x) && x >= 0);
+  }
+
+  function selectorControls(parent, entry, onChange) {
+    const wrap = document.createElement("div");
+    wrap.className = "contract-selector";
+    const kind = document.createElement("select");
+    const kinds = selectorKinds();
+    const current = entry.selector && typeof entry.selector === "object" ? entry.selector : {};
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = kinds.length ? "source entity kind" : "source ledger required";
+    kind.appendChild(placeholder);
+    for (const value of kinds) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      kind.appendChild(option);
+    }
+    kind.value = kinds.includes(current.kind) ? current.kind : "";
+    const ids = document.createElement("input");
+    ids.type = "text";
+    ids.placeholder = "entity IDs, e.g. 0,1,2";
+    ids.value = Array.isArray(current.ids) ? current.ids.join(",") : "";
+    ids.disabled = !kinds.length;
+    const update = () => {
+      const values = parseSelectorIds(ids.value);
+      entry.selector = kind.value && values.length && state.sourceLedger
+        ? { ledger_digest: state.sourceLedger.ledger_digest, kind: kind.value, ids: values }
+        : null;
+      onChange();
+    };
+    kind.addEventListener("change", update);
+    ids.addEventListener("input", update);
+    wrap.append(kind, ids);
+    return wrap;
+  }
+
+  function cardField(parent, labelText, type, value, onInput) {
+    const label = document.createElement("label");
+    label.className = "contract-array-field";
+    const span = document.createElement("span");
+    span.textContent = labelText;
+    const input = document.createElement("input");
+    input.type = type;
+    input.value = value == null ? "" : String(value);
+    input.addEventListener("input", () => onInput(input.value));
+    label.append(span, input);
+    parent.append(label);
+    return input;
+  }
+
+  function appendContractDescriptorField(parent, entry, descriptor) {
+    const leaf = descriptor.pointer.split('/').filter(Boolean).pop();
+    if (!leaf || leaf === 'layers') return;
+    const label = document.createElement('label');
+    label.className = 'contract-array-field';
+    const title = document.createElement('span');
+    title.textContent = descriptor.label || leaf.replaceAll('_', ' ');
+    const isJson = descriptor.value_type === 'json' || descriptor.control === 'textarea';
+    const input = document.createElement(isJson ? 'textarea' : 'input');
+    if (isJson) {
+      input.rows = 2;
+      input.placeholder = 'JSON array/object';
+      input.value = entry[leaf] == null ? '' : JSON.stringify(entry[leaf]);
+    } else {
+      input.type = descriptor.control === 'checkbox' ? 'checkbox' : (descriptor.control === 'number' ? 'number' : 'text');
+      if (input.type === 'checkbox') input.checked = entry[leaf] === true;
+      else input.value = entry[leaf] == null ? '' : String(entry[leaf]);
+      if (descriptor.minimum !== null && input.type === 'number') input.min = descriptor.minimum;
+    }
+    input.addEventListener('input', () => {
+      if (input.type === 'checkbox') {
+        entry[leaf] = input.checked;
+        return;
+      }
+      if (!input.value.trim()) {
+        delete entry[leaf];
+        return;
+      }
+      if (isJson) {
+        try {
+          entry[leaf] = JSON.parse(input.value);
+          input.dataset.invalid = '0';
+        } catch {
+          input.dataset.invalid = '1';
+        }
+      } else if (descriptor.value_type === 'integer') entry[leaf] = Math.trunc(Number(input.value));
+      else if (descriptor.value_type === 'number') entry[leaf] = Number(input.value);
+      else entry[leaf] = input.value;
+    });
+    label.append(title, input);
+    parent.append(label);
+  }
+
+
+  function renderBoundaryLayerCards() {
+    const root = $("boundary-layer-cards");
+    if (!root) return;
+    root.textContent = "";
+    state.boundaryLayerCards.forEach((entry, index) => {
+      const card = document.createElement("div");
+      card.className = "contract-array-card";
+      const head = document.createElement("div");
+      head.className = "contract-array-card-head";
+      const title = document.createElement("b");
+      title.textContent = `BL ${index + 1}`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn-mini";
+      remove.textContent = "삭제";
+      remove.addEventListener("click", () => {
+        state.boundaryLayerCards.splice(index, 1);
+        renderBoundaryLayerCards();
+      });
+      head.append(title, remove);
+      card.append(head);
+      cardField(card, "layers", "number", entry.layers ?? 0, (v) => { entry.layers = Math.max(0, Math.trunc(Number(v) || 0)); });
+      const modeLabel = document.createElement("label");
+      modeLabel.className = "contract-array-field";
+      const modeText = document.createElement("span");
+      modeText.textContent = "spacing mode";
+      const mode = document.createElement("select");
+      for (const value of (state.inputSchema?.spacing_modes || ["first_and_growth", "first_and_total", "total_and_growth", "last_and_growth", "target_y_plus", "height_field"])) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        mode.appendChild(option);
+      }
+      mode.value = entry.spacing_mode || "first_and_growth";
+      mode.addEventListener("change", () => { entry.spacing_mode = mode.value; });
+      modeLabel.append(modeText, mode);
+      card.append(modeLabel);
+      const descriptors = (state.inputSchema?.field_descriptors || []).filter((descriptor) => {
+        const parts = descriptor.pointer.split('/').filter(Boolean);
+        return descriptor.section === 'boundary_layers' && parts.length === 2 && parts[1] !== 'layers' && parts[1] !== 'spacing_mode';
+      });
+      for (const descriptor of descriptors) appendContractDescriptorField(card, entry, descriptor);
+      const selectorTitle = document.createElement("span");
+      selectorTitle.className = "contract-array-label";
+      selectorTitle.textContent = "authoritative wall selector";
+      card.append(selectorTitle, selectorControls(card, entry, () => {}));
+      root.append(card);
+    });
+  }
+
+  function renderLocalControlCards() {
+    const root = $("local-control-cards");
+    if (!root) return;
+    root.textContent = "";
+    state.localControlCards.forEach((entry, index) => {
+      const card = document.createElement("div");
+      card.className = "contract-array-card";
+      const head = document.createElement("div");
+      head.className = "contract-array-card-head";
+      const title = document.createElement("b");
+      title.textContent = `local ${index + 1}`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn btn-mini";
+      remove.textContent = "삭제";
+      remove.addEventListener("click", () => { state.localControlCards.splice(index, 1); renderLocalControlCards(); });
+      head.append(title, remove);
+      card.append(head);
+      cardField(card, "name", "text", entry.name, (v) => { entry.name = v; });
+      cardField(card, "size", "number", entry.size, (v) => { if (v.trim() === "") delete entry.size; else entry.size = Number(v); });
+      cardField(card, "min_size", "number", entry.min_size, (v) => { if (v.trim() === "") delete entry.min_size; else entry.min_size = Number(v); });
+      cardField(card, "max_size", "number", entry.max_size, (v) => { if (v.trim() === "") delete entry.max_size; else entry.max_size = Number(v); });
+      const selectorTitle = document.createElement("span");
+      selectorTitle.className = "contract-array-label";
+      selectorTitle.textContent = "authoritative selector";
+      card.append(selectorTitle, selectorControls(card, entry, () => {}));
+      const rawTitle = document.createElement("span");
+      rawTitle.className = "contract-array-label";
+      rawTitle.textContent = "advanced local override JSON";
+      const raw = document.createElement("textarea");
+      raw.rows = 4;
+      raw.className = "contract-array-json";
+      raw.value = JSON.stringify(entry, null, 2);
+      raw.addEventListener("change", () => {
+        try {
+          const parsed = JSON.parse(raw.value);
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("object required");
+          state.localControlCards[index] = parsed;
+          renderLocalControlCards();
+        } catch {
+          raw.dataset.invalid = "1";
+        }
+      });
+      card.append(rawTitle, raw);
+      root.append(card);
+    });
+  }
+
+  function syncArrayCardsFromContract(contract) {
+    if (Array.isArray(contract.boundary_layers)) state.boundaryLayerCards = JSON.parse(JSON.stringify(contract.boundary_layers));
+    if (Array.isArray(contract.local_controls)) state.localControlCards = JSON.parse(JSON.stringify(contract.local_controls));
+    renderBoundaryLayerCards();
+    renderLocalControlCards();
+  }
+
+  async function loadSourceLedger() {
+    const status = $("source-ledger-status");
+    if (!state.jobId) return;
+    if (status) status.textContent = "source authority ledger 분석 중…";
+    try {
+      const response = await fetch(`${API}/jobs/${state.jobId}/source-ledger`, { cache: "no-store" });
+      const ledger = await response.json();
+      state.sourceLedger = ledger;
+      if (status) status.textContent = ledger.ledger_digest
+        ? `source ledger ${ledger.status} · ${ledger.source?.format || "?"} · ${ledger.ledger_digest.slice(0, 12)}`
+        : `source ledger unavailable: ${ledger.error || "unknown"}`;
+      renderBoundaryLayerCards();
+      renderLocalControlCards();
+    } catch (error) {
+      state.sourceLedger = null;
+      if (status) status.textContent = "source ledger unavailable: " + error.message;
+      renderBoundaryLayerCards();
+      renderLocalControlCards();
+    }
+  }
+
+  $("add-boundary-layer")?.addEventListener("click", () => {
+    state.boundaryLayerCards.push({ layers: 0, spacing_mode: "first_and_growth" });
+    renderBoundaryLayerCards();
+  });
+  $("add-local-control")?.addEventListener("click", () => {
+    state.localControlCards.push({});
+    renderLocalControlCards();
+  });
+  $("input_contract_json")?.addEventListener("input", () => {
+    try {
+      const contract = JSON.parse($("input_contract_json").value || "{}");
+      if (contract && typeof contract === "object" && !Array.isArray(contract)) syncArrayCardsFromContract(contract);
+    } catch { /* wait for a complete JSON document */ }
+  });
+
+  loadInputContractSchema();
 
   // ===================================================================
   // segmented controls
@@ -243,6 +577,12 @@
         state.jobId = j.job_id;
         state.fileName = j.filename;
         state.surfaces = [];
+        state.contractCardValues = {};
+        state.sourceLedger = null;
+        state.boundaryLayerCards = [];
+        state.localControlCards = [];
+        renderBoundaryLayerCards();
+        renderLocalControlCards();
         state.resultMesh = null;
         state.faceMetrics = null;
         $("file-meta").classList.remove("hidden");
@@ -262,6 +602,7 @@
         toast("ok", `${j.filename} (${(j.size / 1024).toFixed(0)} KB)`, { title: "업로드 완료" });
         refreshSurfaces();
         loadSurface();
+        loadSourceLedger();
         resolve(true);
       };
       xhr.send(fd);
@@ -436,9 +777,61 @@
   // ===================================================================
   $("run-btn").addEventListener("click", startMesh);
   $("stop-btn").addEventListener("click", stopMesh);
+  $("input_contract_template")?.addEventListener("click", () => {
+    if (!state.inputSchema) return;
+    $("input_contract_json").value = JSON.stringify(state.inputSchema.template || {}, null, 2);
+    state.inputTemplateText = $("input_contract_json").value.trim();
+    $("input_contract_status").textContent = "template loaded";
+  });
 
   function buildPayload() {
     const num = (id) => parseFloat($(id).value) || 0;
+    const raw = ($("input_contract_json")?.value || "").trim();
+    let contract = {};
+    try {
+      contract = raw ? JSON.parse(raw) : {};
+      if (!contract || typeof contract !== "object" || Array.isArray(contract)) {
+        throw new Error("JSON object가 필요합니다.");
+      }
+    } catch (e) {
+      toast("error", "입력 계약 JSON 오류: " + e.message);
+      $("input_contract_status").textContent = "JSON 오류";
+      return null;
+    }
+    contract.schema_version = contract.schema_version || state.inputSchema?.schema_version || "1.0";
+    for (const [pointer, value] of Object.entries(state.contractCardValues)) {
+      setJsonPointer(contract, pointer, value);
+    }
+    const expertEdited = raw && raw !== state.inputTemplateText;
+    if (!expertEdited) {
+      contract.target = contract.target || {};
+      contract.target.mode = "soft";
+      const target = num("max_cells");
+      if (target > 0) contract.target.count = Math.trunc(target);
+      contract.sizing = contract.sizing || {};
+      const surfaceSize = num("element_size");
+      const baseSize = num("base_cell_size");
+      if (surfaceSize > 0) contract.sizing.base_size = surfaceSize;
+      if (baseSize > 0) contract.sizing.base_size = baseSize;
+      const layersText = $("bl_layers").value.trim();
+      if (state.boundaryLayerCards.length) {
+        contract.boundary_layers = JSON.parse(JSON.stringify(state.boundaryLayerCards));
+      } else if (layersText !== "") {
+        const layers = Math.max(0, Math.trunc(Number(layersText)));
+        contract.boundary_layers = Array.isArray(contract.boundary_layers) ? contract.boundary_layers : [];
+        const entry = (contract.boundary_layers[0] && typeof contract.boundary_layers[0] === "object")
+          ? contract.boundary_layers[0] : {};
+        entry.layers = layers;
+        const growth = num("bl_growth_ratio");
+        if (growth > 0) entry.growth_rate = growth;
+        const first = num("bl_first_height");
+        if (first > 0) entry.first_height = first;
+        const wall = ($("bl_wall_selector")?.value || "").trim();
+        if (wall) entry.selector = { scope: "user", token: wall };
+        contract.boundary_layers[0] = entry;
+      }
+      if (state.localControlCards.length) contract.local_controls = JSON.parse(JSON.stringify(state.localControlCards));
+    }
     const p = {
       action: "start",
       mesh_type: $("mesh-type").dataset.value,
@@ -446,12 +839,8 @@
       tier: $("tier").value,
       boolean_operation: $("boolean-operation").dataset.value || "union",
       max_iterations: parseInt($("max_iterations").value, 10) || 1,
+      input_config: contract,
     };
-    if (num("max_cells") > 0) p.max_cells = parseInt($("max_cells").value, 10);
-    if (num("bl_layers") > 0) p.bl_layers = parseInt($("bl_layers").value, 10);
-    if (num("bl_growth_ratio") > 0) p.bl_growth_ratio = num("bl_growth_ratio");
-    if (num("element_size") > 0) p.element_size = num("element_size");
-    if (num("base_cell_size") > 0) p.base_cell_size = num("base_cell_size");
     ["repair_engine", "remesh_engine", "checker_engine", "postprocess_engine"].forEach((k) => {
       const v = $(k).value;
       if (v && v !== "auto" && v !== "none") p[k] = v;
@@ -466,6 +855,7 @@
   function startMesh() {
     if (!state.jobId || state.running) return;
     const payload = buildPayload();
+    if (!payload) return;
     state.running = true;
     $("run-btn").disabled = true;
     $("stop-btn").disabled = false;

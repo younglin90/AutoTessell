@@ -32,6 +32,6 @@ AutoTessell에는 개념적으로 두 제품이 있다.
 - NumPy/SciPy가 현재 수치 기반이며 C/C++ 확장이 predicate, topology parsing, snap candidate, metric을 가속한다.
 - OpenFOAM은 출력 대상이자 선택적 validator이지 유일한 checker가 아니다.
 - 외부 엔진은 참조/fallback이다. Native-first는 선택 정책이지 모든 native 엔진 완성을 뜻하지 않는다.
-- `backend/` SaaS 경로와 `desktop/server.py` 로컬 앱 API는 상태·저장·결제 모델이 다르다.
+- `products/web/api/` SaaS 경로와 `desktop/server.py` 로컬 앱 API는 상태·저장·결제 모델이 다르다.
 
 관련 문서: [[Pipeline Lifecycle|파이프라인 생명주기]], [[Native-First Routing|Native-first 라우팅]], [[Data Contracts|데이터 계약]].

@@ -66,7 +66,7 @@ python3 scripts/verify_ml_effect.py
 | **G6** | GUI 실시간 quality metric panel | 1h | `desktop/qt_app/main_window.py` (~50 줄) | 사용자 즉시 메트릭 시각화 |
 | **G7** | CLI ML model 통합 옵션 | 30min | `cli/run.py` (~20 줄) | `--ml-smooth-model` flag |
 | **G8** | bench_difficulty_tiers 빠른 모드 | 30min | `tests/stl/bench_difficulty_tiers.py` (~30 줄) | --quick (5 STL × tet only) |
-| **G9** | docs/USAGE.md 통합 사용 가이드 | 30min | `docs/USAGE.md` (NEW) | 사용자 전체 워크플로 가이드 |
+| **G9** | docs/guides/usage.md 통합 사용 가이드 | 30min | `docs/guides/usage.md` (NEW) | 사용자 전체 워크플로 가이드 |
 | **G10** | 최종 통합 회귀 + 결과 정리 | 30min | (commit only) | 187+ tests PASS 재확인 |
 
 총: ~7-8 시간 작업, 10 카드, atomic edits.

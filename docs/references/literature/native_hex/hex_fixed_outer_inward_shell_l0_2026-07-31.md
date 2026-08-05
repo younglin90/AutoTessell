@@ -47,7 +47,7 @@ recover marker-owned state.
 
 Gmsh `hexbl` is GPL and AlgoHex is AGPL. They remain reference-only. The new
 NumPy primitive, signed gates, lineage arrays, and transaction are independent
-AutoTessell implementations. `third_party/` is unchanged. No DOI was
+AutoTessell implementations. `vendor/dependencies/` is unchanged. No DOI was
 inaccessible.
 
 ## Frozen hypothesis and acceptance
@@ -151,7 +151,7 @@ collision card and representative corpus.
 - legacy outward extrusion selection: `3 passed`;
 - native-hex regression file: `16 passed`;
 - `git diff --check`: PASS;
-- `third_party/` diff: empty;
+- `vendor/dependencies/` diff: empty;
 - temporary stage directories after success/refusal: zero.
 
 The full `tests/test_cvt3d_aniso_cvt.py` file has one unrelated base failure:

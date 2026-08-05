@@ -45,4 +45,4 @@ maps display metadata to a physical group, promotes a declared group to a
 product acceptance, mutates provenance, or creates an artifact.
 
 Existing XDE evidence remains authoritative for layers/display/assembly only;
-it is not a CFD BC contract.  `third_party/` remains unchanged.
+it is not a CFD BC contract.  `vendor/dependencies/` remains unchanged.

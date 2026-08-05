@@ -2608,13 +2608,13 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._ml_smooth_model_path.setPlaceholderText("(optional) /path/to/ml_smooth_model.pt")
         self._ml_smooth_model_path.setToolTip(
             "tet quality predictor model 경로. 비워두면 ML smoothing 비활성.\n"
-            "models/ml_smooth_model.pt 추천. AUTO_TESSELL_ML_SMOOTH_MODEL 동등."
+            "assets/models/ml_smooth_model.pt 추천. AUTO_TESSELL_ML_SMOOTH_MODEL 동등."
         )
         self._bl_predict_model_path = _QLE()
         self._bl_predict_model_path.setPlaceholderText("(optional) /path/to/bl_predictor.pt")
         self._bl_predict_model_path.setToolTip(
             "BL collision predictor model 경로. 비워두면 ML predict 비활성.\n"
-            "models/bl_predictor.pt 추천. AUTO_TESSELL_BL_PREDICT_MODEL 동등."
+            "assets/models/bl_predictor.pt 추천. AUTO_TESSELL_BL_PREDICT_MODEL 동등."
         )
         # BETA2851 — legacy native_bl / native_hex / native_poly tuning spinboxes
         # 제거 (BL floor ratio, patch cap, hex snap budget, Lloyd plateau).

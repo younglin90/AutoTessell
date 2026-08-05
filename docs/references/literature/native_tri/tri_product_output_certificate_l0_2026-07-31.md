@@ -26,7 +26,7 @@ preservation, not a remeshed tri product.
 Every adapter result is deliberately `accepted=false`,
 `mesher_success_allowed=false`, and `product_claimed=false`.  This card does
 not change strict quad, tri+quad, UI, routing, shared evaluator, meshing,
-target count, boundary layers, quality thresholds, or `third_party/`.
+target count, boundary layers, quality thresholds, or `vendor/dependencies/`.
 
 Future promotion requires an actual native-tri operator output with whole
 surface envelope, topology, feature/boundary, patch/physical-group, and

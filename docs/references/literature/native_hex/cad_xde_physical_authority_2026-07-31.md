@@ -11,7 +11,7 @@
   condition authority remain false.
 - Rollback: geometry/order/color-derived semantic labels, ambiguous face mapping,
   missing explicit layer treated as known, production routing, meshing/writer
-  behavior, committed generated STEP binary, or `third_party/` change.
+  behavior, committed generated STEP binary, or `vendor/dependencies/` change.
 
 ## Runtime and corpus diagnosis
 

@@ -14,6 +14,8 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <limits>
+#include <map>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -346,6 +348,77 @@ bool quality_vector_accepts(
     const double eps)
 {
     return compare_quality_vectors(old_array, new_array, eps) > 0;
+}
+
+py::array_t<double> compose_quality_gate_tuple(
+    const long long inverted_count,
+    const long long duplicate_tet_count,
+    const long long nonmanifold_face_count,
+    const long long same_side_face_count,
+    const double max_skewness,
+    const double max_non_orthogonality,
+    const double max_aspect,
+    const double min_mean_ratio)
+{
+    if (inverted_count < 0 || duplicate_tet_count < 0
+        || nonmanifold_face_count < 0 || same_side_face_count < 0) {
+        throw std::invalid_argument("quality gate counts must be non-negative");
+    }
+    for (const double value : {max_skewness, max_non_orthogonality, max_aspect, min_mean_ratio}) {
+        if (!std::isfinite(value) || value < 0.0) {
+            throw std::invalid_argument("quality gate metrics must be finite and non-negative");
+        }
+    }
+    py::array_t<double> result(py::array::ShapeContainer{8});
+    auto view = result.mutable_unchecked<1>();
+    view(0) = -static_cast<double>(inverted_count);
+    view(1) = -static_cast<double>(duplicate_tet_count);
+    view(2) = -static_cast<double>(nonmanifold_face_count);
+    view(3) = -static_cast<double>(same_side_face_count);
+    view(4) = -max_skewness;
+    view(5) = -max_non_orthogonality;
+    view(6) = -max_aspect;
+    view(7) = min_mean_ratio;
+    return result;
+}
+int compare_quality_tuples(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& old_array,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& new_array,
+    const double eps)
+{
+    if (old_array.ndim() != 1 || new_array.ndim() != 1) {
+        throw std::invalid_argument("compare_quality_tuples expects 1D arrays");
+    }
+    if (old_array.shape(0) != new_array.shape(0)) {
+        throw std::invalid_argument("quality tuples must have the same schema length");
+    }
+    if (eps < 0.0) {
+        throw std::invalid_argument("eps must be non-negative");
+    }
+    const auto old_input = old_array.unchecked<1>();
+    const auto new_input = new_array.unchecked<1>();
+    for (py::ssize_t index = 0; index < old_input.shape(0); ++index) {
+        const double old_value = old_input(index);
+        const double new_value = new_input(index);
+        if (!std::isfinite(old_value) || !std::isfinite(new_value)) {
+            throw std::invalid_argument("quality tuple contains non-finite value");
+        }
+        if (new_value + eps < old_value) {
+            return -1;
+        }
+        if (new_value > old_value + eps) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+bool quality_tuple_accepts(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& old_array,
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& new_array,
+    const double eps)
+{
+    return compare_quality_tuples(old_array, new_array, eps) > 0;
 }
 
 py::tuple apply_guarded_vertex_moves(
@@ -735,8 +808,12 @@ py::tuple smooth_interior_guarded(
             }
         }
         const double new_minimum_quality = valid_volume ? minimum_quality() : 0.0;
+        // Quality-first release policy: a guarded synchronous move may not
+        // lower the global minimum quality. Only the caller's numerical
+        // epsilon can absorb roundoff; there is no percentage degradation
+        // allowance because a 5% drop can hide a release-blocking sliver.
         const bool quality_regressed = previous_minimum_quality > 1e-6
-            && new_minimum_quality + eps < previous_minimum_quality * 0.95;
+            && new_minimum_quality + eps < previous_minimum_quality;
 
         if (!valid_volume || quality_regressed) {
             for (size_t row = 0; row < candidates.size(); ++row) {
@@ -786,6 +863,332 @@ py::tuple smooth_interior_guarded(
 }
 
 }  // namespace
+py::tuple smooth_interior_worst_cell_guarded(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points_array,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& tets_array,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& locked_vertices_array,
+    const int n_iter,
+    const double relax,
+    const double eps)
+{
+    if (locked_vertices_array.ndim() != 1) {
+        throw std::invalid_argument("smooth_interior_worst_cell_guarded expects locked vertices shaped (K,)");
+    }
+    if (n_iter < 0 || !std::isfinite(relax) || relax < 0.0 || relax > 1.0
+        || !std::isfinite(eps) || eps < 0.0) {
+        throw std::invalid_argument("smooth_interior_worst_cell_guarded received invalid controls");
+    }
+    std::vector<Point> points = load_points(points_array, "smooth_interior_worst_cell_guarded");
+    const std::vector<Tet> tets = load_tets(
+        tets_array, static_cast<py::ssize_t>(points.size()), "smooth_interior_worst_cell_guarded");
+    std::vector<uint8_t> locked(points.size(), 0);
+    const auto locked_input = locked_vertices_array.unchecked<1>();
+    for (py::ssize_t index = 0; index < locked_input.shape(0); ++index) {
+        const long long vertex = locked_input(index);
+        if (vertex < 0 || vertex >= static_cast<long long>(points.size())) {
+            throw std::invalid_argument("smooth_interior_worst_cell_guarded received out-of-range locked vertex");
+        }
+        locked[static_cast<size_t>(vertex)] = 1;
+    }
+
+    std::vector<std::pair<long long, long long>> directed_edges;
+    directed_edges.reserve(tets.size() * 12U);
+    const auto add_edge = [&](const long long a, const long long b) {
+        directed_edges.emplace_back(a, b);
+        directed_edges.emplace_back(b, a);
+    };
+    for (const Tet& tet : tets) {
+        add_edge(tet[0], tet[1]);
+        add_edge(tet[0], tet[2]);
+        add_edge(tet[0], tet[3]);
+        add_edge(tet[1], tet[2]);
+        add_edge(tet[1], tet[3]);
+        add_edge(tet[2], tet[3]);
+    }
+    std::sort(directed_edges.begin(), directed_edges.end());
+    directed_edges.erase(
+        std::unique(directed_edges.begin(), directed_edges.end()), directed_edges.end());
+    std::vector<size_t> neighbor_offsets(points.size() + 1U, 0U);
+    std::vector<long long> neighbors;
+    neighbors.reserve(directed_edges.size());
+    for (const auto& [vertex, neighbor] : directed_edges) {
+        ++neighbor_offsets[static_cast<size_t>(vertex) + 1U];
+        neighbors.push_back(neighbor);
+    }
+    for (size_t vertex = 0; vertex < points.size(); ++vertex) {
+        neighbor_offsets[vertex + 1U] += neighbor_offsets[vertex];
+    }
+    std::vector<long long> incident_offsets(points.size() + 1U, 0);
+    std::vector<long long> incident_tets;
+    incident_tets.reserve(tets.size() * 4U);
+    for (size_t tet_index = 0; tet_index < tets.size(); ++tet_index) {
+        for (const long long vertex : tets[tet_index]) {
+            ++incident_offsets[static_cast<size_t>(vertex) + 1U];
+            incident_tets.push_back(static_cast<long long>(tet_index));
+        }
+    }
+    for (size_t vertex = 0; vertex < points.size(); ++vertex) {
+        incident_offsets[vertex + 1U] += incident_offsets[vertex];
+    }
+
+    std::vector<size_t> candidates;
+    candidates.reserve(points.size());
+    for (size_t vertex = 0; vertex < points.size(); ++vertex) {
+        if (!locked[vertex] && incident_offsets[vertex] != incident_offsets[vertex + 1U]
+            && neighbor_offsets[vertex] != neighbor_offsets[vertex + 1U]) {
+            candidates.push_back(vertex);
+        }
+    }
+    const auto star_min_quality = [&](const size_t vertex) {
+        double worst = 1.0;
+        const long long begin = incident_offsets[vertex];
+        const long long end = incident_offsets[vertex + 1U];
+        for (long long row = begin; row < end; ++row) {
+            worst = std::min(worst, tet_shape_quality(
+                points, tets[static_cast<size_t>(incident_tets[static_cast<size_t>(row)])]));
+        }
+        return worst;
+    };
+
+    long long attempted = 0;
+    long long accepted = 0;
+    long long rejected_volume = 0;
+    long long rejected_quality = 0;
+    double max_displacement = 0.0;
+    int iterations_used = 0;
+    for (int iter = 0; iter < n_iter; ++iter) {
+        // Deterministic worst-cell queue: process vertices incident to the
+        // current worst stars first, then use vertex id as the tie-breaker.
+        std::stable_sort(candidates.begin(), candidates.end(), [&](const size_t left, const size_t right) {
+            const double left_quality = star_min_quality(left);
+            const double right_quality = star_min_quality(right);
+            if (left_quality != right_quality) {
+                return left_quality < right_quality;
+            }
+            return left < right;
+        });
+        long long accepted_this_iter = 0;
+        for (const size_t vertex : candidates) {
+            const long long nbegin = static_cast<long long>(neighbor_offsets[vertex]);
+            const long long nend = static_cast<long long>(neighbor_offsets[vertex + 1U]);
+            const long long tbegin = incident_offsets[vertex];
+            const long long tend = incident_offsets[vertex + 1U];
+            ++attempted;
+            Point centroid{0.0, 0.0, 0.0};
+            for (long long row = nbegin; row < nend; ++row) {
+                const Point& p = points[static_cast<size_t>(neighbors[static_cast<size_t>(row)])];
+                centroid[0] += p[0];
+                centroid[1] += p[1];
+                centroid[2] += p[2];
+            }
+            const double inv_count = 1.0 / static_cast<double>(nend - nbegin);
+            centroid[0] *= inv_count;
+            centroid[1] *= inv_count;
+            centroid[2] *= inv_count;
+            const Point old = points[vertex];
+            const Point target{
+                old[0] + relax * (centroid[0] - old[0]),
+                old[1] + relax * (centroid[1] - old[1]),
+                old[2] + relax * (centroid[2] - old[2])};
+            std::vector<double> old_quality;
+            std::vector<double> new_quality;
+            std::vector<double> old_volumes;
+
+            old_quality.reserve(static_cast<size_t>(tend - tbegin));
+            new_quality.reserve(static_cast<size_t>(tend - tbegin));
+            old_volumes.reserve(static_cast<size_t>(tend - tbegin));
+            for (long long row = tbegin; row < tend; ++row) {
+                const Tet& tet = tets[static_cast<size_t>(incident_tets[static_cast<size_t>(row)])];
+                old_quality.push_back(tet_shape_quality(points, tet));
+                old_volumes.push_back(tet_volume6(points, tet));
+            }
+            points[vertex] = target;
+            bool valid_volume = true;
+            for (long long row = tbegin; row < tend; ++row) {
+                const size_t local = static_cast<size_t>(row - tbegin);
+                const Tet& tet = tets[static_cast<size_t>(incident_tets[static_cast<size_t>(row)])];
+                const double volume = tet_volume6(points, tet);
+                if (std::abs(volume) <= 1e-20 || std::signbit(volume) != std::signbit(old_volumes[local])) {
+                    valid_volume = false;
+                    break;
+                }
+                new_quality.push_back(tet_shape_quality(points, tet));
+            }
+            const bool quality_regressed = valid_volume
+                && compare_sorted_vectors(old_quality, new_quality, eps) < 0;
+            if (!valid_volume || quality_regressed) {
+                points[vertex] = old;
+                if (!valid_volume) {
+                    ++rejected_volume;
+                } else {
+                    ++rejected_quality;
+                }
+                continue;
+            }
+            const double dx = target[0] - old[0];
+            const double dy = target[1] - old[1];
+            const double dz = target[2] - old[2];
+            max_displacement = std::max(
+                max_displacement, std::sqrt(dx * dx + dy * dy + dz * dz));
+            ++accepted;
+            ++accepted_this_iter;
+        }
+        ++iterations_used;
+        if (accepted_this_iter == 0 || candidates.empty()) {
+            break;
+        }
+    }
+    py::array_t<double> output({static_cast<py::ssize_t>(points.size()), py::ssize_t{3}});
+    auto output_view = output.mutable_unchecked<2>();
+    for (size_t row = 0; row < points.size(); ++row) {
+        for (size_t coordinate = 0; coordinate < 3; ++coordinate) {
+            output_view(static_cast<py::ssize_t>(row), static_cast<py::ssize_t>(coordinate)) = points[row][coordinate];
+        }
+    }
+    py::dict stats;
+    stats["attempted"] = attempted;
+    stats["accepted"] = accepted;
+    stats["rejected_volume"] = rejected_volume;
+    stats["rejected_quality"] = rejected_quality;
+    stats["max_displacement"] = max_displacement;
+    stats["n_iter"] = iterations_used;
+    stats["queue_mode"] = "worst_cell_star";
+    return py::make_tuple(output, stats);
+}
+py::dict tet_quality_oracle(
+    const py::array_t<double, py::array::c_style | py::array::forcecast>& points_array,
+    const py::array_t<long long, py::array::c_style | py::array::forcecast>& tets_array,
+    const double volume_tolerance_scale)
+{
+    if (!std::isfinite(volume_tolerance_scale) || volume_tolerance_scale < 0.0) {
+        throw std::invalid_argument("volume_tolerance_scale must be finite and non-negative");
+    }
+    const std::vector<Point> points = load_points(points_array, "tet_quality_oracle");
+    const std::vector<Tet> tets = load_tets(
+        tets_array, static_cast<py::ssize_t>(points.size()), "tet_quality_oracle");
+    using FaceKey = std::array<long long, 3>;
+    std::map<Tet, long long> tet_counts;
+    std::map<FaceKey, std::vector<int>> face_signs;
+    const auto face_key_and_sign = [](const FaceKey& face) {
+        FaceKey sorted = face;
+        std::sort(sorted.begin(), sorted.end());
+        int inversions = 0;
+        for (size_t left = 0; left < 3; ++left) {
+            for (size_t right = left + 1; right < 3; ++right) {
+                if (face[left] > face[right]) {
+                    ++inversions;
+                }
+            }
+        }
+        return std::pair<FaceKey, int>{sorted, (inversions % 2 == 0) ? 1 : -1};
+    };
+    long long inverted = 0;
+    long long near_zero = 0;
+    long long duplicate_tets = 0;
+    long long nonmanifold_faces = 0;
+    long long same_side_faces = 0;
+    long long boundary_faces = 0;
+    double max_aspect = 0.0;
+    double min_mean_ratio = tets.empty() ? 0.0 : 1.0;
+    double max_shape_quality = 0.0;
+    double min_signed_volume = 0.0;
+    bool first_volume = true;
+    for (const Tet& tet : tets) {
+        const long long seen = tet_counts[tet]++;
+        if (seen > 0) {
+            ++duplicate_tets;
+        }
+        const std::array<FaceKey, 4> faces = {{
+            FaceKey{tet[0], tet[1], tet[2]},
+            FaceKey{tet[0], tet[1], tet[3]},
+            FaceKey{tet[0], tet[2], tet[3]},
+            FaceKey{tet[1], tet[2], tet[3]}}};
+        for (const FaceKey& face : faces) {
+            const auto [key, sign] = face_key_and_sign(face);
+            face_signs[key].push_back(sign);
+        }
+        const Point& a = points[static_cast<size_t>(tet[0])];
+        const Point& b = points[static_cast<size_t>(tet[1])];
+        const Point& c = points[static_cast<size_t>(tet[2])];
+        const Point& d = points[static_cast<size_t>(tet[3])];
+        const Point ab{b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        const Point ac{c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+        const Point ad{d[0] - a[0], d[1] - a[1], d[2] - a[2]};
+        const auto dot = [](const Point& x, const Point& y) {
+            return x[0] * y[0] + x[1] * y[1] + x[2] * y[2];
+        };
+        const auto cross = [](const Point& x, const Point& y) {
+            return Point{x[1] * y[2] - x[2] * y[1],
+                         x[2] * y[0] - x[0] * y[2],
+                         x[0] * y[1] - x[1] * y[0]};
+        };
+        const auto norm2 = [&](const Point& x) { return dot(x, x); };
+        const std::array<Point, 6> edges = {{
+            ab, ac, ad,
+            Point{c[0] - b[0], c[1] - b[1], c[2] - b[2]},
+            Point{d[0] - b[0], d[1] - b[1], d[2] - b[2]},
+            Point{d[0] - c[0], d[1] - c[1], d[2] - c[2]}}};
+        double max_edge2 = 0.0;
+        double min_edge2 = std::numeric_limits<double>::infinity();
+        double sum_edge2 = 0.0;
+        for (const Point& edge : edges) {
+            const double length2 = norm2(edge);
+            max_edge2 = std::max(max_edge2, length2);
+            min_edge2 = std::min(min_edge2, length2);
+            sum_edge2 += length2;
+        }
+        const double signed_volume6 = dot(ab, cross(ac, ad));
+        const double edge_scale3 = std::pow(std::sqrt(max_edge2), 3.0);
+        const double tolerance = volume_tolerance_scale * edge_scale3;
+        const double volume = std::abs(signed_volume6) / 6.0;
+        if (first_volume || signed_volume6 / 6.0 < min_signed_volume) {
+            min_signed_volume = signed_volume6 / 6.0;
+            first_volume = false;
+        }
+        if (std::abs(signed_volume6) <= tolerance) {
+            ++near_zero;
+        } else if (signed_volume6 < 0.0) {
+            ++inverted;
+        }
+        if (min_edge2 <= 1e-30 || !std::isfinite(min_edge2)) {
+            max_aspect = std::numeric_limits<double>::infinity();
+            continue;
+        }
+        max_aspect = std::max(max_aspect, std::sqrt(max_edge2 / min_edge2));
+        const double mean_ratio = sum_edge2 > 0.0
+            ? 12.0 * std::pow(3.0 * volume, 2.0 / 3.0) / sum_edge2
+            : 0.0;
+        min_mean_ratio = std::min(min_mean_ratio, mean_ratio);
+        max_shape_quality = std::max(max_shape_quality,
+            8.48 * volume / std::pow(std::sqrt(max_edge2), 3.0));
+    }
+    for (const auto& [key, signs] : face_signs) {
+        (void)key;
+        if (signs.size() == 1U) {
+            ++boundary_faces;
+        } else if (signs.size() > 2U) {
+            nonmanifold_faces += static_cast<long long>(signs.size() - 2U);
+        } else if (signs.size() == 2U && signs[0] == signs[1]) {
+            ++same_side_faces;
+        }
+    }
+    py::dict result;
+    result["n_tets"] = static_cast<long long>(tets.size());
+    result["n_inverted"] = inverted;
+    result["n_near_zero"] = near_zero;
+    result["n_duplicate_tets"] = duplicate_tets;
+    result["n_nonmanifold_faces"] = nonmanifold_faces;
+    result["n_same_side_faces"] = same_side_faces;
+    result["n_boundary_faces"] = boundary_faces;
+    result["max_aspect"] = max_aspect;
+    result["min_mean_ratio"] = min_mean_ratio;
+    result["max_shape_quality"] = max_shape_quality;
+    result["min_signed_volume"] = min_signed_volume;
+    result["valid"] = tets.size() > 0U && inverted == 0 && near_zero == 0
+        && duplicate_tets == 0 && nonmanifold_faces == 0 && same_side_faces == 0
+        && std::isfinite(max_aspect) && std::isfinite(min_mean_ratio);
+    return result;
+}
 
 PYBIND11_MODULE(native_tet_qopt, m)
 {
@@ -797,6 +1200,18 @@ PYBIND11_MODULE(native_tet_qopt, m)
           py::arg("old_quality"), py::arg("new_quality"), py::arg("eps") = 0.0);
     m.def("quality_vector_accepts", &quality_vector_accepts,
           py::arg("old_quality"), py::arg("new_quality"), py::arg("eps") = 0.0);
+    m.def("tet_quality_oracle", &tet_quality_oracle,
+          py::arg("points"), py::arg("tets"),
+          py::arg("volume_tolerance_scale") = 1e-12);
+    m.def("compose_quality_gate_tuple", &compose_quality_gate_tuple,
+          py::arg("inverted_count"), py::arg("duplicate_tet_count"),
+          py::arg("nonmanifold_face_count"), py::arg("same_side_face_count"),
+          py::arg("max_skewness"), py::arg("max_non_orthogonality"),
+          py::arg("max_aspect"), py::arg("min_mean_ratio"));
+    m.def("compare_quality_tuples", &compare_quality_tuples,
+          py::arg("old_tuple"), py::arg("new_tuple"), py::arg("eps") = 0.0);
+    m.def("quality_tuple_accepts", &quality_tuple_accepts,
+          py::arg("old_tuple"), py::arg("new_tuple"), py::arg("eps") = 0.0);
     m.def("apply_guarded_vertex_moves", &apply_guarded_vertex_moves,
           py::arg("points"), py::arg("tets"), py::arg("vertices"), py::arg("targets"),
           py::arg("eps") = 1e-15);
@@ -805,6 +1220,9 @@ PYBIND11_MODULE(native_tet_qopt, m)
           py::arg("incident_tets"), py::arg("vertices"), py::arg("targets"),
           py::arg("eps") = 1e-15);
     m.def("smooth_interior_guarded", &smooth_interior_guarded,
+          py::arg("points"), py::arg("tets"), py::arg("locked_vertices"),
+          py::arg("n_iter") = 2, py::arg("relax") = 0.5, py::arg("eps") = 1e-15);
+    m.def("smooth_interior_worst_cell_guarded", &smooth_interior_worst_cell_guarded,
           py::arg("points"), py::arg("tets"), py::arg("locked_vertices"),
           py::arg("n_iter") = 2, py::arg("relax") = 0.5, py::arg("eps") = 1e-15);
 }

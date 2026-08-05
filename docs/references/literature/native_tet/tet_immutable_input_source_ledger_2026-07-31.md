@@ -41,7 +41,7 @@ Acceptance was frozen before implementation:
 - representative cube, cylinder, and sphere results remain exact;
 - focused topology, provenance, and shape suites pass;
 - runtime and peak RSS regress by at most `5%`;
-- no `third_party/` change and no target-cell policy change.
+- no `vendor/dependencies/` change and no target-cell policy change.
 
 ## Mechanism and complexity
 
@@ -87,7 +87,7 @@ The implementation is first-party Python orchestration over the existing
 first-party C++23 strict topology/provenance audit.  It is a direct correction
 to source ownership and call-site arguments, not a port or derivative of an
 external implementation.  No dependency, generated code, GPL/AGPL source, or
-`third_party/` file was copied or modified.
+`vendor/dependencies/` file was copied or modified.
 
 ## Results
 

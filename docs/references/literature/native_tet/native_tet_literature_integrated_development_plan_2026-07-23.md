@@ -1005,7 +1005,7 @@ The default P4-C path was different on every call, even in one process with
 `num_threads=1` and with fTetWild optimization disabled. The installed
 `pytetwild` wrapper has no seed parameter, and the bundled fTetWild source
 shuffles input faces using `std::random_device` in
-`third_party/fTetWild/src/TriangleInsertion.cpp`.
+`vendor/dependencies/fTetWild/src/TriangleInsertion.cpp`.
 
 This is a measured external-fallback determinism obstruction. A diagnostic
 rebuild that replaced the first `random_device` seed with `42` still differed

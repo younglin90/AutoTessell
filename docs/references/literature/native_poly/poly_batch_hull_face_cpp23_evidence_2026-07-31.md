@@ -8,7 +8,7 @@ Scope: replace the Python post-`scipy.spatial.ConvexHull` plane grouping,
 polygon ordering, quantized dual-point indexing, and cap-label census with one
 first-party C++23 batch kernel. Convex-hull construction remains unchanged.
 No source geometry, topology contract, routing, target-cell policy,
-boundary-layer policy, dependency, or `third_party/` file changes.
+boundary-layer policy, dependency, or `vendor/dependencies/` file changes.
 
 ## Frozen hypothesis and acceptance
 
@@ -28,7 +28,7 @@ the fixed seed-density sphere primal (`669` points, `1631` tetrahedra).
 - peak-RSS acceptance: at most `+10%`
 - rollback: any result-byte drift, malformed-ABI fallback, shape/provenance
   drift, invalid cell, nondeterminism, performance miss, external-code
-  provenance, or unauthorized `third_party/` change
+  provenance, or unauthorized `vendor/dependencies/` change
 
 ## Baseline and hotspot
 

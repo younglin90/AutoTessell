@@ -80,7 +80,7 @@ def test_incomplete_topology_is_rejected_even_with_repeatability() -> None:
         "schema": RELEASE_MATRIX_SCHEMA,
         "cases": [_case(case_id) for case_id in sorted(REQUIRED_RELEASE_CASES)],
     }
-    value["cases"][0]["strict_topology"]["n_inverted_cells"] = 1
+    next(case for case in value["cases"] if case["id"] == "native-hex-cube")["strict_topology"]["n_inverted_cells"] = 1
 
     report = validate_native_release_matrix(value)
 

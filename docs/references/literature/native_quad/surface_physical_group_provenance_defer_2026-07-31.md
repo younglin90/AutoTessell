@@ -21,4 +21,4 @@ acceptance stays false.
 No geometry, C++, candidate, route, writer, output, default, target-cell, or
 boundary-layer path participates.  A future tri/strict-quad bridge may bind
 this field only when its source object exposes the exact mapping plus an
-authority declaration.  `third_party/` unchanged.
+authority declaration.  `vendor/dependencies/` unchanged.

@@ -64,7 +64,7 @@ unchanged and `n_drop=0`.
   coordinates, keeps connectivity, and performs no tet deletion by default.
   The missing contract was candidate-side embedding validation.
 
-No external code was copied, no dependency was added, and `third_party/` is
+No external code was copied, no dependency was added, and `vendor/dependencies/` is
 unchanged.
 
 ## Measured evidence

@@ -48,5 +48,5 @@ source-preserving candidate proves the complete existing topology contract.
 ## Scope
 
 No generator, predicate, threshold, refusal, writer, transaction, routing,
-fallback, target-cell, boundary-layer, dependency, or `third_party/` behavior
+fallback, target-cell, boundary-layer, dependency, or `vendor/dependencies/` behavior
 changes.  No external code is used or copied.

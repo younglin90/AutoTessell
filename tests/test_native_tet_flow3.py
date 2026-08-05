@@ -23,7 +23,7 @@ def test_flow3_diagnostic_does_not_mutate_input_on_single_tet() -> None:
 
 
 def test_flow3_diagnostic_boundary_is_transactional_on_fsl_mesh() -> None:
-    with np.load("harness/_fsl4_mesh.npz", allow_pickle=False) as data:
+    with np.load("research/quality-harness/_fsl4_mesh.npz", allow_pickle=False) as data:
         points = np.asarray(data["pts"], dtype=np.float64)
         tets = np.asarray(data["tets"], dtype=np.int64)
     before_faces = boundary_face_keys(tets)

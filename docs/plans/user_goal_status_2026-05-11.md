@@ -3,7 +3,7 @@
 ## User goal (verbatim from ralph-loop)
 
 1. test_cube.stl + tests/stl/thingi10k/*.stl 모든 STL 파일 → tet + BL (3 layer) 작동
-2. 결과 volume mesh 가 ``agents/specs/evaluator.md`` 기준 통과
+2. 결과 volume mesh 가 ``docs/contracts/evaluator.md`` 기준 통과
 3. 외부 라이브러리 의존 최소화 (필요시 코드 복사·이식)
 4. 사용자 입력 셀 개수 (근사) + BL layer 개수 (정확) 자동 반영
 5. 각 방법 실패 시 fallback 사용 금지

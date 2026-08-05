@@ -16,7 +16,7 @@ import json
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -55,6 +55,10 @@ class CadEntityProvenance:
     ordered_orientation_sha256: str
     seam_connectivity_sha256: str
     xde_metadata_sha256: str
+    triangle_brep_edge_ids: np.ndarray | None = None
+    triangle_brep_edge_segment_ids: np.ndarray | None = None
+    triangle_brep_edge_segment_parameters: np.ndarray | None = None
+    brep_edge_face_direction_records: tuple[dict[str, Any], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +116,7 @@ def load_cad_native(path: Path, fmt: str) -> tuple[np.ndarray, np.ndarray]:
     """
     try:
         from OCP.BRep import BRep_Builder, BRep_Tool
+        from OCP.BRepAdaptor import BRepAdaptor_Curve, BRepAdaptor_Curve2d, BRepAdaptor_Surface
         from OCP.BRepMesh import BRepMesh_IncrementalMesh
         from OCP.BRepTools import BRepTools
         from OCP.IFSelect import IFSelect_RetDone
@@ -211,7 +216,9 @@ def load_cad_native(path: Path, fmt: str) -> tuple[np.ndarray, np.ndarray]:
     return V, F
 
 
-def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulation:
+def load_cad_native_with_provenance(
+    path: Path, fmt: str, *, mesh_domain_side_by_face: Mapping[int, int] | None = None
+) -> CadNativeTriangulation:
     """Return the unchanged legacy arrays with authoritative B-Rep metadata.
 
     This API deliberately performs a second, read-only OCP traversal after
@@ -229,6 +236,8 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
     vertices, faces = load_cad_native(path, fmt)
     try:
         from OCP.BRep import BRep_Builder, BRep_Tool
+        from OCP.BRepAdaptor import BRepAdaptor_Curve, BRepAdaptor_Curve2d, BRepAdaptor_Surface
+        from OCP.BRepTopAdaptor import BRepTopAdaptor_FClass2d
         from OCP.BRepMesh import BRepMesh_IncrementalMesh
         from OCP.BRepTools import BRepTools
         from OCP.IFSelect import IFSelect_RetDone
@@ -238,10 +247,11 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
         from OCP.TCollection import TCollection_ExtendedString
         from OCP.TDF import TDF_AttributeIterator, TDF_Label, TDF_LabelSequence
         from OCP.TDocStd import TDocStd_Document
-        from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_REVERSED
+        from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_REVERSED, TopAbs_IN, TopAbs_OUT, TopAbs_ON, TopAbs_UNKNOWN
         from OCP.TopExp import TopExp, TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
         from OCP.TopoDS import TopoDS, TopoDS_Shape
+        from OCP.gp import gp_Pnt, gp_Pnt2d, gp_Vec, gp_Vec2d
         from OCP.TopTools import TopTools_IndexedMapOfShape
         from OCP.XCAFDoc import XCAFDoc_ColorSurf, XCAFDoc_DocumentTool
     except ImportError as exc:
@@ -285,10 +295,13 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
     orientation_reversed: list[bool] = []
     seam_records: dict[tuple[int, bytes], list[int]] = {}
     edge_occurrences: dict[int, list[tuple[bytes, ...]]] = {}
+    edge_segment_ordinals: dict[tuple[bytes, bytes], set[int]] = {}
+    edge_segment_records: dict[tuple[bytes, bytes], set[tuple[int, int, float, float]]] = {}
     vertex_offset = 0
     triangle_offset = 0
     face_ordinal = 0
     missing_edge_polygons = 0
+    direction_records: list[dict[str, Any]] = []
 
     explorer = TopExp_Explorer(shape, TopAbs_FACE)
     while explorer.More():
@@ -340,6 +353,184 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
                 missing_edge_polygons += 1
                 edge_explorer.Next()
                 continue
+            try:
+                curve2d = BRepAdaptor_Curve2d(edge, face)
+                parameter_first = float(curve2d.FirstParameter())
+                parameter_last = float(curve2d.LastParameter())
+                parameter_mid = 0.5 * (parameter_first + parameter_last)
+                uv_point = curve2d.Value(parameter_mid)
+                uv_value = gp_Pnt2d()
+                uv_tangent = gp_Vec2d()
+                curve2d.D1(parameter_mid, uv_value, uv_tangent)
+                curve3d = BRepAdaptor_Curve(edge, face)
+                xyz_value = curve3d.Value(parameter_mid)
+                xyz_point = gp_Pnt()
+                xyz_tangent = gp_Vec()
+                curve3d.D1(parameter_mid, xyz_point, xyz_tangent)
+                surface = BRepAdaptor_Surface(face, True)
+                surface_point = surface.Value(uv_value.X(), uv_value.Y())
+                surface_d1_point = gp_Pnt()
+                surface_du = gp_Vec()
+                surface_dv = gp_Vec()
+                surface.D1(uv_value.X(), uv_value.Y(), surface_d1_point, surface_du, surface_dv)
+                is_closed_pcurve = bool(BRep_Tool.IsClosed_s(edge, face))
+                surface_is_u_periodic = bool(surface.IsUPeriodic())
+                surface_is_v_periodic = bool(surface.IsVPeriodic())
+                u_period = float(surface.UPeriod()) if surface_is_u_periodic else None
+                v_period = float(surface.VPeriod()) if surface_is_v_periodic else None
+                pcurve_branch_count = 2 if is_closed_pcurve else 1
+                pcurve_branch_status = (
+                    "seam_branches_unresolved" if is_closed_pcurve else "single_branch"
+                )
+                pcurve_is_stored: bool | None = None
+                pcurve_storage_status = "not_exposed_by_ocp_binding"
+                edge_occurrence_reversed = edge.Orientation() == TopAbs_REVERSED
+                effective_occurrence_reversed = bool(edge_occurrence_reversed) ^ bool(reversed_face)
+                period_shift = [0, 0]
+                uv_canonical = [float(uv_value.X()), float(uv_value.Y())]
+                uv_tangent_norm = float(np.hypot(uv_tangent.X(), uv_tangent.Y()))
+                if uv_tangent_norm <= 1.0e-14:
+                    raise ValueError("degenerate B-Rep p-curve tangent")
+                if mesh_domain_side_by_face is None:
+                    domain_side: int | None = None
+                else:
+                    if face_ordinal not in mesh_domain_side_by_face:
+                        raise ValueError("mesh-domain-side authority missing for B-Rep face")
+                    domain_side = int(mesh_domain_side_by_face[face_ordinal])
+                    if domain_side not in (-1, 1):
+                        raise ValueError("mesh-domain-side authority must be -1 or +1")
+                edge_tolerance = float(BRep_Tool.Tolerance_s(edge))
+                face_tolerance = float(BRep_Tool.Tolerance_s(face))
+                classification_tolerance = max(edge_tolerance, face_tolerance, 1.0e-7)
+                parameter_span = max(abs(parameter_last - parameter_first), 1.0e-6)
+                probe_rho = max(10.0 * classification_tolerance, min(1.0e-2, 0.05 * parameter_span))
+                probe_radii = (probe_rho, 2.0 * probe_rho)
+                classifier = BRepTopAdaptor_FClass2d(face, classification_tolerance)
+                probe_results: list[dict[str, Any]] = []
+                for radius in probe_radii:
+                    plus_uv = gp_Pnt2d(
+                        uv_value.X() - uv_tangent.Y() / uv_tangent_norm * radius,
+                        uv_value.Y() + uv_tangent.X() / uv_tangent_norm * radius,
+                    )
+                    minus_uv = gp_Pnt2d(
+                        uv_value.X() + uv_tangent.Y() / uv_tangent_norm * radius,
+                        uv_value.Y() - uv_tangent.X() / uv_tangent_norm * radius,
+                    )
+                    plus_state = classifier.Perform(plus_uv, False)
+                    minus_state = classifier.Perform(minus_uv, False)
+                    plus_restriction = classifier.TestOnRestriction(plus_uv, classification_tolerance, False)
+                    minus_restriction = classifier.TestOnRestriction(minus_uv, classification_tolerance, False)
+                    probe_results.append(
+                        {
+                            "radius": float(radius),
+                            "plus": str(plus_state).split(".")[-1],
+                            "minus": str(minus_state).split(".")[-1],
+                            "plus_restriction": str(plus_restriction).split(".")[-1],
+                            "minus_restriction": str(minus_restriction).split(".")[-1],
+                        }
+                    )
+                stable_opposite = all(
+                    (probe["plus"] == "TopAbs_IN" and probe["minus"] == "TopAbs_OUT")
+                    or (probe["plus"] == "TopAbs_OUT" and probe["minus"] == "TopAbs_IN")
+                    for probe in probe_results
+                )
+                restrictions_clear = all(
+                    probe["plus_restriction"] not in {"TopAbs_ON", "TopAbs_UNKNOWN"}
+                    and probe["minus_restriction"] not in {"TopAbs_ON", "TopAbs_UNKNOWN"}
+                    for probe in probe_results
+                )
+                trimmed_interior_status = (
+                    "one_side_certified" if stable_opposite and restrictions_clear else "ambiguous_trimmed_interior"
+                )
+                if is_closed_pcurve:
+                    trimmed_interior_status = "ambiguous_periodic_branch"
+                trimmed_side_sign = (
+                    1 if probe_results[0]["plus"] == "TopAbs_IN" else -1
+                    if probe_results[0]["minus"] == "TopAbs_IN" else 0
+                )
+                curve_xyz = np.asarray([xyz_value.X(), xyz_value.Y(), xyz_value.Z()], dtype="<f8")
+                surface_xyz = np.asarray([surface_point.X(), surface_point.Y(), surface_point.Z()], dtype="<f8")
+                surface_derivatives = np.asarray(
+                    [surface_du.X(), surface_du.Y(), surface_du.Z(),
+                     surface_dv.X(), surface_dv.Y(), surface_dv.Z()],
+                    dtype="<f8",
+                )
+                pcurve_values = np.asarray(
+                    [uv_value.X(), uv_value.Y(), uv_tangent.X(), uv_tangent.Y(),
+                     parameter_first, parameter_last],
+                    dtype="<f8",
+                )
+                branch_values = np.asarray(
+                    [
+                        float(pcurve_branch_count),
+                        float(1 if is_closed_pcurve else 0),
+                        float(u_period or 0.0),
+                        float(v_period or 0.0),
+                        float(period_shift[0]),
+                        float(period_shift[1]),
+                    ],
+                    dtype="<f8",
+                )
+                branch_digest = sha256(branch_values.tobytes()).hexdigest()
+                surface_values = np.concatenate((surface_xyz, surface_derivatives))
+                certificate_values = np.asarray(
+                    [float(edge_ordinal), float(face_ordinal), parameter_mid,
+                     *pcurve_values.tolist(), *surface_values.tolist(), *branch_values.tolist()],
+                    dtype="<f8",
+                )
+                direction_records.append(
+                    {
+                        "edge_id": int(edge_ordinal),
+                        "face_id": int(face_ordinal),
+                        "segment_id": 0,
+                        "parameter_first": parameter_first,
+                        "parameter_last": parameter_last,
+                        "parameter_mid": parameter_mid,
+                        "uv_point": [float(uv_value.X()), float(uv_value.Y())],
+                        "uv_canonical": uv_canonical,
+                        "period_shift": period_shift,
+                        "uv_tangent": [float(uv_tangent.X()), float(uv_tangent.Y())],
+                        "edge_point": curve_xyz.tolist(),
+                        "edge_tangent": [float(xyz_tangent.X()), float(xyz_tangent.Y()), float(xyz_tangent.Z())],
+                        "surface_point": surface_xyz.tolist(),
+                        "surface_du": [float(surface_du.X()), float(surface_du.Y()), float(surface_du.Z())],
+                        "surface_dv": [float(surface_dv.X()), float(surface_dv.Y()), float(surface_dv.Z())],
+                        "surface_residual": float(np.linalg.norm(curve_xyz - surface_xyz)),
+                        "face_orientation_sign": -1 if reversed_face else 1,
+                        "edge_occurrence_reversed": edge_occurrence_reversed,
+                        "effective_occurrence_reversed": effective_occurrence_reversed,
+                        "pcurve_branch_rank": 0,
+                        "pcurve_branch_count": pcurve_branch_count,
+                        "seam_branch_count": pcurve_branch_count,
+                        "pcurve_branch_status": pcurve_branch_status,
+                        "pcurve_is_stored": pcurve_is_stored,
+                        "pcurve_storage_status": pcurve_storage_status,
+                        "is_closed_pcurve": is_closed_pcurve,
+                        "surface_is_u_periodic": surface_is_u_periodic,
+                        "surface_is_v_periodic": surface_is_v_periodic,
+                        "u_period": u_period,
+                        "v_period": v_period,
+                        "branch_digest": branch_digest,
+                        "mesh_domain_side": domain_side,
+                        "domain_side_authoritative": domain_side is not None,
+                        "trimmed_interior_status": trimmed_interior_status,
+                        "trimmed_side_sign": trimmed_side_sign,
+                        "classification_tolerance": classification_tolerance,
+                        "probe_radii": [float(radius) for radius in probe_radii],
+                        "probe_results": probe_results,
+                        "uv_inward": [
+                            -float(uv_tangent.Y()) / uv_tangent_norm,
+                            float(uv_tangent.X()) / uv_tangent_norm,
+                        ],
+                        "pcurve_digest": sha256(pcurve_values.tobytes()).hexdigest(),
+                        "surface_digest": sha256(surface_values.tobytes()).hexdigest(),
+                        "certificate_digest": sha256(certificate_values.tobytes()).hexdigest(),
+                    }
+                )
+            except Exception as exc:
+                raise ValueError(
+                    f"CAD p-curve/surface extraction failed for edge {edge_ordinal}, face {face_ordinal}"
+                ) from exc
             occurrence: list[bytes] = []
             for local_node in polygon.Nodes():
                 coordinate_key = np.asarray(
@@ -349,6 +540,22 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
                 key = (int(edge_ordinal), coordinate_key)
                 seam_records.setdefault(key, []).append(vertex_offset + int(local_node) - 1)
             edge_occurrences.setdefault(int(edge_ordinal), []).append(tuple(sorted(occurrence)))
+            polygon_nodes = [int(local_node) for local_node in polygon.Nodes()]
+            segment_denominator = max(len(polygon_nodes) - 1, 1)
+            for segment_index, (first_node, second_node) in enumerate(
+                zip(polygon_nodes, polygon_nodes[1:], strict=False)
+            ):
+                first_key = np.asarray(local_coordinates[first_node - 1], dtype="<f8").tobytes()
+                second_key = np.asarray(local_coordinates[second_node - 1], dtype="<f8").tobytes()
+                edge_key = tuple(sorted((first_key, second_key)))
+                t0 = float(segment_index) / float(segment_denominator)
+                t1 = float(segment_index + 1) / float(segment_denominator)
+                if second_key < first_key:
+                    t0, t1 = t1, t0
+                edge_segment_ordinals.setdefault(edge_key, set()).add(int(edge_ordinal))
+                edge_segment_records.setdefault(edge_key, set()).add(
+                    (int(edge_ordinal), int(segment_index), t0, t1)
+                )
             edge_explorer.Next()
 
         vertex_offset += node_count
@@ -392,6 +599,36 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
     canonical_faces = seam_vertex_ids[oriented_faces]
     canonical_source_array = np.asarray(canonical_sources, dtype=np.int64)
     triangle_coordinates = vertices[faces]
+    triangle_brep_edge_ids: list[tuple[int, int, int]] = []
+    triangle_brep_edge_segment_ids: list[tuple[int, int, int]] = []
+    triangle_brep_edge_segment_parameters: list[tuple[tuple[float, float], ...]] = []
+    for triangle in faces.tolist():
+        mapped_edges: list[int] = []
+        mapped_segment_ids: list[int] = []
+        mapped_parameters: list[tuple[float, float]] = []
+        for index in range(3):
+            first_key = np.asarray(vertices[int(triangle[index])], dtype="<f8").tobytes()
+            second_key = np.asarray(vertices[int(triangle[(index + 1) % 3])], dtype="<f8").tobytes()
+            edge_key = tuple(sorted((first_key, second_key)))
+            records = edge_segment_records.get(edge_key, set())
+            if len(records) > 1:
+                raise ValueError("CAD B-Rep edge polygon maps one triangle edge to multiple segments")
+            if records:
+                edge_id, segment_id, t0, t1 = next(iter(records))
+            else:
+                edge_id, segment_id, t0, t1 = -1, -1, float("nan"), float("nan")
+            mapped_edges.append(edge_id)
+            mapped_segment_ids.append(segment_id)
+            mapped_parameters.append((t0, t1))
+        triangle_brep_edge_ids.append(tuple(mapped_edges))
+        triangle_brep_edge_segment_ids.append(tuple(mapped_segment_ids))
+        triangle_brep_edge_segment_parameters.append(tuple(mapped_parameters))
+    triangle_brep_edge_ids_array = np.asarray(triangle_brep_edge_ids, dtype=np.int64)
+    triangle_brep_edge_segment_ids_array = np.asarray(triangle_brep_edge_segment_ids, dtype=np.int64)
+    triangle_brep_edge_segment_parameters_array = np.asarray(
+        triangle_brep_edge_segment_parameters,
+        dtype=np.float64,
+    )
 
     xde_face_names: list[str | None] = [None] * face_ordinal
     xde_layers: list[set[str]] = [set() for _ in range(face_ordinal)]
@@ -564,5 +801,9 @@ def load_cad_native_with_provenance(path: Path, fmt: str) -> CadNativeTriangulat
         ordered_orientation_sha256=_array_sha256(reversed_array, "u1"),
         seam_connectivity_sha256=_array_sha256(canonical_faces, "<i8"),
         xde_metadata_sha256=xde_metadata_hash,
+        triangle_brep_edge_ids=_readonly(triangle_brep_edge_ids_array),
+        triangle_brep_edge_segment_ids=_readonly(triangle_brep_edge_segment_ids_array),
+        triangle_brep_edge_segment_parameters=_readonly(triangle_brep_edge_segment_parameters_array),
+        brep_edge_face_direction_records=tuple(direction_records),
     )
     return CadNativeTriangulation(vertices, faces, provenance)

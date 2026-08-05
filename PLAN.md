@@ -7,7 +7,7 @@ CAD/메쉬 → OpenFOAM polyMesh 자동 생성 플랫폼 (core/cli 중심, deskt
 > 트랙 오너십: `TRACK_OWNERSHIP.md`
 > 릴리즈 점검: `RELEASE_CHECKLIST.md`
 > 테스트 수 표기 정책: `TEST_COUNTING_POLICY.md`
-> 현재 저장소는 Primary Track(`core+cli`) 외에 Web SaaS 트랙(`backend/`, `frontend/`)도 병행 개발 중
+> 현재 저장소는 Primary Track(`core+cli`) 외에 Web SaaS 트랙(`products/web/api/`, `products/web/app/`)도 병행 개발 중
 
 ---
 

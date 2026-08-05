@@ -94,5 +94,5 @@ Verification result: focused native snap/surface snap `42 passed`; all
 GCC 13.3 C++23 release build passed with `-Werror`; `git diff --check`, Black,
 Ruff, and the isolated strict-mypy benchmark check passed. Promotion remains
 `L1_PASS / EXPERIMENTAL_KEEP`: this performance card does not claim L2/L3 mesh
-quality closure or change a permanent threshold. No change to `third_party/`,
+quality closure or change a permanent threshold. No change to `vendor/dependencies/`,
 dependency inventory, engine defaults, routing, or mesh output.

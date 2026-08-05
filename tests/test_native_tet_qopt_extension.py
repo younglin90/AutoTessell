@@ -96,6 +96,83 @@ def test_quality_vector_compare_uses_shorter_tie_as_smaller_mesh_win() -> None:
     ) == -1
 
 
+def test_quality_tuple_is_fixed_schema_and_higher_is_better() -> None:
+    native = _module_or_skip()
+    old = np.array([1.0, -0.2, -35.0, -2.0], dtype=np.float64)
+    improved = np.array([1.0, -0.2, -34.0, -2.0], dtype=np.float64)
+    regressed = np.array([1.0, -0.3, -34.0, -2.0], dtype=np.float64)
+    assert native.compare_quality_tuples(old, improved) == 1
+    assert native.quality_tuple_accepts(old, improved)
+    assert native.compare_quality_tuples(old, regressed) == -1
+    assert not native.quality_tuple_accepts(old, regressed)
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        native.compare_quality_tuples(old, np.array([1.0, 2.0]))
+
+
+def test_quality_gate_tuple_schema_is_native_and_fail_closed() -> None:
+    native = _module_or_skip()
+    from core.generator.native_tet.qopt import compose_quality_gate_tuple
+
+    tuple_value = compose_quality_gate_tuple(
+        inverted_count=0,
+        duplicate_tet_count=2,
+        nonmanifold_face_count=3,
+        same_side_face_count=4,
+        max_skewness=0.5,
+        max_non_orthogonality=35.0,
+        max_aspect=10.0,
+        min_mean_ratio=0.12,
+    )
+    assert tuple_value.tolist() == [0.0, -2.0, -3.0, -4.0, -0.5, -35.0, -10.0, 0.12]
+    assert np.array_equal(
+        tuple_value,
+        native.compose_quality_gate_tuple(0, 2, 3, 4, 0.5, 35.0, 10.0, 0.12),
+    )
+    with pytest.raises((TypeError, ValueError, RuntimeError)):
+        native.compose_quality_gate_tuple(-1, 0, 0, 0, 0.5, 35.0, 10.0, 0.12)
+def test_tet_quality_oracle_regular_and_negative_fixtures() -> None:
+    native = _module_or_skip()
+    from core.generator.native_tet.qopt import tet_quality_oracle
+
+    y_apex = np.sqrt(3.0) / 6.0
+    h_regular = np.sqrt(2.0 / 3.0)
+    points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.5, np.sqrt(3.0) / 2.0, 0.0],
+            [0.5, y_apex, h_regular],
+        ],
+        dtype=np.float64,
+    )
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    regular = tet_quality_oracle(points, tets)
+    assert regular["valid"] is True
+    assert regular["n_inverted"] == 0
+    assert regular["n_near_zero"] == 0
+    assert regular["n_duplicate_tets"] == 0
+    assert regular["n_nonmanifold_faces"] == 0
+    assert regular["n_same_side_faces"] == 0
+    assert regular["n_boundary_faces"] == 4
+    assert regular["max_aspect"] == pytest.approx(1.0, abs=1e-12)
+    assert regular["min_mean_ratio"] == pytest.approx(1.0, abs=1e-12)
+
+    inverted = tet_quality_oracle(points, np.array([[0, 1, 3, 2]], dtype=np.int64))
+    assert inverted["valid"] is False
+    assert inverted["n_inverted"] == 1
+
+    duplicate = tet_quality_oracle(points, np.array([[0, 1, 2, 3], [0, 1, 2, 3]], dtype=np.int64))
+    assert duplicate["valid"] is False
+    assert duplicate["n_duplicate_tets"] == 1
+    assert duplicate["n_same_side_faces"] == 4
+
+    degenerate = tet_quality_oracle(
+        points[[0, 1, 2, 0]],
+        np.array([[0, 1, 2, 3]], dtype=np.int64),
+    )
+    assert degenerate["valid"] is False
+    assert degenerate["n_near_zero"] == 1
+    assert np.isinf(float(degenerate["max_aspect"]))
 def test_qopt_wrapper_runs_without_native_for_public_fallback() -> None:
     from core.generator.native_tet import qopt
 
@@ -200,3 +277,25 @@ def test_native_fused_guarded_smooth_matches_public_smooth_result() -> None:
     assert np.allclose(fused_points, public_points)
     assert int(dict(fused_stats)["accepted"]) == public_stats.qopt_accepted
     assert int(dict(fused_stats)["rejected_quality"]) == public_stats.qopt_rejected_quality
+
+
+def test_native_worst_cell_queue_is_deterministic_and_fail_closed() -> None:
+    native = _module_or_skip()
+    points, tets = _sample_mesh()
+    locked = np.array([0, 2, 4], dtype=np.int64)
+    first, first_stats = native.smooth_interior_worst_cell_guarded(
+        points, tets, locked, n_iter=2, relax=0.35,
+    )
+    second, second_stats = native.smooth_interior_worst_cell_guarded(
+        points, tets, locked, n_iter=2, relax=0.35,
+    )
+    assert np.array_equal(first, second)
+    assert dict(first_stats) == dict(second_stats)
+    assert dict(first_stats)["queue_mode"] == "worst_cell_star"
+    assert dict(first_stats)["attempted"] > 0
+    signed = np.einsum(
+        "ij,ij->i",
+        first[tets][:, 1] - first[tets][:, 0],
+        np.cross(first[tets][:, 2] - first[tets][:, 0], first[tets][:, 3] - first[tets][:, 0]),
+    )
+    assert np.all(np.abs(signed) > 1e-20)

@@ -55,7 +55,7 @@ durable evidence (`first_strict_overlap=null`), not a fabricated root cause.
 
 Only this diagnostic module, test, and evidence note change.  No generator,
 predicate, strict refusal, writer, transaction, routing, default, CMake,
-target-cell, or `third_party/` file changes.
+target-cell, or `vendor/dependencies/` file changes.
 
 Kill or roll back if recorder calls alter audit arguments/results, mutate an
 array, allow an artifact, weaken a strict failure, fabricate a first overlap,

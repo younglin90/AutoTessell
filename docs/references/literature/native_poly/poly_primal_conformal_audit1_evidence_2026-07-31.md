@@ -6,7 +6,7 @@ Pre-card base: `3534c748208c4546c378c3a1561f0e14593bd603`
 
 Scope: reject a non-conformal tetrahedral primal before Poly dual construction.
 No point, face, patch, target-cell, boundary-layer, quality threshold, route, or
-`third_party/` change.
+`vendor/dependencies/` change.
 
 ## Hypothesis and acceptance
 

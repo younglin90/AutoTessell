@@ -25,4 +25,4 @@ triplet.  It repeats the source bytes exactly and creates no mesh/artifact.
 Unblock condition: CAD ingestion must expose an explicit immutable mapping
 from every canonical source face to one declared physical group, together with
 an authority declaration and a dedicated mapping digest.  Only then may a
-separate report-only digest-verification card run.  `third_party/` unchanged.
+separate report-only digest-verification card run.  `vendor/dependencies/` unchanged.

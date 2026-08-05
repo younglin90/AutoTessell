@@ -20,7 +20,9 @@ def main() -> int:
         value = json.loads(arguments.manifest.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         value = None
-    report = validate_native_release_authority_matrix(value)
+    report = validate_native_release_authority_matrix(
+        value, require_quality_witness=True
+    )
     arguments.evidence.write_text(
         json.dumps(report.as_dict(), sort_keys=True, indent=2) + "\n",
         encoding="utf-8",

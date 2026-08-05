@@ -54,7 +54,7 @@ missing exact facets.  Acceptance was frozen before the amended implementation:
 - known cylinder off-surface output becomes an explicit deterministic failure
   before writer invocation; it must not be hidden by tolerance relaxation;
 - 52,192-tet audit median and peak RSS regress by at most `15%`;
-- no `third_party/` change and no output-geometry repair.
+- no `vendor/dependencies/` change and no output-geometry repair.
 
 ## Frozen numeric policy
 
@@ -96,7 +96,7 @@ Inaccessible DOI: none.
 Implementation is independent first-party C++23 plus an independent Python
 oracle.  It uses only existing exact coordinate provenance and boundary-face
 incidence.  No external source, generated output, dependency, or
-`third_party/` file was copied or modified.
+`vendor/dependencies/` file was copied or modified.
 
 ## Results
 

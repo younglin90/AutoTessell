@@ -50,7 +50,7 @@ Acceptance was declared before implementation:
 
 No source or generated output was copied.  The implementation composes the
 project's existing first-party C++23 binding and existing exact orientation
-predicate.  No dependency was added and `third_party/` is unchanged.
+predicate.  No dependency was added and `vendor/dependencies/` is unchanged.
 
 ## Mechanism
 

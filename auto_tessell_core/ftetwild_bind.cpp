@@ -1,4 +1,4 @@
-// pybind11 binding for vendored fTetWild (third_party/fTetWild, MPL-2.0).
+// pybind11 binding for vendored fTetWild (vendor/dependencies/fTetWild, MPL-2.0).
 // Authored for AutoTessell to remove the external `wildmeshing` PyPI dependency.
 // Calls into floatTetWild::tetrahedralization().
 //

@@ -9,7 +9,7 @@ collection start from the project-owned `tests/` tree.
 
 Before this card, `pytest --collect-only -q` recursively discovered root-level
 trees. On the card baseline it reported 4,070 collected items, then failed on
-`backend/tests` with `ImportPathMismatchError` because its `tests.conftest`
+`products/web/api/tests` with `ImportPathMismatchError` because its `tests.conftest`
 module name collided with the root `tests/conftest.py`.
 
 `pytest tests --collect-only -q` was the intended first-party command and

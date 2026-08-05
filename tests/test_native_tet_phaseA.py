@@ -98,7 +98,7 @@ def test_filter_slivers_void_free_keeps_interior_sliver() -> None:
     """기본값(void_free=True): 내부 sliver 를 삭제하지 않고 유지한다.
 
     tet 을 삭제하면 그 자리에 void 가 남는다 (BETA2822).  vendored 원본
-    ``third_party/fTetWild/src/MeshImprovement.cpp:1638`` 의 제거 술어는
+    ``vendor/dependencies/fTetWild/src/MeshImprovement.cpp:1638`` 의 제거 술어는
     winding number 단독이며 quality 항이 없다 — ``W > 0.5`` 인 sliver 는 무조건
     유지된다.  위 legacy 테스트와 **동일한 입력·동일한 threshold** 로 반대
     결과가 나오는지 확인해, 기본값이 실제로 바뀌었음을 고정한다.

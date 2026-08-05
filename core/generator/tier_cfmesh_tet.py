@@ -2,7 +2,7 @@
 
 Used as fallback for mesh_type=tet (primary remains tier_wildmesh / vendored
 fTetWild for higher quality). Calls auto_tessell_core/build/cfmesh_native.so
-which runs third_party/cfmesh/build/tetMesh on a prepared OpenFOAM case.
+which runs vendor/dependencies/cfmesh/build/tetMesh on a prepared OpenFOAM case.
 """
 from __future__ import annotations
 

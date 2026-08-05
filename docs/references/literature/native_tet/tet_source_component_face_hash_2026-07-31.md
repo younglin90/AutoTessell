@@ -44,7 +44,7 @@ provenance, threshold, or output change kills the card.
 No source, generated output, algorithm implementation, or dependency was
 copied from these references.  The change is an independently authored
 standard-library incidence census inside the existing first-party C++23
-kernel.  `third_party/` remains unchanged.
+kernel.  `vendor/dependencies/` remains unchanged.
 
 ## Observed result
 

@@ -66,4 +66,4 @@ card.
 Rollback conditions: coordinate, membership, canonical face-key, cell-order,
 patch provenance, or cell-count drift; shared-face equal winding; degenerate or
 negative-volume increase; invalid writer invocation; nondeterminism; timeout;
-or any `third_party/` change.
+or any `vendor/dependencies/` change.

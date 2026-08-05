@@ -47,7 +47,7 @@ python3 scripts/collect_ml_dataset.py --stl-dir /tmp/ml_train_stls
 python3 scripts/collect_ml_dataset.py --stl-dir /tmp/ml_train_stls --n-samples-per-mesh 300
 ```
 
-→ `models/ml_dataset.npz` 생성.
+→ `assets/models/ml_dataset.npz` 생성.
 
 ### 3-B. predictor 학습
 
@@ -57,7 +57,7 @@ python3 scripts/train_quality_predictor.py --epochs 50
 python3 scripts/train_quality_predictor.py --epochs 80 --batch-size 128
 ```
 
-→ `models/ml_smooth_model.pt` 생성. 예시 결과 (CUDA, 7800 samples):
+→ `assets/models/ml_smooth_model.pt` 생성. 예시 결과 (CUDA, 7800 samples):
 - val_loss = 0.005-0.006
 
 ### 3-C. BL collision predictor 학습
@@ -67,22 +67,22 @@ python3 scripts/collect_bl_dataset.py
 python3 scripts/train_bl_predictor.py --epochs 50
 ```
 
-→ `models/bl_predictor.pt`.
+→ `assets/models/bl_predictor.pt`.
 
 ### 3-D. 학습한 모델 활성화
 
 **CLI**:
 ```bash
 auto-tessell run input.stl \
-  --ml-smooth-model models/ml_smooth_model.pt \
-  --bl-predict-model models/bl_predictor.pt \
+  --ml-smooth-model assets/models/ml_smooth_model.pt \
+  --bl-predict-model assets/models/bl_predictor.pt \
   --gpu-envelope --cvt3d-quality-weight --bl-aniso-split
 ```
 
 **환경변수**:
 ```bash
-export AUTO_TESSELL_ML_SMOOTH_MODEL=models/ml_smooth_model.pt
-export AUTO_TESSELL_BL_PREDICT_MODEL=models/bl_predictor.pt
+export AUTO_TESSELL_ML_SMOOTH_MODEL=assets/models/ml_smooth_model.pt
+export AUTO_TESSELL_BL_PREDICT_MODEL=assets/models/bl_predictor.pt
 export AUTO_TESSELL_GPU_ENVELOPE=1
 export AUTO_TESSELL_CVT3D_QUALITY_WEIGHT=1
 export AUTO_TESSELL_BL_ANISO_SPLIT=1
@@ -173,4 +173,4 @@ timeout 1500 python3 tests/stl/bench_difficulty_tiers.py
 - `docs/reference/formats/ccmio.md` — Siemens CCMIO 형식 spec.
 - `docs/plans/G_series_remaining_2026-04-30.md` — 잔여 SOTA 격차 로드맵.
 - `docs/contracts/generator.md` — Tier × QualityLevel 매핑.
-- `models/README.md` — ML 모델 학습/배포 절차.
+- `assets/models/README.md` — ML 모델 학습/배포 절차.

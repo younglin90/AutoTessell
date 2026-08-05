@@ -13,13 +13,13 @@ ROOT = Path(__file__).resolve().parents[1]
 REQUIRED_FILES = (
     "core/version.py",
     "pyproject.toml",
-    "backend/version.py",
+    "products/web/api/version.py",
     "desktop/qt_main.py",
     "desktop/qt_app/main_window.py",
     "desktop/electron/main.js",
     "desktop/electron/package.json",
-    "frontend/package.json",
-    "frontend/package-lock.json",
+    "products/web/app/package.json",
+    "products/web/app/package-lock.json",
     "scripts/installer.iss",
 )
 
@@ -49,16 +49,16 @@ def test_repository_release_identities_match_canonical() -> None:
             "scripts/installer.iss",
         ),
         (
-            "frontend/package.json",
+            "products/web/app/package.json",
             '"version": "1.2.0"',
             '"version": "9.9.9"',
-            "frontend/package.json",
+            "products/web/app/package.json",
         ),
         (
-            "frontend/package-lock.json",
+            "products/web/app/package-lock.json",
             '"version": "1.2.0"',
             '"version": "9.9.9"',
-            "frontend/package-lock.json",
+            "products/web/app/package-lock.json",
         ),
         (
             "desktop/electron/package.json",
@@ -89,7 +89,7 @@ def test_static_consumer_mutation_is_rejected(
 
 def test_local_python_version_fallback_is_rejected(tmp_path: Path) -> None:
     root = _fixture_tree(tmp_path)
-    backend_version = root / "backend/version.py"
+    backend_version = root / "products/web/api/version.py"
     backend_version.write_text(
         backend_version.read_text(encoding="utf-8") + '\nAPP_VERSION = "9.9.9"\n',
         encoding="utf-8",
@@ -97,7 +97,7 @@ def test_local_python_version_fallback_is_rejected(tmp_path: Path) -> None:
 
     _, _, errors = validate(root)
 
-    assert "backend/version.py: local APP_VERSION fallback is forbidden" in errors
+    assert "products/web/api/version.py: local APP_VERSION fallback is forbidden" in errors
 
 
 def test_packaging_must_read_the_canonical_file(tmp_path: Path) -> None:
@@ -105,7 +105,7 @@ def test_packaging_must_read_the_canonical_file(tmp_path: Path) -> None:
     pyproject = root / "pyproject.toml"
     pyproject.write_text(
         pyproject.read_text(encoding="utf-8").replace(
-            'input = "core/version.py"', 'input = "backend/version.py"', 1
+            'input = "core/version.py"', 'input = "products/web/api/version.py"', 1
         ),
         encoding="utf-8",
     )

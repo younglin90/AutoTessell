@@ -430,4 +430,4 @@ Cube, sphere, and cylinder had zero scalar/native edge-decision mismatches;
 full reports, accepted count, input bytes, and vertex/face hashes matched over
 three repeats.  The focused suite is recorded in
 `tri_flip_filter_cpp23_2026-07-31.md`.  This is an independent first-party
-implementation; no external source or `third_party/` content was used.
+implementation; no external source or `vendor/dependencies/` content was used.

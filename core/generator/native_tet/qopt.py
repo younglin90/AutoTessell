@@ -157,6 +157,101 @@ def quality_vector_accepts(
     return compare_quality_vectors(old_quality, new_quality, eps=eps) > 0
 
 
+def compare_quality_tuples(
+    old_tuple: NDArray[np.float64],
+    new_tuple: NDArray[np.float64],
+    *,
+    eps: float = 0.0,
+) -> int:
+    """Compare a fixed-schema, higher-is-better quality tuple.
+
+    Each field must already use the same direction (for example, negate
+    skewness/non-orthogonality/aspect when composing a higher-is-better
+    tuple). The first field that changes decides the result. This is the
+    native acceptance contract for topology/source/BL/quality gates; count
+    remains a later field and cannot override an earlier failure.
+    """
+    native = _load_native_tet_qopt()
+    old_q = np.asarray(old_tuple, dtype=np.float64)
+    new_q = np.asarray(new_tuple, dtype=np.float64)
+    if native is not None and hasattr(native, "compare_quality_tuples"):
+        return int(native.compare_quality_tuples(old_q, new_q, float(eps)))
+    if old_q.ndim != 1 or new_q.ndim != 1:
+        raise ValueError("compare_quality_tuples expects 1D arrays")
+    if old_q.shape != new_q.shape:
+        raise ValueError("quality tuples must have the same schema length")
+    if eps < 0.0:
+        raise ValueError("eps must be non-negative")
+    if not np.all(np.isfinite(old_q)) or not np.all(np.isfinite(new_q)):
+        raise ValueError("quality tuple contains non-finite value")
+    for old_value, new_value in zip(old_q.tolist(), new_q.tolist(), strict=True):
+        if new_value + eps < old_value:
+            return -1
+        if new_value > old_value + eps:
+            return 1
+    return 0
+
+
+def compose_quality_gate_tuple(
+    *,
+    inverted_count: int,
+    duplicate_tet_count: int,
+    nonmanifold_face_count: int,
+    same_side_face_count: int,
+    max_skewness: float,
+    max_non_orthogonality: float,
+    max_aspect: float,
+    min_mean_ratio: float,
+) -> NDArray[np.float64]:
+    """Compose the fixed higher-is-better native quality-gate schema."""
+    counts = (inverted_count, duplicate_tet_count, nonmanifold_face_count, same_side_face_count)
+    if any(int(value) < 0 for value in counts):
+        raise ValueError("quality gate counts must be non-negative")
+    metrics = (max_skewness, max_non_orthogonality, max_aspect, min_mean_ratio)
+    if not np.all(np.isfinite(np.asarray(metrics, dtype=np.float64))) or any(float(value) < 0.0 for value in metrics):
+        raise ValueError("quality gate metrics must be finite and non-negative")
+    native = _load_native_tet_qopt()
+    kernel = getattr(native, "compose_quality_gate_tuple", None) if native is not None else None
+    if kernel is not None:
+        return np.asarray(kernel(*counts, *metrics), dtype=np.float64)
+    return np.asarray(
+        [-float(inverted_count), -float(duplicate_tet_count), -float(nonmanifold_face_count),
+         -float(same_side_face_count), -float(max_skewness),
+         -float(max_non_orthogonality), -float(max_aspect), float(min_mean_ratio)],
+        dtype=np.float64,
+    )
+def tet_quality_oracle(
+    points: NDArray[np.float64],
+    tets: NDArray[np.int64],
+    *,
+    volume_tolerance_scale: float = 1e-12,
+) -> dict[str, object]:
+    """Return the native C++ Tet topology/geometry oracle evidence.
+
+    The strict route fails closed when the C++ oracle is unavailable; this
+    prevents a Python-only approximation from being mistaken for release
+    evidence.
+    """
+    native = _load_native_tet_qopt()
+    kernel = getattr(native, "tet_quality_oracle", None) if native is not None else None
+    if kernel is None:
+        raise RuntimeError("native_tet_qopt quality oracle unavailable")
+    result = kernel(
+        np.asarray(points, dtype=np.float64),
+        np.asarray(tets, dtype=np.int64),
+        float(volume_tolerance_scale),
+    )
+    return dict(result)
+def quality_tuple_accepts(
+    old_tuple: NDArray[np.float64],
+    new_tuple: NDArray[np.float64],
+    *,
+    eps: float = 0.0,
+) -> bool:
+    """Return true only when the fixed-schema tuple strictly improves."""
+    return compare_quality_tuples(old_tuple, new_tuple, eps=eps) > 0
+
+
 def _signed_volume6(points: NDArray[np.float64], tets: NDArray[np.int64]) -> NDArray[np.float64]:
     if tets.size == 0:
         return np.zeros(0, dtype=np.float64)
@@ -275,10 +370,15 @@ def smooth_interior_guarded_native(
     n_iter: int = 2,
     relax: float = 0.5,
     eps: float = 1e-15,
+    use_worst_cell_queue: bool = False,
 ) -> tuple[NDArray[np.float64], dict[str, float | int]] | None:
     """Use fused native guarded Laplacian smoothing when available."""
     native = _load_native_tet_qopt()
-    kernel = getattr(native, "smooth_interior_guarded", None) if native is not None else None
+    queue_kernel = getattr(native, "smooth_interior_worst_cell_guarded", None) if native is not None else None
+    if use_worst_cell_queue and queue_kernel is not None:
+        kernel = queue_kernel
+    else:
+        kernel = getattr(native, "smooth_interior_guarded", None) if native is not None else None
     if kernel is None:
         return None
     out, stats = kernel(

@@ -38,7 +38,7 @@ module component while avoiding the stale top-level cache.
    modules.  Mandatory surface padding keeps raising its existing `RuntimeError`.
 5. Existing native loader, evaluator, hex, tet, writer, and reader focused tests
    pass.  Ruff, strict mypy for changed files, and `git diff --check` pass.
-6. No change under `third_party/`; no mesh output, routing, threshold, or native
+6. No change under `vendor/dependencies/`; no mesh output, routing, threshold, or native
    ABI contract changes.
 
 ## Rollback
@@ -78,5 +78,5 @@ Implementation is an independent standard-library design using Python's public
   Migrated legacy modules retain their pre-existing project-wide strict-mypy
   debt; the import-only changes add no new typed interface.
 - `git diff --check`: pass.
-- Mesh output, routing, acceptance thresholds, native ABI, and `third_party/`:
+- Mesh output, routing, acceptance thresholds, native ABI, and `vendor/dependencies/`:
   unchanged.

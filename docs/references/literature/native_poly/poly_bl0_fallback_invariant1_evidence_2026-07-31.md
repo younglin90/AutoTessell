@@ -56,4 +56,4 @@ card nor `POLY-LLOYD-PINNED-COMPACTION-1` may be integrated.
 
 Rollback conditions: BL=0 extrusion, incorrect positive layer count, silent
 BL3+ behavior, shape/topology/provenance or validity regression, canonical
-partial output, timeout, nondeterminism, or any `third_party/` change.
+partial output, timeout, nondeterminism, or any `vendor/dependencies/` change.

@@ -5,7 +5,7 @@ batch size scan + CUDA vs CPU 비교.
 
 Usage:
     python3 scripts/bench_ml_inference.py
-    python3 scripts/bench_ml_inference.py --model models/ml_smooth_model.pt
+    python3 scripts/bench_ml_inference.py --model assets/models/ml_smooth_model.pt
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="models/ml_smooth_model.pt")
+    ap.add_argument("--model", default="assets/models/ml_smooth_model.pt")
     ap.add_argument("--n-samples", type=int, default=10000)
     ap.add_argument("--batch-sizes", type=str, default="64,256,1024,4096")
     args = ap.parse_args()

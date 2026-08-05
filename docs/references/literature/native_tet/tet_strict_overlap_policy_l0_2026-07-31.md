@@ -50,7 +50,7 @@ root cause.
 
 Only the report-only policy module, test, and this note change.  No generator,
 predicate, threshold, strict refusal, transaction, writer, routing, default,
-target-cell, CMake, or `third_party/` file changes.
+target-cell, CMake, or `vendor/dependencies/` file changes.
 
 Kill or roll back if an evidence disposition changes runtime behavior, labels
 same-side overlap calibration-eligible, allows output, alters L1 source data,

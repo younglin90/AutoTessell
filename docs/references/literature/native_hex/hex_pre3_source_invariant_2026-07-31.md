@@ -36,7 +36,7 @@ validity, and provenance outrank cell-count accuracy.
   reference. `cgg-bern/AlgoHex` is AGPL-3.0 and excluded.
 
 No source code, generated artifact, constants, or data structures were copied.
-No new dependency was added. `third_party/` is unchanged. No inaccessible DOI
+No new dependency was added. `vendor/dependencies/` is unchanged. No inaccessible DOI
 was encountered.
 
 ## Reproduced failure
@@ -82,7 +82,7 @@ Predeclared acceptance:
 3. cube, cylinder, gear, and bracket output bytes and statistics must remain
    exact; bracket must not slow down;
 4. full native-Hex tests, formatting, typing, and diff checks must pass;
-5. no ABI, threshold, dependency, or `third_party/` change.
+5. no ABI, threshold, dependency, or `vendor/dependencies/` change.
 
 Results:
 
@@ -101,7 +101,7 @@ Results:
 - Black and Ruff pass for the new/changed test and benchmark files; strict mypy
   passes for both;
 - caller arrays, native ABI/build contract, quality thresholds, routing,
-  boundary-layer logic, and `third_party/` are unchanged.
+  boundary-layer logic, and `vendor/dependencies/` are unchanged.
 
 The 11 skips are pre-existing environment/optional-path skips and were not
 introduced or modified by this card.

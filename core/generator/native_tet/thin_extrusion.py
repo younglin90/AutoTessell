@@ -140,7 +140,30 @@ def build_thin_extrusion_wedges(
     axial_ratio = extent / float(np.min(transverse_extents))
     layers_added_per_cap = max(1, int(bl_layers))
     cap_triangles: np.ndarray | None = None
-    if axial_ratio <= 0.1:
+    _quality_cap_ratio = float(os.environ.get("AUTO_TESSELL_THIN_QUALITY_CAP_RATIO", "2.5"))
+    if axial_ratio <= _quality_cap_ratio:
+        # Keep the source boundary loop fixed but avoid raw-Delaunay
+        # trailing-edge slivers in the quality candidate.
+        n_slabs = 1
+        triangle_refinement_factor = float(os.environ.get("AUTO_TESSELL_THIN_TRIANGLE_REFINEMENT_FACTOR", "1.10"))
+        target_triangles = max(len(cap_points) - 2, int(round(target_cells / triangle_refinement_factor)))
+        try:
+            import meshpy.triangle as mtri
+            cap_loop = cap_points[hull.vertices]
+            mesh_info = mtri.MeshInfo()
+            mesh_info.set_points([(float(value[0]), float(value[1])) for value in cap_loop])
+            mesh_info.set_facets([(index, (index + 1) % len(cap_loop)) for index in range(len(cap_loop))])
+            plane_mesh = mtri.build(
+                mesh_info,
+                max_volume=float(hull.volume) / max(target_triangles, 1),
+                min_angle=25.0,
+                allow_boundary_steiner=True,
+            )
+            cap_points = np.asarray(plane_mesh.points, dtype=np.float64)
+            cap_triangles = np.asarray(plane_mesh.elements, dtype=np.int64)
+        except Exception:
+            cap_triangles = None
+    elif axial_ratio <= 0.1:
         n_slabs = 3
         triangle_refinement_factor = float(
             os.environ.get("AUTO_TESSELL_THIN_TRIANGLE_REFINEMENT_FACTOR", "1.10")

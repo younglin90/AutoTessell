@@ -3,13 +3,13 @@ type: interface
 status: active
 updated: 2026-07-26
 stability: implemented
-source_paths: [frontend, backend/main.py, backend/api, backend/worker, backend/mesh]
+source_paths: [frontend, products/web/api/main.py, products/web/api/api, products/web/api/worker, products/web/api/mesh]
 tags: [web, saas, nextjs, fastapi]
 ---
 
 # 웹 서비스와 SaaS
 
-`frontend/`는 Next.js 16·React 19 기반으로 upload/job/payment 화면과 Stripe 연결을 가진다. `backend/`는 SQL persistence, job API, download URL, payment webhook, upload, worker/Celery, object storage hook, 별도 mesh adapter를 가진 FastAPI 서비스다.
+`products/web/app/`는 Next.js 16·React 19 기반으로 upload/job/payment 화면과 Stripe 연결을 가진다. `products/web/api/`는 SQL persistence, job API, download URL, payment webhook, upload, worker/Celery, object storage hook, 별도 mesh adapter를 가진 FastAPI 서비스다.
 
 | 항목 | 로컬 desktop server | SaaS backend |
 |---|---|---|

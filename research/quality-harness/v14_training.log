@@ -1,0 +1,5 @@
+n_train=645 n_val=161 feat=8
+final_tr=0.016423 final_va=0.012015
+elapsed=2.4s
+model=assets/models/v14_quality_predictor.pt
+descriptor=assets/models/v14_descriptor.json

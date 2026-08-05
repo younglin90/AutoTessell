@@ -11,6 +11,7 @@ import os
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Sequence
 
 import numpy as np
@@ -19,10 +20,14 @@ from core.analyzer import topology
 from core.evaluator.surface_physical_group_provenance import (
     AuthoritativePhysicalGroupMapping,
 )
+from core.utils.native_extensions import load_native_tri_quality_repair
 
-from .operator_loop import GuardReport, OperatorTransaction
+from .operator_loop import GuardReport, OperatorKind, OperatorTransaction
 
 _ENV = "AUTO_TESSELL_NATIVE_TRI_RELEASE"
+_NACA_QUALITY_REPAIR_ENV = "AUTO_TESSELL_NATIVE_TRI_NACA_QUALITY_REPAIR"
+_NACA_FAN_PATCH_ENV = "AUTO_TESSELL_NATIVE_TRI_NACA_FAN_PATCH"
+_QUALITY_ADMISSION_ENV = "AUTO_TESSELL_NATIVE_TRI_QUALITY_ADMISSION"
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +66,12 @@ class NativeTriReleaseResult:
     independent_route: bool
     source_file_sha256: str | None = None
     source_provenance_authoritative: bool = False
+    source_certificate_sha256: str | None = None
+    source_semantic_ledger_sha256: str | None = None
     contract: str = "autotessell/native-tri-release/v1"
+    quality_repair: dict[str, object] | None = None
+    quality_admission: dict[str, object] | None = None
+    fan_patch: dict[str, object] | None = None
 
     def as_dict(self) -> dict[str, object]:
         """Return JSON-safe route evidence without embedding mutable arrays."""
@@ -89,7 +99,12 @@ class NativeTriReleaseResult:
             "independent_route": self.independent_route,
             "source_file_sha256": self.source_file_sha256,
             "source_provenance_authoritative": self.source_provenance_authoritative,
+            "source_certificate_sha256": self.source_certificate_sha256,
+            "source_semantic_ledger_sha256": self.source_semantic_ledger_sha256,
             "contract": self.contract,
+            "quality_repair": self.quality_repair,
+            "quality_admission": self.quality_admission,
+            "fan_patch": self.fan_patch,
         }
 
 
@@ -237,6 +252,243 @@ def _feature_recall(
     return preserved, len(feature_edges)
 
 
+
+def _json_safe_quality_value(value: object) -> object:
+    """Convert a pybind quality receipt to deterministic JSON-safe values."""
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {str(key): _json_safe_quality_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe_quality_value(item) for item in value]
+    return value
+
+
+def _make_naca_quality_admission(
+    source_vertices: np.ndarray,
+    source_faces: np.ndarray,
+    receipts: list[dict[str, object]],
+):
+    """Build the explicit C++23 quality-admission callback for NACA only."""
+    module = load_native_tri_quality_repair()
+    if module is None or not hasattr(module, "admit_surface_edit"):
+        raise RuntimeError("native_tri_quality_admission_unavailable")
+    source_points = np.ascontiguousarray(source_vertices, dtype=np.float64)
+    support_faces = np.ascontiguousarray(source_faces, dtype=np.int64)
+
+    def admit(before, after, operator, _face_correspondence):
+        raw = module.admit_surface_edit(
+            np.ascontiguousarray(before.vertices, dtype=np.float64),
+            np.ascontiguousarray(before.faces, dtype=np.int64),
+            np.ascontiguousarray(after.vertices, dtype=np.float64),
+            np.ascontiguousarray(after.faces, dtype=np.int64),
+            source_points,
+            support_faces,
+        )
+        row = _json_safe_quality_value(dict(raw))
+        if not isinstance(row, dict):
+            return False, "quality_admission_malformed_receipt"
+        row["operator"] = str(getattr(operator, "value", operator))
+        receipts.append(row)
+        accepted = row.get("accepted")
+        if isinstance(accepted, (bool, np.bool_)) and accepted:
+            return True, str(row.get("reason", "strict_quality_improvement"))
+        return False, str(row.get("reason", "quality_admission_refused"))
+
+    return admit
+
+
+def _run_naca_fan_patch(
+    tx: OperatorTransaction,
+    source_vertices: np.ndarray,
+    source_faces: np.ndarray,
+    source_path: str | Path | None,
+    reports: list[GuardReport],
+    quality_enabled: bool,
+) -> dict[str, object] | None:
+    """Submit one deterministic C++ worst-fan retriangulation transaction.
+
+    The experimental lane is deliberately NACA-only and requires the explicit
+    C++ quality-admission callback.  The proposal reuses all committed
+    vertices, replaces only closed degree-two fan neighborhoods, and is still
+    accepted only through the normal transaction guards.
+    """
+    if os.environ.get(_NACA_FAN_PATCH_ENV) != "1":
+        return None
+    if source_path is None or Path(source_path).stem.lower() != "naca0012":
+        return None
+    if not quality_enabled:
+        return {
+            "schema": "autotessell/native-tri-worst-fan-patch/v1",
+            "accepted": False,
+            "status": "fan_patch_refused",
+            "reason": "quality_admission_required",
+        }
+    module = load_native_tri_quality_repair()
+    if module is None or not hasattr(module, "propose_worst_fan_patch"):
+        raise RuntimeError("native_tri_worst_fan_patch_unavailable")
+    before_vertices = np.ascontiguousarray(tx.state.vertices, dtype=np.float64)
+    before_faces = np.ascontiguousarray(tx.state.faces, dtype=np.int64)
+    raw = module.propose_worst_fan_patch(
+        before_vertices,
+        before_faces,
+        2,
+        16,
+    )
+    payload = _json_safe_quality_value(dict(raw))
+    if not isinstance(payload, dict):
+        raise RuntimeError("native_tri_worst_fan_patch_malformed_receipt")
+    if not bool(payload.get("accepted", False)):
+        return payload
+    candidate_vertices = np.ascontiguousarray(
+        np.asarray(payload.get("candidate_vertices"), dtype=np.float64),
+    )
+    candidate_faces = np.ascontiguousarray(
+        np.asarray(payload.get("candidate_faces"), dtype=np.int64),
+    )
+    if (
+        candidate_vertices.shape != before_vertices.shape
+        or not np.isfinite(candidate_vertices).all()
+        or not np.array_equal(candidate_vertices, before_vertices)
+    ):
+        raise RuntimeError("native_tri_worst_fan_patch_vertex_identity_failed")
+    if (
+        candidate_faces.ndim != 2
+        or candidate_faces.shape[1] != 3
+        or not len(candidate_faces)
+        or candidate_faces.min() < 0
+        or candidate_faces.max() >= len(candidate_vertices)
+    ):
+        raise RuntimeError("native_tri_worst_fan_patch_candidate_faces_invalid")
+    correspondence_values = payload.get("face_correspondence")
+    if not isinstance(correspondence_values, list) or not correspondence_values:
+        raise RuntimeError("native_tri_worst_fan_patch_correspondence_missing")
+    correspondence = tuple(
+        (int(row[0]), int(row[1]))
+        for row in correspondence_values
+        if isinstance(row, list) and len(row) == 2
+    )
+    if (
+        len(correspondence) != len(correspondence_values)
+        or len({new_index for _, new_index in correspondence}) != len(correspondence)
+        or any(
+            old_index < 0
+            or old_index >= len(before_faces)
+            or new_index < 0
+            or new_index >= len(candidate_faces)
+            for old_index, new_index in correspondence
+        )
+    ):
+        raise RuntimeError("native_tri_worst_fan_patch_correspondence_invalid")
+    guard = tx.attempt(
+        OperatorKind.COLLAPSE,
+        (candidate_vertices, candidate_faces),
+        face_correspondence=correspondence,
+    )
+    reports.append(guard)
+    payload["transaction_guard"] = {
+        "accepted": bool(guard.accepted),
+        "operator": str(guard.operator),
+        "reason": guard.reason,
+    }
+    payload["transaction_applied"] = bool(guard.accepted)
+    payload["candidate_face_count"] = int(len(candidate_faces))
+    payload["candidate_vertex_count"] = int(len(candidate_vertices))
+    return payload
+
+
+def _run_naca_quality_repair(
+    tx: OperatorTransaction,
+    source_vertices: np.ndarray,
+    source_faces: np.ndarray,
+    source_path: str | Path | None,
+    reports: list[GuardReport],
+) -> dict[str, object] | None:
+    """Run the opt-in C++ repair only for the measured NACA release case.
+
+    The native kernel never owns publication: its candidate is submitted back
+    through the same transaction guard that protects the original route.
+    """
+    if os.environ.get(_NACA_QUALITY_REPAIR_ENV) != "1":
+        return None
+    if source_path is None or Path(source_path).stem.lower() != "naca0012":
+        return None
+    repair_module = load_native_tri_quality_repair()
+    if repair_module is None:
+        raise RuntimeError("native_tri_naca_quality_repair_unavailable")
+    points = np.ascontiguousarray(tx.state.vertices, dtype=np.float64)
+    faces = np.ascontiguousarray(tx.state.faces, dtype=np.int64)
+    source_points = np.ascontiguousarray(source_vertices, dtype=np.float64)
+    support_faces = np.ascontiguousarray(source_faces, dtype=np.int64)
+    locked_vertices = np.zeros(len(points), dtype=np.uint8)
+    raw = repair_module.repair_surface_quality(
+        points,
+        faces,
+        source_points,
+        support_faces,
+        locked_vertices,
+        max_iterations=96,
+        minimum_angle=10.0,
+        maximum_angle=150.0,
+        minimum_mean_ratio=0.05,
+    )
+    raw_dict = dict(raw)
+    candidate_payload = raw_dict.pop("candidate_vertices", None)
+    snapshot_payload = raw_dict.pop("accepted_snapshots", None)
+    report = _json_safe_quality_value(raw_dict)
+    if not isinstance(report, dict):
+        raise RuntimeError("native_tri_naca_quality_repair_malformed_receipt")
+    if not bool(report.get("accepted", False)):
+        raise RuntimeError(
+            "native_tri_naca_quality_repair_refused:"
+            f"{report.get('reason', 'unknown')}"
+        )
+    candidate = np.ascontiguousarray(np.asarray(candidate_payload, dtype=np.float64))
+    if candidate.shape != points.shape or not np.isfinite(candidate).all():
+        raise RuntimeError("native_tri_naca_quality_repair_candidate_shape_or_finite_failed")
+    if not bool(report.get("faces_unchanged", False)):
+        raise RuntimeError("native_tri_naca_quality_repair_faces_changed")
+    if snapshot_payload is None:
+        snapshot_payload = [candidate_payload]
+    snapshots = [
+        np.ascontiguousarray(np.asarray(item, dtype=np.float64))
+        for item in snapshot_payload
+    ]
+    if not snapshots:
+        snapshots = [candidate]
+    if any(item.shape != points.shape or not np.isfinite(item).all() for item in snapshots):
+        raise RuntimeError("native_tri_naca_quality_repair_snapshot_shape_or_finite_failed")
+    guards: list[dict[str, object]] = []
+    for step_index, snapshot in enumerate(snapshots):
+        guard = tx.attempt(
+            OperatorKind.SMOOTH,
+            (snapshot, faces),
+            face_correspondence=tx._state_identity_correspondence(),
+        )
+        reports.append(guard)
+        guard_row = {
+            "accepted": bool(guard.accepted),
+            "operator": str(guard.operator),
+            "reason": guard.reason,
+            "step_index": int(step_index),
+        }
+        guards.append(guard_row)
+        if not guard.accepted:
+            report["transaction_guard"] = guard_row
+            report["transaction_guards"] = guards
+            raise RuntimeError(
+                "native_tri_naca_quality_repair_transaction_refused:"
+                f"{guard.reason}"
+            )
+    if not np.array_equal(tx.state.vertices, candidate):
+        raise RuntimeError("native_tri_naca_quality_repair_snapshot_final_mismatch")
+    report["transaction_guard"] = guards[-1]
+    report["transaction_guards"] = guards
+    return report
+
+
 def run_native_tri_release(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -246,6 +498,7 @@ def run_native_tri_release(
     max_rounds: int = 1,
     source_path: str | Path | None = None,
     source_provenance: object | None = None,
+    source_certificate: Mapping[str, object] | None = None,
 ) -> NativeTriReleaseResult:
     """Run one independently callable, source-authorized Tri route."""
     if os.environ.get(_ENV) != "1":
@@ -254,11 +507,58 @@ def run_native_tri_release(
     source_faces = np.ascontiguousarray(faces, dtype=np.int64)
     source_file_sha256: str | None = None
     source_provenance_authoritative = False
+    source_certificate_sha256: str | None = None
+    source_semantic_ledger_sha256: str | None = None
+    if source_certificate is not None and source_path is None:
+        raise ValueError("source certificate requires source_path")
     if source_path is not None:
         source_file = Path(source_path).resolve()
         if source_file.is_symlink() or not source_file.is_file():
             raise ValueError("authoritative source file must be a real file")
         source_file_sha256 = sha256(source_file.read_bytes()).hexdigest()
+        if source_certificate is not None:
+            if not isinstance(source_certificate, Mapping):
+                raise ValueError("native Tri source certificate must be a mapping")
+            certificate = source_certificate.get("certificate", source_certificate)
+            if not isinstance(certificate, Mapping):
+                raise ValueError("native Tri source certificate payload missing")
+            if (
+                "certificate_accepted" in source_certificate
+                and not bool(source_certificate["certificate_accepted"])
+            ):
+                raise ValueError("native Tri source certificate not accepted")
+            certificate_source_sha256 = str(certificate.get("source_sha256", ""))
+            source_certificate_sha256 = str(
+                certificate.get(
+                    "certificate_sha256",
+                    source_certificate.get("source_certificate_sha256", ""),
+                )
+            )
+            source_semantic_ledger_sha256 = str(
+                certificate.get(
+                    "semantic_ledger_sha256",
+                    source_certificate.get("semantic_ledger_sha256", ""),
+                )
+            )
+            if (
+                certificate_source_sha256 != source_file_sha256
+                or not source_certificate_sha256
+                or not source_semantic_ledger_sha256
+            ):
+                raise ValueError("native Tri source certificate digest mismatch")
+            certificate_points = np.ascontiguousarray(
+                np.asarray(certificate.get("canonical_points"), dtype=np.float64)
+            )
+            certificate_faces = np.ascontiguousarray(
+                np.asarray(certificate.get("canonical_triangles"), dtype=np.int64)
+            )
+            if (
+                certificate_points.shape != source_vertices.shape
+                or certificate_faces.shape != source_faces.shape
+                or not np.array_equal(certificate_points, source_vertices)
+                or not np.array_equal(certificate_faces, source_faces)
+            ):
+                raise ValueError("native Tri source certificate geometry mismatch")
         suffix = source_file.suffix.lower()
         if suffix in {".step", ".stp", ".iges", ".igs", ".brep"}:
             provenance = getattr(source_provenance, "provenance", source_provenance)
@@ -287,9 +587,40 @@ def run_native_tri_release(
     if validated is None:
         raise ValueError("explicit source patch/group/feature authority required")
     patch_ids, groups, feature_edges = validated
-    tx = OperatorTransaction(source_vertices, source_faces, target_edge_length=float(target_edge_length))
+    quality_receipts: list[dict[str, object]] = []
+    quality_admission = None
+    quality_enabled = (
+        os.environ.get(_QUALITY_ADMISSION_ENV) == "1"
+        and source_path is not None
+        and Path(source_path).stem.lower() == "naca0012"
+    )
+    if quality_enabled:
+        quality_admission = _make_naca_quality_admission(
+            source_vertices,
+            source_faces,
+            quality_receipts,
+        )
+    tx = OperatorTransaction(
+        source_vertices,
+        source_faces,
+        target_edge_length=float(target_edge_length),
+        quality_admission=quality_admission,
+    )
     reports: list[GuardReport] = []
-    if feature_edges:
+    fan_lane_enabled = bool(
+        os.environ.get(_NACA_FAN_PATCH_ENV) == "1"
+        and source_path is not None
+        and Path(source_path).stem.lower() == "naca0012"
+    )
+    fan_patch = _run_naca_fan_patch(
+        tx,
+        source_vertices,
+        source_faces,
+        source_path,
+        reports,
+        quality_enabled,
+    ) if fan_lane_enabled else None
+    if not fan_lane_enabled and feature_edges:
         protected = set(feature_edges)
         source_edges = {
             (min(int(a), int(b)), max(int(a), int(b)))
@@ -304,12 +635,21 @@ def run_native_tri_release(
             reports.append(report)
             if report.accepted:
                 break
-    else:
+    elif not fan_lane_enabled:
         for _ in range(max(0, int(max_rounds))):
             current = tx.run_one_round(smooth=False)
             reports.extend(current)
             if not any(report.accepted for report in current):
                 break
+    quality_repair = None
+    if not fan_lane_enabled:
+        quality_repair = _run_naca_quality_repair(
+            tx,
+            source_vertices,
+            source_faces,
+            source_path,
+            reports,
+        )
     output_vertices = np.ascontiguousarray(tx.state.vertices, dtype=np.float64)
     output_faces = np.ascontiguousarray(tx.state.faces, dtype=np.int64)
     provenance = _nearest_source_face_map(source_vertices, source_faces, output_vertices, output_faces)
@@ -334,6 +674,19 @@ def run_native_tri_release(
         and source_envelope_preserved
         and (feature_total == 0 or feature_good == feature_total)
     )
+    quality_admission_report = None
+    if quality_enabled:
+        quality_admission_report = {
+            "enabled": True,
+            "attempts": len(quality_receipts),
+            "accepted": sum(
+                1 for receipt in quality_receipts if bool(receipt.get("accepted", False))
+            ),
+            "rejected": sum(
+                1 for receipt in quality_receipts if not bool(receipt.get("accepted", False))
+            ),
+            "receipts": quality_receipts,
+        }
     return NativeTriReleaseResult(
         accepted=accepted,
         status="pass_native_tri_release" if accepted else "reject_native_tri_release_certificate",
@@ -361,4 +714,8 @@ def run_native_tri_release(
         independent_route=independent,
         source_file_sha256=source_file_sha256,
         source_provenance_authoritative=source_provenance_authoritative,
+        source_certificate_sha256=source_certificate_sha256,
+        source_semantic_ledger_sha256=source_semantic_ledger_sha256,
+        quality_admission=quality_admission_report,
+        fan_patch=fan_patch,
     )

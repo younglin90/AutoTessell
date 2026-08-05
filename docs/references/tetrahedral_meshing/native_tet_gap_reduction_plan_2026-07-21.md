@@ -19,11 +19,11 @@ surface fidelity, target cell count, boundary layers, and deterministic regressi
 - Hu et al. 2020, `Fast Tetrahedral Meshing in the Wild`.
   Source: https://arxiv.org/abs/1908.03581
 - Klingner and Shewchuk 2007, `Aggressive Tetrahedral Mesh Improvement`.
-  Local: `papers/pdf/01_klingner_2007_aggressive_tet.pdf`
+  Local: `docs/references/papers/source/pdf/01_klingner_2007_aggressive_tet.pdf`
 - Cheng and Dey 2003, `Quality Meshing with Weighted Delaunay Refinement`.
   Source: https://cse.hkust.edu.hk/~scheng/pub/soda01-2.pdf
 - Cheng et al. 2000, `Sliver Exudation`.
-  Local: `papers/pdf/04_cheng_2000_sliver_exudation.pdf`
+  Local: `docs/references/papers/source/pdf/04_cheng_2000_sliver_exudation.pdf`
 - Chen et al. 2017, `Improved boundary constrained tetrahedral mesh generation by shell transformation`.
   Local: `docs/references/tetrahedral_meshing/1-s2.0-S0307904X17304493-main.pdf`
 - Leng et al. 2013, `A novel geometric flow approach for quality improvement of multi-component tetrahedral meshes`.

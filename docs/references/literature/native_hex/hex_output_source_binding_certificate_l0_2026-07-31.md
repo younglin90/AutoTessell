@@ -33,6 +33,6 @@ combine it with output shape, feature, topology, and provenance validation.
 ## Scope
 
 No mesher, writer, routing, UI, shared evaluator, source B-Rep reader,
-quality threshold, target-cell, boundary-layer, or `third_party/` behavior is
+quality threshold, target-cell, boundary-layer, or `vendor/dependencies/` behavior is
 changed.  The source B-Rep and physical-group authority are hard prerequisites,
 not inferred metadata.

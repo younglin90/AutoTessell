@@ -8,7 +8,7 @@ It locks the current PASS state (gate A) and pins the cure's known shape as
 an xfail(strict) gate (gate B), so a future cure attempt lands as a loud
 XPASS -> FAIL alarm instead of a silent regression.
 
-Root cause (measured, see harness/plan_fsl4.md and plan_torus_quality.md):
+Root cause (measured, see research/quality-harness/plan_fsl4.md and plan_torus_quality.md):
 
   - The FSL1 detector's 61 core-unflippable wedges all have exactly 2
     boundary faces.  57/61 are coplanar flat-on-surface -- the wedge's two

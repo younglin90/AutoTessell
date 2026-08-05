@@ -9,7 +9,7 @@ build/
 data/
 node_modules/
 .next/
-frontend/
-backend/
+products/web/app/
+products/web/api/
 .venv/
 venv/

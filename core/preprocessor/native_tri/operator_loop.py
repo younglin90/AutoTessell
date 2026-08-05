@@ -173,6 +173,7 @@ class GuardReport:
 
 FaceCorrespondence = tuple[tuple[int, int], ...]
 SurfaceProjection = Callable[[np.ndarray], np.ndarray]
+QualityAdmission = Callable[[MeshState, MeshState, OperatorKind, FaceCorrespondence | None], tuple[bool, str]]
 
 
 def _estimate_curvature_sizing_python(
@@ -453,6 +454,7 @@ class OperatorTransaction:
         metric_normals: np.ndarray | None = None,
         metric_feature_vertices: np.ndarray | None = None,
         metric_max_normal_angle_deg: float | None = None,
+        quality_admission: QualityAdmission | None = None,
     ) -> None:
         self._state = MeshState(
             np.asarray(vertices, dtype=np.float64).copy(),
@@ -488,6 +490,7 @@ class OperatorTransaction:
         ):
             raise ValueError("metric_max_normal_angle_deg must be finite and non-negative")
         self.metric_max_normal_angle_deg = metric_max_normal_angle_deg
+        self.quality_admission = quality_admission
         self._pending_metric_field: np.ndarray | None = None
         self._pending_metric_normals: np.ndarray | None = None
         self._pending_metric_feature_vertices: np.ndarray | None = None
@@ -811,6 +814,24 @@ class OperatorTransaction:
                 before_deviation=self._state_valence_deviation(),
             ):
                 return GuardReport(False, operator, "flip_not_improved")
+            if self.quality_admission is not None:
+                try:
+                    admitted, reason = self.quality_admission(
+                        before,
+                        after,
+                        operator,
+                        face_correspondence,
+                    )
+                except Exception:
+                    self.state = before
+                    return GuardReport(False, operator, "quality_admission_error")
+                if not bool(admitted):
+                    self.state = before
+                    return GuardReport(
+                        False,
+                        operator,
+                        str(reason) if str(reason) else "quality_admission_refused",
+                    )
         except (TypeError, ValueError, IndexError, FloatingPointError, RuntimeError):
             self.state = before
             return GuardReport(False, operator, "exact_orientation_failed")

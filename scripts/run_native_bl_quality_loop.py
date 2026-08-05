@@ -156,7 +156,7 @@ def main() -> int:
     args = parser.parse_args()
     config = _load_config(args.config)
     run_dir = args.run_dir or (
-        REPO_ROOT / "harness/runs" / f"native-bl-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
+        REPO_ROOT / "research/quality-harness/runs" / f"native-bl-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
     )
     try:
         if args.action == "prepare":

@@ -174,7 +174,7 @@ Codex는 offscreen만 돌림. 실제 OpenGL 컨텍스트가 있는 환경에서�
 | 10 | 에러 복구 다이얼로그 | 불량 STL 시도 | Esc 닫힘, 복구 액션 버튼 동작 |
 
 ### 2B. 실기계 스크린샷 캡처
-각 항목 스크린샷을 `docs/qa-reports/screenshots-2026-04-19/` 저장. Phase 1B 이후 commit + push.
+각 항목 스크린샷을 `docs/qa/reports/screenshots-2026-04-19/` 저장. Phase 1B 이후 commit + push.
 
 ### 2C. 발견 이슈 처리
 - 저위험 (색상·폰트): 즉시 fix commit
@@ -319,7 +319,7 @@ python3 -m pytest tests/test_qt_app.py tests/test_gui_visual.py -q   # 180 passe
 
 ### Phase 2
 - `.gstack/qa-reports/qa-manual-2026-04-19.md` 작성됨
-- `docs/qa-reports/screenshots-2026-04-19/*.png` 10+장
+- `docs/qa/reports/screenshots-2026-04-19/*.png` 10+장
 
 ### Phase 3
 ```bash

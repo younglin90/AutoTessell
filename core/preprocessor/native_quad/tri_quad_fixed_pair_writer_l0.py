@@ -288,3 +288,8 @@ __all__ = [
     "tri_quad_fixed_pair_writer_l0_enabled",
     "write_tri_quad_fixed_pair_product_l0",
 ]
+
+
+def readback_tri_quad_fixed_pair_artifact(stage: Path, product: TriQuadFixedPairProduct) -> tuple[str, str] | None:
+    """Public read-only wrapper around the writer's fail-closed read-back."""
+    return _readback(Path(stage), product)

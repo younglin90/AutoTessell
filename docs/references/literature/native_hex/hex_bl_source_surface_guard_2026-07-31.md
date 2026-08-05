@@ -88,7 +88,7 @@ Verification on the Cycle38 worktree:
 - focused `native_hex_bl` / zero-layer selection: `11 passed`;
 - full routing, native-hex, and patch-layer diagnostic files: `33 passed`;
 - `git diff --check`: PASS;
-- `third_party/` diff: empty.
+- `vendor/dependencies/` diff: empty.
 
 Repository-wide Ruff/Black conformance is not claimed by this card: both edited
 legacy Python files already fail whole-file style checks outside the changed

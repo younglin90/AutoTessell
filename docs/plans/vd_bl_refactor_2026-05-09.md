@@ -7,7 +7,7 @@ Date: 2026-05-09
 Continue the vertex-duplication boundary-layer refactor started in
 `.autoresearch/tet_bl_full/vd_refactor_plan.md` so that the 21-STL bench
 (test_cube + tests/stl/thingi10k_bench20/*.stl) passes tet + BL (3 layers)
-per `agents/specs/evaluator.md`.
+per `docs/contracts/evaluator.md`.
 
 Current state (commits `79771118`, `cb867530`, `97dcd299`):
 - VD-1 plan (vd_refactor_plan.md)

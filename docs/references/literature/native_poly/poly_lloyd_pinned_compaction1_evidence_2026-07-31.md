@@ -65,7 +65,7 @@ bit-exact surviving pins and three-run output identity.
 Rollback conditions: pinned-coordinate drift, row misalignment, removed-row
 resurrection, no-filter output drift, nondeterminism, surface/topology/
 provenance or validity regression, continued mask mismatch, or any
-`third_party/` change.
+`vendor/dependencies/` change.
 
 This is a Python orchestration correctness repair, not a measured performance
 hotspot.  No C++23 port is claimed by this card.  Mesh quality thresholds,

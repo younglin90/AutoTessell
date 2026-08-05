@@ -6,7 +6,7 @@ Base at final blocker review: `e7ee5016d7be98c1749eb35b93dbe51edc55dc4d`
 
 Scope: report-only Phase-0 face-pairing evaluation. No mesh point, face,
 owner, neighbour, boundary, routing, acceptance threshold, target-cell,
-boundary-layer, source-geometry, provenance, or `third_party/` change. The
+boundary-layer, source-geometry, provenance, or `vendor/dependencies/` change. The
 native ABI contract gains the required public `minimum_pairing_sum` symbol.
 
 ## Frozen hypothesis and acceptance
@@ -29,7 +29,7 @@ Primary metric: wall time of `NativeMeshChecker` on the deterministic sphere
   identical; three exact repeats are identical
 - rollback: any parity failure, order dependence, nontermination, permanent
   field/hash change, runtime above 15 seconds, external-code provenance, or
-  unauthorized `third_party/` or ABI-contract change
+  unauthorized `vendor/dependencies/` or ABI-contract change
 
 Promotion target: `L1_PASS / CORRECTNESS_KEEP`. The metric remains report-only.
 
@@ -155,7 +155,7 @@ regression and a 37-vector sparse-positive-saving core are also invariant.
 The C++23 implementation was independently authored from the published
 algorithm descriptions. No Boost, NetworkX, competitive-programming, or other
 implementation source was copied. No external dependency, generated artifact,
-or `third_party/` file was added or modified. Future MIT native-core separation
+or `vendor/dependencies/` file was added or modified. Future MIT native-core separation
 remains possible.
 
 ## Verification status

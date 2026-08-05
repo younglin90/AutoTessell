@@ -1,6 +1,6 @@
 """Auto-Tessell Desktop WebSocket Server.
 
-Godot GUI ↔ Python Backend 통신을 담당한다.
+Desktop web/Qt clients ↔ Python backend 통신을 담당한다.
 localhost에서만 동작하며, 파일 업로드 → 메쉬 생성 → 진행상황 스트리밍을 지원한다.
 
 Usage:
@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import io
+import hashlib
+import json
 import logging
 import re
 import shutil
@@ -33,6 +35,16 @@ from starlette.responses import Response
 
 from core.utils.logging import configure_logging, get_logger, make_processor_formatter
 from core.version import APP_VERSION
+from core.input_contract import (
+    input_schema_document,
+    normalize_input_contract,
+    project_legacy_parameters,
+)
+from core.source_authority_ledger import (
+    build_source_authority_ledger,
+    resolve_input_selectors,
+    resolve_selector,
+)
 from desktop.default_env import apply_default_env
 
 # On Korean/legacy Windows the console encoding defaults to cp949, which cannot
@@ -70,8 +82,14 @@ async def _lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
 
 app = FastAPI(title="Auto-Tessell Desktop", version=APP_VERSION, lifespan=_lifespan)
 
+
+@app.get("/api/input-schema/v1")
+async def get_input_schema_v1() -> dict[str, Any]:
+    """Return the server-owned native input contract/UI metadata."""
+    return input_schema_document()
+
 # ---------------------------------------------------------------------------
-# CORS — allow browser-based and Godot HTML5 clients
+# CORS — allow browser-based clients
 # ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
@@ -193,6 +211,7 @@ def _create_job(input_filename: str) -> dict[str, Any]:
         # Cooperative-cancellation flag, set by POST /jobs/{id}/cancel and
         # polled inside the pipeline progress callback.
         "cancel_event": threading.Event(),
+        "source_ledger": None,
     }
     _jobs[job_id] = job
     return job
@@ -201,6 +220,23 @@ def _create_job(input_filename: str) -> dict[str, Any]:
 def _touch_job(job: dict[str, Any]) -> None:
     """Update the last-activity timestamp so TTL is measured from last use."""
     job["updated_at"] = time.time()
+
+
+def _source_ledger_for_job(job: dict[str, Any]) -> dict[str, Any]:
+    """Return a cached, digest-bound source ledger for the active upload."""
+    input_path = Path(job.get("input_path", ""))
+    cached = job.get("source_ledger")
+    if isinstance(cached, dict) and cached.get("source_digest"):
+        try:
+            current = hashlib.sha256(input_path.read_bytes()).hexdigest()
+        except OSError:
+            current = None
+        if current == cached.get("source_digest"):
+            return cached
+    ledger = build_source_authority_ledger(input_path)
+    job["source_ledger"] = ledger
+    _touch_job(job)
+    return ledger
 
 
 # ---------------------------------------------------------------------------
@@ -514,6 +550,26 @@ async def get_job(job_id: str) -> JSONResponse:
         "result": job["result"],
         "error": job["error"],
     })
+
+
+@app.get("/jobs/{job_id}/source-ledger")
+async def get_source_ledger(job_id: str) -> JSONResponse:
+    """Return the digest-bound source identity ledger for an uploaded job."""
+    job = _jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+    _touch_job(job)
+    try:
+        ledger = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: _source_ledger_for_job(job)
+        )
+    except Exception as exc:  # noqa: BLE001 — fail closed with no fabricated IDs
+        log.warning("source_ledger_failed", job_id=job_id, error=str(exc))
+        return JSONResponse({
+            "status": "unavailable",
+            "error": f"source ledger unavailable: {type(exc).__name__}",
+        }, status_code=200)
+    return JSONResponse(ledger)
 
 
 @app.post("/jobs/{job_id}/cancel")
@@ -830,6 +886,37 @@ def _build_run_kwargs(
         "write_of_case": True,
     }
 
+    def _contract_engine() -> str:
+        candidate = str(tier or "").strip().lower()
+        if candidate in {"tier_native_tet", "native_tet"}:
+            return "native_tet"
+        if candidate in {"tier_native_hex", "native_hex"}:
+            return "native_hex"
+        if candidate in {"tier_native_poly", "native_poly"}:
+            return "native_poly"
+        if candidate in {"tier_native_tri_surface", "native_tri_surface"}:
+            return "native_tri"
+        return {
+            "tet": "native_tet",
+            "hex_dominant": "native_hex",
+            "poly": "native_poly",
+        }.get(str(mesh_type).lower(), "native_tet")
+
+    # New clients send the complete versioned envelope. Normalize it once at
+    # the WebSocket boundary and retain both the envelope and a compatibility
+    # projection for the current native wrappers.
+    raw_contract = extra.get("input_config")
+    if raw_contract is not None:
+        normalized = normalize_input_contract(
+            raw_contract,
+            engine=_contract_engine(),
+            strict=True,
+        )
+        kwargs["input_config"] = normalized.config
+        tsp["input_config"] = normalized.config
+        tsp["input_parameter_report"] = normalized.report
+        tsp.update(project_legacy_parameters(normalized.config, _contract_engine()))
+
     def _pos_float(key: str) -> float | None:
         val = extra.get(key)
         try:
@@ -853,6 +940,40 @@ def _build_run_kwargs(
         except (TypeError, ValueError):
             return None
         return i if i >= 0 else None
+
+    def _legacy_has_value(key: str) -> bool:
+        value = extra.get(key)
+        if value is None or value == "":
+            return False
+        # A zero BL count is an explicit user instruction. Other legacy zero
+        # values retain the old compatibility meaning of "not specified".
+        if key == "bl_layers":
+            try:
+                return int(float(value)) >= 0
+            except (TypeError, ValueError):
+                return False
+        return value != 0
+
+    if raw_contract is None:
+        legacy_keys = {
+            "max_cells", "target_cells", "element_size", "base_cell_size",
+            "min_cell_size", "max_cell_size", "quality_profile", "bl_layers",
+            "bl_first_height", "bl_last_height", "bl_total_thickness",
+            "bl_growth_ratio", "bl_spacing_mode", "bl_wall_face_groups",
+            "bl_wall_edge_groups", "sizing_growth_rate",
+        }
+        if any(_legacy_has_value(key) for key in legacy_keys if key in extra):
+            legacy = {key: extra[key] for key in legacy_keys if key in extra}
+            normalized = normalize_input_contract(
+                None,
+                legacy=legacy,
+                engine=_contract_engine(),
+                strict=False,
+            )
+            kwargs["input_config"] = normalized.config
+            tsp["input_config"] = normalized.config
+            tsp["input_parameter_report"] = normalized.report
+            tsp.update(project_legacy_parameters(normalized.config, _contract_engine()))
 
     # --- 셀 크기 ---
     es = _pos_float("element_size")
@@ -900,6 +1021,7 @@ def _build_run_kwargs(
     _skip = {
         "action", "quality", "tier", "mesh_type", "max_iterations",
         "boolean_operation",
+        "input_config",
         "element_size", "base_cell_size", "max_cells", "bl_layers",
         "no_repair", "force_remesh", "surface_remesh", "allow_ai_fallback",
         "dry_run", "remesh_engine", "checker_engine", "repair_engine",
@@ -908,13 +1030,169 @@ def _build_run_kwargs(
     for k, v in extra.items():
         if k in _skip:
             continue
-        if v is None or v == "" or v == 0:
+        if v is None or v == "":
             continue
         tsp[k] = v
 
     if tsp:
         kwargs["tier_specific_params"] = tsp
     return kwargs
+
+
+def _native_tri_surface_actual_request(
+    extra: dict[str, Any] | None,
+    *,
+    source_ledger: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Resolve an explicit Native Tri surface request against source authority.
+
+    source_ledger is optional for pure contract tests and legacy callers.
+    The WebSocket route always supplies it, making digest/entity validation a
+    hard ingress gate rather than an adapter-side guess.
+    """
+    def _invalid(reason: str) -> dict[str, Any]:
+        return {"invalid_reason": reason}
+
+    def _int_value(value: Any) -> int:
+        if isinstance(value, bool):
+            raise ValueError("boolean is not an entity id")
+        result = int(value)
+        if result < 0:
+            raise ValueError("negative entity id")
+        return result
+
+    def _resolved(ledger: dict[str, Any], kind: str, ids: list[int]) -> bool:
+        result = resolve_selector(
+            ledger,
+            {"ledger_digest": ledger.get("ledger_digest"), "kind": kind, "ids": ids},
+            pointer="/engine_options/native_tri/actual_surface/" + kind,
+            strict=True,
+        )
+        return result.get("status") == "resolved"
+
+    payload = dict(extra or {})
+    if source_ledger is not None and not isinstance(source_ledger, dict):
+        return _invalid("source_authority_ledger_unavailable")
+    raw = payload.get("input_config")
+    if not isinstance(raw, dict):
+        return None
+    options = raw.get("engine_options")
+    candidates = []
+    if isinstance(options, dict):
+        for namespace in ("native_tri", "tri"):
+            selected = options.get(namespace)
+            if isinstance(selected, dict) and "actual_surface" in selected:
+                candidates.append((namespace, selected.get("actual_surface")))
+    if len(candidates) > 1:
+        return _invalid("ambiguous_native_tri_option_namespace")
+    request = candidates[0][1] if candidates else None
+    if not isinstance(request, dict) or request.get("enabled") is not True:
+        return None
+    if "domain_side_authority_fixture" in request:
+        return _invalid("domain_side_authority_fixture_forbidden")
+    mapping = request.get("mapping")
+    owners = request.get("owner_face_by_edge")
+    if not isinstance(mapping, list) or not isinstance(owners, dict):
+        return _invalid("explicit_surface_mapping_payload_invalid")
+    if not mapping or any(not isinstance(row, dict) for row in mapping) or not owners:
+        return _invalid("explicit_surface_mapping_payload_incomplete")
+    try:
+        normalized = normalize_input_contract(raw, engine="native_tri", strict=True)
+        entries = normalized.config.get("boundary_layers", [])
+        bl = entries[0] if entries and isinstance(entries[0], dict) else {}
+        entity_dimension = str(bl.get("entity_dimension", "edge")).strip().lower()
+        if entity_dimension not in {"edge", "1", "1d"}:
+            return _invalid("native_tri_surface_boundary_layer_requires_wall_edge")
+        mapping_edges = [_int_value(row["source_edge"]) for row in mapping]
+        mapping_faces = [_int_value(row["source_face"]) for row in mapping]
+        if len(set(mapping_edges)) != len(mapping_edges):
+            return _invalid("explicit_surface_mapping_duplicate_edge")
+        owner_map = {_int_value(key): _int_value(value) for key, value in owners.items()}
+        if set(owner_map) != set(mapping_edges):
+            return _invalid("explicit_surface_owner_edge_set_mismatch")
+        if any(owner_map[edge] != face for edge, face in zip(mapping_edges, mapping_faces)):
+            return _invalid("explicit_surface_owner_face_mismatch")
+        ledger_digest = request.get("source_ledger_digest")
+        if source_ledger is not None:
+            if not isinstance(ledger_digest, str) or not ledger_digest:
+                return _invalid("source_ledger_digest_required")
+            if ledger_digest != source_ledger.get("ledger_digest"):
+                return _invalid("source_ledger_digest_mismatch")
+            source_format = str((source_ledger.get("source") or {}).get("format", "")).lower()
+            if source_format not in {"step", "stp", "iges", "igs", "brep"}:
+                return _invalid("native_tri_actual_surface_requires_cad_brep_ledger")
+            if not _resolved(source_ledger, "cad_edge", mapping_edges):
+                return _invalid("explicit_surface_mapping_edge_unavailable")
+            if not _resolved(source_ledger, "cad_face", mapping_faces):
+                return _invalid("explicit_surface_mapping_face_unavailable")
+        return {
+            "source_ledger_digest": ledger_digest,
+            "mapping": [dict(row) for row in mapping],
+            "owner_face_by_edge": owner_map,
+            "entity_dimension": "edge",
+            "requested_layers": int(bl.get("layers", 0)),
+            "first_height": bl.get("first_height"),
+            "growth_ratio": float(bl.get("growth_rate", 1.0)),
+        }
+    except (TypeError, ValueError, OverflowError):
+        return _invalid("explicit_surface_mapping_contract_rejected")
+
+
+
+def _native_tri_surface_product_boundary(extra: dict[str, Any] | None) -> dict[str, Any]:
+    """Return an honest pre-orchestrator refusal for the private Tri product."""
+    payload = dict(extra or {})
+    raw = payload.get("input_config")
+    normalized_digest: str | None = None
+    requested_layers = 0
+    if raw is not None:
+        try:
+            normalized = normalize_input_contract(raw, engine="native_tri", strict=True)
+            normalized_digest = str(normalized.report.get("normalized_digest"))
+            entries = normalized.config.get("boundary_layers", [])
+            if entries and isinstance(entries[0], dict):
+                requested_layers = int(entries[0].get("layers", 0))
+        except (TypeError, ValueError) as exc:
+            return {
+                "accepted": False,
+                "status": "native_tri_surface_route_refused",
+                "reason": f"input_contract_rejected:{type(exc).__name__}",
+                "product": "native_tri_surface",
+                "route_selected": True,
+                "independent_route": False,
+                "publication_eligible": False,
+                "artifact_emitted": False,
+                "candidate_discarded": True,
+                "requested_boundary_layers": requested_layers,
+                "actual_boundary_layers": 0,
+                "normalized_input_digest": None,
+                "contract": "autotessell/native-tri-surface-boundary/v1",
+            }
+    elif payload.get("bl_layers") is not None:
+        try:
+            requested_layers = max(0, int(payload["bl_layers"]))
+        except (TypeError, ValueError):
+            requested_layers = 0
+    reason = (
+        "native_tri_surface_wall_edge_bl_writer_unavailable"
+        if requested_layers > 0
+        else "native_tri_surface_authority_bound_route_unavailable"
+    )
+    return {
+        "accepted": False,
+        "status": "native_tri_surface_route_refused",
+        "reason": reason,
+        "product": "native_tri_surface",
+        "route_selected": True,
+        "independent_route": False,
+        "publication_eligible": False,
+        "artifact_emitted": False,
+        "candidate_discarded": True,
+        "requested_boundary_layers": requested_layers,
+        "actual_boundary_layers": 0,
+        "normalized_input_digest": normalized_digest,
+        "contract": "autotessell/native-tri-surface-boundary/v1",
+    }
 
 
 async def _run_mesh_pipeline(
@@ -934,6 +1212,58 @@ async def _run_mesh_pipeline(
     파이프라인은 별도 스레드에서 동작하며, ``progress_callback`` 이
     스레드-세이프하게 WebSocket 으로 진행률을 push 한다.
     """
+    if str(tier or "").strip().lower() in {
+        "native_tri_surface", "tier_native_tri_surface"
+    }:
+        try:
+            source_ledger = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: _source_ledger_for_job(job)
+            )
+            actual_request = _native_tri_surface_actual_request(
+                extra_params, source_ledger=source_ledger
+            )
+        except Exception:  # noqa: BLE001 — surface ingress fails closed
+            actual_request = {"invalid_reason": "source_authority_ledger_unavailable"}
+        if actual_request is not None and "invalid_reason" not in actual_request:
+            from core.preprocessor.native_tri.actual_surface_product import (
+                run_native_tri_actual_cad_surface_product,
+            )
+            target_root = Path(job["work_dir"]) / "native_tri_surface_evidence"
+            actual = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: run_native_tri_actual_cad_surface_product(
+                    job["input_path"], target_root,
+                    explicit_mapping=actual_request["mapping"],
+                    owner_face_by_edge=actual_request["owner_face_by_edge"],
+                    requested_layers=actual_request["requested_layers"],
+                    first_height=actual_request["first_height"],
+                    growth_ratio=actual_request["growth_ratio"],
+                    explicit_route=True,
+                ),
+            )
+            message = "Native Tri surface evidence-only route: " + str(actual.get("reason", actual.get("status")))
+            job["status"] = "completed" if actual.get("accepted") else "failed"
+            job["error"] = None if actual.get("accepted") else message
+            job["result"] = {"success": False, "verdict": "NATIVE_TRI_SURFACE_EVIDENCE_ONLY", **actual}
+            _touch_job(job)
+            await ws.send_json({"type": "log", "level": "info", "message": f"[Server] {message}"})
+            await ws.send_json({"type": "result", "success": False, "verdict": "NATIVE_TRI_SURFACE_EVIDENCE_ONLY", "product": "native_tri_surface", "evidence": actual})
+            return
+        if actual_request is not None and "invalid_reason" in actual_request:
+            boundary = {**_native_tri_surface_product_boundary(extra_params), "reason": actual_request["invalid_reason"]}
+        else:
+            boundary = _native_tri_surface_product_boundary(extra_params)
+        message = "Native Tri surface product is private/default-off: " + str(boundary["reason"])
+        job["status"] = "failed"
+        job["error"] = message
+        _touch_job(job)
+        await ws.send_json({"type": "log", "level": "error", "message": f"[Server] {message}"})
+        await ws.send_json({"type": "error", "message": message, "product_boundary": boundary})
+        await ws.send_json({
+            "type": "result", "success": False, "verdict": "NATIVE_TRI_SURFACE_ROUTE_REFUSED",
+            "message": message, "product_boundary": boundary,
+        })
+        return
     # Multi-surface assembly gate (CARD BOOLMERGE5b): union/intersection/difference
     # are supported for mesh_type == "tet" through native_tet. Other mesh families
     # remain rejected until they gain equivalent boolean implementations.
@@ -1054,6 +1384,48 @@ async def _run_mesh_pipeline(
     )
     if additional_input_paths:
         run_kwargs["additional_input_paths"] = additional_input_paths
+
+    # Source-bound preflight runs before any native generator.  Explicit
+    # contracts are strict by default; legacy flat payloads stay compatibility
+    # mode and cannot make a release claim.  Unresolved BL/local selectors are
+    # never converted into a lower layer count or a guessed wall.
+    input_resolution: dict[str, Any] | None = None
+    source_ledger: dict[str, Any] | None = None
+    input_config = run_kwargs.get("input_config")
+    if isinstance(input_config, dict):
+        source_ledger = await loop.run_in_executor(
+            None, lambda: _source_ledger_for_job(job)
+        )
+        execution = input_config.get("execution")
+        execution = execution if isinstance(execution, dict) else {}
+        strict_release = bool(execution["strict_release"]) if "strict_release" in execution else "_compatibility" not in input_config
+        input_resolution = resolve_input_selectors(
+            input_config, source_ledger, strict=strict_release
+        )
+        work_dir = Path(job["work_dir"])
+        (work_dir / "source_authority_ledger.json").write_text(
+            json.dumps(source_ledger, indent=2, sort_keys=True, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        (work_dir / "input_parameter_resolution.json").write_text(
+            json.dumps(input_resolution, indent=2, sort_keys=True, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        await ws.send_json({"type": "preflight", "source_ledger": source_ledger, "input_parameter_resolution": input_resolution})
+        if not input_resolution["can_run"]:
+            message = "입력 selector authority preflight 실패: " + "; ".join(
+                str(item.get("reason", item.get("status")))
+                for item in input_resolution.get("failed", [])
+            )
+            job["status"] = "failed"
+            job["error"] = message
+            _touch_job(job)
+            await ws.send_json({"type": "error", "message": message, "input_parameter_resolution": input_resolution})
+            await ws.send_json({"type": "result", "success": False, "verdict": "INPUT_AUTHORITY_REJECTED", "message": message, "input_parameter_resolution": input_resolution})
+            return
+        run_kwargs["source_authority_ledger"] = source_ledger
+        run_kwargs["input_parameter_resolution"] = input_resolution
+
     orchestrator = PipelineOrchestrator()
 
     # Stream every engine-level log record (tier iterations, BL passes,
@@ -1178,6 +1550,18 @@ async def _run_mesh_pipeline(
         verdict_str = "FAIL"
         cm = None
 
+    _parameter_report = None
+    try:
+        _parameter_report = (run_kwargs.get("tier_specific_params") or {}).get(
+            "input_parameter_report"
+        )
+    except Exception:
+        _parameter_report = None
+    if isinstance(_parameter_report, dict) and input_resolution is not None:
+        _parameter_report = dict(_parameter_report)
+        _parameter_report["source_ledger_digest"] = (source_ledger or {}).get("ledger_digest")
+        _parameter_report["input_parameter_resolution"] = input_resolution
+
     if result.success:
         await send_progress("done", 1.0, f"완료! {verdict_str}")
         job["status"] = "completed"
@@ -1187,6 +1571,7 @@ async def _run_mesh_pipeline(
             "cells": cm.cells if cm else 0,
             "tier": selected_tier,
             "output_dir": str(output_dir),
+            "parameter_report": _parameter_report,
         }
         _touch_job(job)
         await ws.send_json({
@@ -1199,6 +1584,7 @@ async def _run_mesh_pipeline(
             "max_skewness": cm.max_skewness if cm else 0.0,
             "max_aspect_ratio": cm.max_aspect_ratio if cm else 0.0,
             "output_dir": str(output_dir),
+            "parameter_report": _parameter_report,
         })
     else:
         job["status"] = "failed"
@@ -1210,11 +1596,12 @@ async def _run_mesh_pipeline(
             "verdict": verdict_str,
             "message": result.error or "메쉬 생성 실패",
             "tier": selected_tier,
+            "parameter_report": _parameter_report,
         })
 
 
 # ---------------------------------------------------------------------------
-# Mesh data endpoint (for Godot 3D viewer)
+# Mesh data endpoint (for web/Qt 3D viewer)
 # ---------------------------------------------------------------------------
 
 

@@ -56,7 +56,7 @@ Official pybind11 NumPy documentation was consulted for strict typed
 and `std::sort` support one allocation plan and deterministic reduction.  The
 algorithm is an independent first-party implementation.  CGAL, WildMeshing,
 and MMG remain reference-only/no-copy.  No new DOI was required or became
-inaccessible; `third_party/` is unchanged.
+inaccessible; `vendor/dependencies/` is unchanged.
 
 ## Acceptance and measured result
 

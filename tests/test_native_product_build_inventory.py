@@ -21,7 +21,12 @@ def _first_party_targets(cmake: str) -> list[str]:
         flags=re.DOTALL,
     )
     assert match is not None, "first-party native target inventory is missing"
-    return re.findall(r"^\s*(native_[a-z0-9_]+)\s*$", match.group("body"), re.MULTILINE)
+    targets = re.findall(r"^\s*(native_[a-z0-9_]+)\s*$", match.group("body"), re.MULTILINE)
+    targets.extend(re.findall(
+        r"list\(APPEND _AUTOTESSELL_FIRST_PARTY_NATIVE_TARGETS (native_[a-z0-9_]+)\)",
+        cmake,
+    ))
+    return targets
 
 
 def test_clean_install_inventory_equals_shipped_abi_contract() -> None:
@@ -30,7 +35,7 @@ def test_clean_install_inventory_equals_shipped_abi_contract() -> None:
     targets = _first_party_targets(cmake)
 
     assert set(targets) == set(shipped)
-    assert len(targets) == 8
+    assert len(targets) == 15
     assert len(targets) == len(set(targets))
     assert "native_metrics" in targets
     assert "triangle_surface_topology_audit" in shipped["native_metrics"]["public_symbols"]

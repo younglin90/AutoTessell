@@ -10,6 +10,7 @@ per-quality 기본값 획득.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import time
 from pathlib import Path
@@ -19,6 +20,7 @@ import numpy as np
 
 from core.schemas import MeshStats, MeshStrategy, QualityLevel, TierAttempt
 from core.utils.logging import get_logger
+from core.native_input_runtime import contract_receipt, resolve_native_runtime
 
 log = get_logger(__name__)
 
@@ -360,7 +362,22 @@ def run_native_tier(
             error_message=f"surface source read failed: {exc}",
         )
 
+    # Resolve the versioned contract before target-count heuristics.  Explicit
+    # sizing is a real native input; it must not be replaced by the soft count
+    # estimator below.  The projection also gives the post-run receipt a
+    # complete applied/pending/unsupported ledger.
+    _tsp = getattr(strategy, "tier_specific_params", None) or {}
+    _input_config = _tsp.get("input_config") if isinstance(_tsp, dict) else None
+    _runtime_projection = resolve_native_runtime(_input_config, tier_name)
     target_edge = _parse_target_edge(strategy)
+    _runtime_edge = _runtime_projection.runner_kwargs.get("target_edge_length")
+    if _runtime_edge is not None:
+        target_edge = float(_runtime_edge)
+    if target_edge is not None:
+        if _runtime_projection.size_min is not None:
+            target_edge = max(float(target_edge), _runtime_projection.size_min)
+        if _runtime_projection.size_max is not None:
+            target_edge = min(float(target_edge), _runtime_projection.size_max)
 
     # N-driven edge: when the user gives a target cell budget, derive the tet
     # edge from it so N actually controls cell count. The strategist's auto
@@ -368,7 +385,7 @@ def run_native_tier(
     # then stalled for 30s+ in the aspect-ratio evaluator (the "tet+BL 안됨" bug).
     _tsp = getattr(strategy, "tier_specific_params", None) or {}
     _n_target = _tsp.get("target_cells") or _tsp.get("max_cells")
-    if _n_target:
+    if _n_target and not _runtime_projection.explicit_base_size:
         try:
             _edge_n = _edge_from_target_cells(
                 m_vertices, m_faces, tier_name, int(_n_target)
@@ -424,6 +441,7 @@ def run_native_tier(
         "boolean_operation",
         "source_physical_group_names",
         "release_route",        # explicit native release route; forbids fallback
+        "native_poly_source_certificate",
         "bl_layers",               # post-layer budget reservation
         "post_layers_num_layers",  # post-layer budget reservation
         "enable_amips_smooth",     # AMIPS analytic optimizer (beta1350)
@@ -444,13 +462,39 @@ def run_native_tier(
         # C-QUAL-2 / beta2385: tier-aware Phase A recovery iterations.
         "recovery_iterations",
     }
+    _TIER_PARAM_KEYS.add("input_config")
+    _TIER_PARAM_KEYS.add("input_parameter_report")
+    try:
+        from core.native_option_capabilities import _KNOWN
+        for _capability_keys in _KNOWN.values():
+            _TIER_PARAM_KEYS.update(_capability_keys)
+    except Exception:
+        # The runner remains usable when capability metadata is unavailable.
+        pass
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:
         if k in tsp:
             params[k] = tsp[k]
 
+    # Contract-derived runner values are applied after the quality defaults and
+    # before explicit legacy kwargs.  This is the one place where common
+    # sizing/optimization controls enter every native route consistently.
+    for _key, _value in _runtime_projection.runner_kwargs.items():
+        if _key != "target_edge_length":
+            params[_key] = _value
+
     # extra_kwargs 가 최상위 우선
     params.update(dict(extra_kwargs or {}))
+    _source_certificate = tsp.get("native_poly_source_certificate")
+    if isinstance(_source_certificate, dict):
+        _transaction_certificate = dict(_source_certificate)
+        try:
+            _transaction_certificate["preprocessed_ingress_sha256"] = hashlib.sha256(
+                preprocessed_path.read_bytes()
+            ).hexdigest()
+        except OSError:
+            _transaction_certificate["preprocessed_ingress_sha256"] = None
+        params["native_poly_source_certificate"] = _transaction_certificate
     params["target_edge_length"] = target_edge
     if source_ingress:
         group_names = tsp.get("source_physical_group_names")
@@ -483,6 +527,76 @@ def run_native_tier(
     elapsed = time.monotonic() - t_start
 
     success = bool(getattr(res, "success", False))
+    _quality_gate_error: str | None = None
+    _quality_values = {
+        "max_skewness": getattr(res, "max_skewness", None),
+        "max_non_orthogonality_deg": getattr(
+            res,
+            "max_non_orthogonality_deg",
+            getattr(res, "max_non_ortho", None),
+        ),
+        "max_aspect_ratio": getattr(
+            res,
+            "max_aspect",
+            getattr(res, "max_aspect_ratio", None),
+        ),
+    }
+    _quality_failures: list[dict[str, Any]] = []
+    for _metric, (_pointer, _limit) in _runtime_projection.quality_limits.items():
+        _actual = _quality_values.get(_metric)
+        try:
+            _actual_f = float(_actual)
+        except (TypeError, ValueError):
+            _actual_f = -1.0
+        if not math.isfinite(_actual_f) or _actual_f < 0.0:
+            _runtime_projection.applied.pop(_pointer, None)
+            _runtime_projection.pending.append(_pointer)
+            continue
+        _runtime_projection.mark_applied(_pointer, _limit)
+        if _actual_f > float(_limit):
+            _quality_failures.append({
+                "pointer": _pointer,
+                "metric": _metric,
+                "actual": _actual_f,
+                "limit": float(_limit),
+            })
+    if _quality_failures:
+        _runtime_projection.quality_violations.extend(_quality_failures)
+        success = False
+        _quality_gate_error = (
+            "native input quality gate failed: "
+            + ", ".join(
+                f"{item['metric']}={item['actual']:.6g}>{item['limit']:.6g}"
+                for item in _quality_failures
+            )
+        )
+    try:
+        from core.native_option_capabilities import receipt_for_run
+
+        _requested_forwarded = {
+            key: tsp[key] for key in _TIER_PARAM_KEYS if key in tsp
+        }
+        if isinstance(_input_config, dict):
+            _parameter_receipt = contract_receipt(
+                _input_config,
+                _runtime_projection,
+                success=success,
+                result=res,
+            )
+        else:
+            _parameter_receipt = receipt_for_run(
+                engine=tier_name,
+                forwarded=_requested_forwarded,
+                success=success,
+                result=res,
+            )
+    except Exception as exc:
+        log.warning("native_parameter_receipt_failed", error=str(exc)[:160])
+        _parameter_receipt = {
+            "engine": tier_name,
+            "records": [],
+            "receipt_error": str(exc),
+        }
     n_cells = int(getattr(res, "n_cells", 0) or 0)
 
     stats = MeshStats(
@@ -501,8 +615,9 @@ def run_native_tier(
             tier=tier_name, status="failed",
             time_seconds=elapsed,
             mesh_stats=stats,
-            error_message=str(getattr(res, "message", "실패")),
+            error_message=_quality_gate_error or str(getattr(res, "message", "실패")),
             mesh_integrity_suspect=bool(getattr(res, "mesh_integrity_suspect", False)),
+            parameter_receipt=_parameter_receipt,
             **_runner_metadata(res),
         )
 
@@ -511,5 +626,6 @@ def run_native_tier(
         time_seconds=elapsed, mesh_stats=stats,
         # C-GUI-3 / beta2413 — propagate integrity flag from native result.
         mesh_integrity_suspect=bool(getattr(res, "mesh_integrity_suspect", False)),
+        parameter_receipt=_parameter_receipt,
         **_runner_metadata(res),
     )

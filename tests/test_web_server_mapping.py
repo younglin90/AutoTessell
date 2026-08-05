@@ -23,6 +23,8 @@ from desktop.server import (  # noqa: E402
     _build_run_kwargs,
     _create_job,
     _jobs,
+    _native_tri_surface_product_boundary,
+    _native_tri_surface_actual_request,
     _ThreadScopedLogHandler,
     app,
 )
@@ -132,7 +134,157 @@ class TestBuildRunKwargs:
         k = _build_run_kwargs("draft", "auto", "tet", 1, None)
         assert k["quality_level"] == "draft"
 
+    def test_native_tri_surface_maps_input_contract_to_native_tri_schema(self):
+        contract = {
+            "schema_version": "1.0",
+            "target": {"mode": "soft", "count": 100},
+            "boundary_layers": [{"layers": 0}],
+        }
+        k = _build_run_kwargs("standard", "native_tri_surface", "surface_tri", 1, {"input_config": contract})
+        assert k["tier_hint"] == "native_tri_surface"
+        assert k["tier_specific_params"]["input_parameter_report"]["engine"] == "native_tri"
 
+    def test_native_tri_surface_explicit_mapping_is_preserved(self):
+        contract = {
+            "schema_version": "1.0",
+            "target": {"mode": "soft"},
+            "boundary_layers": [{"layers": 0}],
+            "engine_options": {"native_tri": {"actual_surface": {
+                "enabled": True,
+                "source_ledger_digest": "ledger-from-upload",
+                "mapping": [{"source_edge": 3, "source_face": 7}],
+                "owner_face_by_edge": {"3": 7},
+            }}},
+        }
+        request = _native_tri_surface_actual_request({"input_config": contract})
+        assert request is not None
+        assert request["mapping"] == [{"source_edge": 3, "source_face": 7}]
+        assert request["owner_face_by_edge"] == {3: 7}
+        assert request["requested_layers"] == 0
+
+    def test_native_tri_surface_rejects_ambiguous_namespace_and_fixture(self):
+        base = {
+            "schema_version": "1.0",
+            "target": {"mode": "soft"},
+            "boundary_layers": [{"layers": 0}],
+            "engine_options": {"native_tri": {"actual_surface": {
+                "enabled": True, "mapping": [{"source_edge": 3, "source_face": 7}],
+                "owner_face_by_edge": {"3": 7}, "domain_side_authority_fixture": True,
+            }}, "tri": {"actual_surface": {"enabled": True}}},
+        }
+        assert _native_tri_surface_actual_request({"input_config": base}) == {
+            "invalid_reason": "ambiguous_native_tri_option_namespace"
+        }
+        del base["engine_options"]["tri"]
+        assert _native_tri_surface_actual_request({"input_config": base}) == {
+            "invalid_reason": "domain_side_authority_fixture_forbidden"
+        }
+
+    def test_native_tri_surface_incomplete_mapping_is_refused(self):
+        contract = {
+            "schema_version": "1.0",
+            "target": {"mode": "soft"},
+            "engine_options": {"native_tri": {"actual_surface": {
+                "enabled": True, "mapping": [], "owner_face_by_edge": {},
+            }}},
+        }
+        request = _native_tri_surface_actual_request({"input_config": contract})
+        assert request == {"invalid_reason": "explicit_surface_mapping_payload_incomplete"}
+
+    @staticmethod
+    def _cad_ledger():
+        return {
+            "ledger_digest": "cad-ledger-1",
+            "source_digest": "source-1",
+            "source": {"format": "step"},
+            "selector_namespaces": {
+                "cad_edge": {"available": True, "id_ranges": [[3, 3]]},
+                "cad_face": {"available": True, "id_ranges": [[7, 7]]},
+            },
+        }
+
+    @staticmethod
+    def _actual_contract(digest="cad-ledger-1"):
+        return {
+            "schema_version": "1.0",
+            "target": {"mode": "soft"},
+            "boundary_layers": [{"layers": 0}],
+            "engine_options": {"native_tri": {"actual_surface": {
+                "enabled": True,
+                "source_ledger_digest": digest,
+                "mapping": [{"source_edge": 3, "source_face": 7}],
+                "owner_face_by_edge": {"3": 7},
+            }}},
+        }
+
+    def test_native_tri_surface_ws_ingress_requires_exact_cad_ledger_binding(self):
+        request = _native_tri_surface_actual_request(
+            {"input_config": self._actual_contract()},
+            source_ledger=self._cad_ledger(),
+        )
+        assert request["source_ledger_digest"] == "cad-ledger-1"
+        assert request["mapping"] == [{"source_edge": 3, "source_face": 7}]
+
+        stale = _native_tri_surface_actual_request(
+            {"input_config": self._actual_contract("stale")},
+            source_ledger=self._cad_ledger(),
+        )
+        assert stale == {"invalid_reason": "source_ledger_digest_mismatch"}
+
+    def test_native_tri_surface_ws_ingress_refuses_non_cad_or_unavailable_ids(self):
+        non_cad = self._cad_ledger()
+        non_cad["source"] = {"format": "stl"}
+        assert _native_tri_surface_actual_request(
+            {"input_config": self._actual_contract()},
+            source_ledger=non_cad,
+        ) == {"invalid_reason": "native_tri_actual_surface_requires_cad_brep_ledger"}
+
+        unavailable = self._cad_ledger()
+        unavailable["selector_namespaces"]["cad_edge"] = {
+            "available": False, "id_ranges": []
+        }
+        assert _native_tri_surface_actual_request(
+            {"input_config": self._actual_contract()},
+            source_ledger=unavailable,
+        ) == {"invalid_reason": "explicit_surface_mapping_edge_unavailable"}
+
+
+class TestNativeTriSurfaceProductBoundary:
+    def test_bl0_is_explicit_refusal_without_volume_fallback(self):
+        result = _native_tri_surface_product_boundary({
+            "input_config": {
+                "schema_version": "1.0",
+                "target": {"mode": "soft", "count": 100},
+                "boundary_layers": [{"layers": 0}],
+            }
+        })
+        assert result["accepted"] is False
+        assert result["product"] == "native_tri_surface"
+        assert result["route_selected"] is True
+        assert result["independent_route"] is False
+        assert result["requested_boundary_layers"] == 0
+        assert result["actual_boundary_layers"] == 0
+        assert result["reason"] == "native_tri_surface_authority_bound_route_unavailable"
+
+    def test_bl1_refuses_without_wall_edge_writer_and_preserves_contract_digest(self):
+        result = _native_tri_surface_product_boundary({
+            "input_config": {
+                "schema_version": "1.0",
+                "target": {"mode": "soft"},
+                "boundary_layers": [{
+                    "layers": 1,
+                    "spacing_mode": "first_and_growth",
+                    "first_height": 0.01,
+                    "growth_rate": 1.2,
+                    "wall_edge_groups": ["wall"],
+                }],
+            }
+        })
+        assert result["accepted"] is False
+        assert result["requested_boundary_layers"] == 1
+        assert result["reason"] == "native_tri_surface_wall_edge_bl_writer_unavailable"
+        assert len(result["normalized_input_digest"]) == 64
+        assert result["artifact_emitted"] is False
 # ---------------------------------------------------------------------------
 # default_env — shared knobs
 # ---------------------------------------------------------------------------

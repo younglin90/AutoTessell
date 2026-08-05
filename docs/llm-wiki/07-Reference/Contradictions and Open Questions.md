@@ -3,7 +3,7 @@ type: ledger
 status: active
 updated: 2026-07-26
 stability: working-tree
-source_paths: [CLAUDE.md, ROADMAP.md, SPEC.md, frontend/app/page.tsx, core/pipeline/orchestrator.py, core/generator/native_tet/mesher.py]
+source_paths: [CLAUDE.md, ROADMAP.md, SPEC.md, products/web/app/app/page.tsx, core/pipeline/orchestrator.py, core/generator/native_tet/mesher.py]
 tags: [contradictions, debt, open-questions]
 ---
 

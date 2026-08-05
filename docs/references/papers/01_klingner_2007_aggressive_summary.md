@@ -4,7 +4,7 @@
 > Roundtable* (2007) 3–23. PDF: people.eecs.berkeley.edu/~jrs/papers/aggress.pdf
 > **관련 문제:** native_tet 의 max_skew 10.02 (draft 임계 8.0 초과) — solid 는 됐으나
 > 내부 품질이 나쁘다. 우리는 sliver 제거를 **8번 시도해 전부 실패**했다
-> (harness/attempts_catalog.md). 이 논문이 그 실패의 원인과 올바른 스케줄을 제시한다.
+> (research/quality-harness/attempts_catalog.md). 이 논문이 그 실패의 원인과 올바른 스케줄을 제시한다.
 
 ---
 

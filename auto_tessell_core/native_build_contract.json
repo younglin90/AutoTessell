@@ -72,6 +72,7 @@
         "audit_tet_primal_conformity",
         "build_tet_incidence_maps",
         "build_topology",
+        "canonicalize_internal_winding_or_refuse",
         "compute_tet_dual_points",
         "face_flip_mask",
         "face_plane_geometry",
@@ -79,6 +80,22 @@
       ],
       "sources": [
         "auto_tessell_core/native_polymesh_bind.cpp"
+      ]
+    },
+    "native_poly_quality_relocation": {
+      "public_symbols": [
+        "relocate_poly_quality"
+      ],
+      "sources": [
+        "auto_tessell_core/native_poly_quality_relocation_bind.cpp"
+      ]
+    },
+    "native_poly_bl_local_front_qopt": {
+      "public_symbols": [
+        "optimize_local_front"
+      ],
+      "sources": [
+        "auto_tessell_core/native_poly_bl_local_front_qopt_bind.cpp"
       ]
     },
     "native_snap": {
@@ -130,6 +147,55 @@
       ],
       "sources": [
         "auto_tessell_core/native_tet_qopt_bind.cpp"
+      ]
+    },
+    "native_tri_quality_repair": {
+      "public_symbols": [
+        "admit_surface_edit",
+        "propose_worst_fan_patch",
+        "repair_surface_quality"
+      ],
+      "sources": [
+        "auto_tessell_core/native_tri_quality_repair_bind.cpp"
+      ]
+    },
+    "native_artifact_fingerprint": {
+      "public_symbols": [
+        "fingerprint_tree",
+        "sha256_bytes"
+      ],
+      "sources": [
+        "auto_tessell_core/native_artifact_fingerprint_bind.cpp",
+        "auto_tessell_core/surface_bl_front_shared/brep_evidence_sha256.hpp"
+      ]
+    },
+    "native_hex_boundary_receipt": {
+      "public_symbols": [
+        "audit_native_hex_brep_boundary"
+      ],
+      "sources": [
+        "auto_tessell_core/native_hex_boundary_receipt_bind.cpp",
+        "auto_tessell_core/surface_bl_front_shared/brep_evidence_sha256.hpp"
+      ]
+    },
+    "native_atomic_publish": {
+      "public_symbols": [
+        "discard_stage",
+        "make_stage",
+        "publish_stage"
+      ],
+      "sources": [
+        "auto_tessell_core/native_atomic_publish_bind.cpp"
+      ]
+    },
+    "native_bl_identity": {
+      "public_symbols": [
+        "evaluate_bl_identity_record",
+        "evaluate_route_evidence_matrix_v1",
+        "normalize_bl0_identity_capsule_v1"
+      ],
+      "sources": [
+        "auto_tessell_core/native_bl_identity_bind.cpp"
       ]
     }
   },

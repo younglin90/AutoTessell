@@ -33,4 +33,4 @@ fixture, success condition, or tolerance changed.
 
 Rollback conditions: any layer extrusion for BL=0, cell count other than 27
 for this frozen fixture, invalid cell, nondeterministic output, source array
-mutation, tolerance substitution, fixture change, or `third_party/` change.
+mutation, tolerance substitution, fixture change, or `vendor/dependencies/` change.

@@ -1,6 +1,6 @@
 """CARD BOOLMERGE2 — core/generator/native_tet/boolean_merge.filter_tets_to_union 단위 테스트.
 
-정본 실험(harness/plan_boolmerge2.md)이 grid N=16~40 에서 실측 재현한 병합 볼륨
+정본 실험(research/quality-harness/plan_boolmerge2.md)이 grid N=16~40 에서 실측 재현한 병합 볼륨
 복원(union filter -> 실제 병합 볼륨 ~1.82, 해석값 1.875)을 seed 고정 24^3 grid 로
 재확인한다. 대조군(단일 surface 필터 -> ~1.0)과 비교해 병합이 실제로 일어남을
 함께 검증한다.

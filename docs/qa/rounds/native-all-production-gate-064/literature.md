@@ -25,11 +25,11 @@ What one common production mechanism advances every native product and surface m
    - Curvature attenuation is bounded by local layer height to avoid negative Jacobians; only valid fronts advance.
    - Transfer: intent seals exact metric/corner/attenuation controls; missing sector refuses. Variable 2-D local layer count is not permission to violate user's requested complete-layer contract.
 
-3. H. Ye et al., *Robust full-layer prismatic mesh generation based on bijective mapping*, JCP 524 (2025) 113744, DOI `10.1016/j.jcp.2025.113744`; `papers/pdf/61_ye_2025_bijective_prismatic_bl.pdf`, pp. 1-3.
+3. H. Ye et al., *Robust full-layer prismatic mesh generation based on bijective mapping*, JCP 524 (2025) 113744, DOI `10.1016/j.jcp.2025.113744`; `docs/references/papers/source/pdf/61_ye_2025_bijective_prismatic_bl.pdf`, pp. 1-3.
    - Full layers need global positive-volume/bijective safeguards; local ALM termination leaves distorted pyramids and narrow residuals.
    - Transfer: writer token binds layer count/schedule/walls and positive-volume gates atomically. It does not justify arbitrary 3-D success claims for existing writers.
 
-4. J. R. Shewchuk, *Adaptive Precision Floating-Point Arithmetic and Fast Robust Predicates for Computational Geometry* (1997); `papers/pdf/38_shewchuk_1997_robust_predicates.pdf` was located but not re-read.
+4. J. R. Shewchuk, *Adaptive Precision Floating-Point Arithmetic and Fast Robust Predicates for Computational Geometry* (1997); `docs/references/papers/source/pdf/38_shewchuk_1997_robust_predicates.pdf` was located but not re-read.
    - Follow-on writer mutation cards need robust orientation predicates; 064 cannot substitute for them.
 
 ## Equations or mechanisms adopted

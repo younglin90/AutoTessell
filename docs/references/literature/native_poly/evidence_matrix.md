@@ -741,6 +741,6 @@ On the fixed `669`-point, `1631`-tet sphere primal, five alternating pairs show
 `+2.23%`. Every run retains the frozen `669` cells, `5473` points, zero invalid
 stars, five-file topology/provenance bytes, and mesh digest. Focused tests pass
 `6/6`; a fresh GCC 13.3 Release C++23 `-Werror` build passes. No external code,
-dependency, or `third_party/` change is present. This is
+dependency, or `vendor/dependencies/` change is present. This is
 `L1_PASS / RUNTIME_READY`; full campaign regression and corpus promotion remain
 open. See `poly_batch_hull_face_cpp23_evidence_2026-07-31.md`.

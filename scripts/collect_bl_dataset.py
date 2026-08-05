@@ -7,7 +7,7 @@ Usage:
     python3 scripts/collect_bl_dataset.py
     python3 scripts/collect_bl_dataset.py --stl-dir /tmp/ml_train_stls
 
-Output: models/bl_dataset.npz with keys: features (N, 12), gaps (N,).
+Output: assets/models/bl_dataset.npz with keys: features (N, 12), gaps (N,).
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ import numpy as np
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--stl-dir", default="/tmp/ml_train_stls")
-    ap.add_argument("--output", default="models/bl_dataset.npz")
+    ap.add_argument("--output", default="assets/models/bl_dataset.npz")
     ap.add_argument("--max-meshes", type=int, default=20)
     args = ap.parse_args()
 

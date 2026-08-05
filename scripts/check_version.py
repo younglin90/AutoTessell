@@ -14,7 +14,7 @@ from pathlib import Path
 
 _CANONICAL_PATTERN = r'^APP_VERSION\s*=\s*["\']([^"\']+)["\']\s*$'
 _PYTHON_CONSUMERS = (
-    "backend/version.py",
+    "products/web/api/version.py",
     "desktop/qt_main.py",
     "desktop/qt_app/main_window.py",
 )
@@ -37,8 +37,8 @@ def canonical_version(root: Path) -> str:
 
 
 def _static_versions(root: Path) -> dict[str, str]:
-    frontend = json.loads((root / "frontend/package.json").read_text(encoding="utf-8"))
-    frontend_lock = json.loads((root / "frontend/package-lock.json").read_text(encoding="utf-8"))
+    frontend = json.loads((root / "products/web/app/package.json").read_text(encoding="utf-8"))
+    frontend_lock = json.loads((root / "products/web/app/package-lock.json").read_text(encoding="utf-8"))
     electron = json.loads((root / "desktop/electron/package.json").read_text(encoding="utf-8"))
     return {
         "scripts/installer.iss": _extract(
@@ -46,9 +46,9 @@ def _static_versions(root: Path) -> dict[str, str]:
             (root / "scripts/installer.iss").read_text(encoding="utf-8"),
             "scripts/installer.iss",
         ),
-        "frontend/package.json": frontend["version"],
-        "frontend/package-lock.json": frontend_lock["version"],
-        'frontend/package-lock.json packages[""]': frontend_lock["packages"][""]["version"],
+        "products/web/app/package.json": frontend["version"],
+        "products/web/app/package-lock.json": frontend_lock["version"],
+        'products/web/app/package-lock.json packages[""]': frontend_lock["packages"][""]["version"],
         "desktop/electron/package.json": electron["version"],
     }
 

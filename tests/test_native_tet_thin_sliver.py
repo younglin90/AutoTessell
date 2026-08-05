@@ -1,6 +1,6 @@
 """CARD THINSLIVER1 -- interior degenerate slivers on naca0012 are curable.
 
-Measured (harness/plan_thinsliver1.md): naca0012's 17 degenerate tets
+Measured (research/quality-harness/plan_thinsliver1.md): naca0012's 17 degenerate tets
 (|det|/6 < 1e-9) are 17/17 fully-interior (0 boundary faces) and 14/17 have
 an interior endpoint on their shortest edge -- safely collapsible without
 touching the surface. ``native_tet_degenerate_removal``'s Phase1 (3-2 flip)
@@ -102,7 +102,7 @@ def _boundary_skew_max(poly_dir: Path) -> float:
     """CARD THINSLIVER2 -- pure-python boundary-skew probe (no C-ext).
 
     Reparses the on-disk polyMesh and reproduces the evaluator's boundary
-    skewness formula (harness/plan_thinsliver2.md): for each boundary face,
+    skewness formula (research/quality-harness/plan_thinsliver2.md): for each boundary face,
     skew = |tangential(fc - cc)| / |normal(fc - cc)| where fc is the face
     centroid, cc is the owner cell centroid, projected along the face
     normal.

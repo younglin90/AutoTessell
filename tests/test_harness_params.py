@@ -222,3 +222,37 @@ def test_run_native_tier_tier_specific_params_override(tmp_path: Path) -> None:
     )
     assert captured["seed_density"] == 99  # extra_kwargs 승리
     assert captured["max_iter"] == 7       # tier_specific_params 유지
+
+
+def test_full_input_contract_reaches_native_runner(tmp_path: Path) -> None:
+    stl_path = tmp_path / "tri.stl"
+    stl_path.write_text(
+        "solid tri\nfacet normal 0 0 1\nouter loop\n"
+        "vertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\n"
+        "endloop\nendfacet\nendsolid\n"
+    )
+    captured: dict = {}
+
+    def _capture(vertices, faces, case_dir, **kwargs):  # noqa: ANN001
+        captured.update(kwargs)
+
+        class _R:
+            success = True
+            n_cells = 1
+            n_points = int(len(vertices))
+            n_faces = int(len(faces))
+            message = "captured"
+
+        return _R()
+
+    strategy = _mk_strategy(QualityLevel.DRAFT)
+    strategy.tier_specific_params["input_config"] = {
+        "schema_version": "1.0",
+        "quality": {"max_boundary_skewness": 0.35},
+        "local_controls": [{"selector": {"physical_groups": ["wall"]}}],
+    }
+    run_native_tier(
+        _capture, "tier_native_tet", strategy, stl_path, tmp_path / "case_contract"
+    )
+    assert captured["input_config"]["quality"]["max_boundary_skewness"] == 0.35
+    assert captured["input_config"]["local_controls"][0]["selector"]["physical_groups"] == ["wall"]

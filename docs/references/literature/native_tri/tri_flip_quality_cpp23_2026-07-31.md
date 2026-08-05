@@ -64,7 +64,7 @@ is at least `10x` for a deterministic 50,000-triangle direct batch.
 
 Rollback conditions: any report/decision/hash difference, source mutation,
 invalid or non-finite result, malformed native ABI acceptance, nondeterminism,
-build warning, primary threshold miss, or `third_party/` change.
+build warning, primary threshold miss, or `vendor/dependencies/` change.
 
 Reproduce:
 

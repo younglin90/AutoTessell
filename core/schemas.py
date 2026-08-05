@@ -72,7 +72,7 @@ class AutoRetryMode(StrEnum):
 
 
 # ---------------------------------------------------------------------------
-# GeometryReport  (agents/specs/analyzer.md)
+# GeometryReport  (docs/contracts/analyzer.md)
 # ---------------------------------------------------------------------------
 
 
@@ -169,7 +169,7 @@ class GeometryReport(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# PreprocessedReport  (agents/specs/preprocessor.md)
+# PreprocessedReport  (docs/contracts/preprocessor.md)
 # ---------------------------------------------------------------------------
 
 
@@ -209,7 +209,7 @@ class PreprocessedReport(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# MeshStrategy  (agents/specs/strategist.md)
+# MeshStrategy  (docs/contracts/strategist.md)
 # ---------------------------------------------------------------------------
 
 
@@ -283,7 +283,7 @@ class MeshStrategy(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# GeneratorLog  (agents/specs/generator.md)
+# GeneratorLog  (docs/contracts/generator.md)
 # ---------------------------------------------------------------------------
 
 
@@ -321,6 +321,9 @@ class TierAttempt(BaseModel):
     contract: str | None = None
     contract_details: dict[str, Any] = Field(default_factory=dict)
     fallback_reason: str | None = None
+    # Native input application evidence; populated only by routes that emit a
+    # post-run wrapper/kernel receipt.
+    parameter_receipt: dict[str, Any] = Field(default_factory=dict)
     native_bl_phase2: "NativeBLPhase2Stats | None" = None  # beta76
     # C-GUI-3 / beta2413 — mesh_integrity_suspect (3-engine catastrophic flag).
     mesh_integrity_suspect: bool = False
@@ -343,7 +346,7 @@ class GeneratorLog(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# QualityReport  (agents/specs/evaluator.md)
+# QualityReport  (docs/contracts/evaluator.md)
 # ---------------------------------------------------------------------------
 
 

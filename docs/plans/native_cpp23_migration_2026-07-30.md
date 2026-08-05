@@ -15,13 +15,13 @@ Every port must preserve, before performance is considered:
 4. deterministic topology and provenance hashes;
 5. target-cell and boundary-layer reporting semantics, including layer zero.
 
-No `third_party/` source is modified.  GPL adapters remain outside the future
+No `vendor/dependencies/` source is modified.  GPL adapters remain outside the future
 MIT-eligible native-core boundary.  New native code is first-party and records
 its provenance independently.
 
 ## Current architecture inventory
 
-- First-party Python: roughly 419 core modules plus CLI/backend/desktop scripts.
+- First-party Python: roughly 419 core modules plus CLI/products/web/api/desktop scripts.
 - First-party native extension sources: metrics, polyMesh topology, snapping,
   surface padding, hex quality, tetrahedral predicates, and tet QOPT.
 - Before this card, the build exposed only five native targets.  The existing
@@ -456,7 +456,7 @@ WG21 `std::span` guidance supports the non-owning contiguous face view, and
 current pybind11 GIL guidance requires all Python-object access to stay outside
 the released region.  Both were used as design references only; no external
 source was copied.  Fast-math, parallel reductions, tolerance changes, and
-`third_party/` edits remain prohibited for this validity gate.
+`vendor/dependencies/` edits remain prohibited for this validity gate.
 
 ## Surface self-intersection exact broad-phase card
 
@@ -530,7 +530,7 @@ repair, and native-tri validation reports `136 passed`; the two existing
 all-NaN metric warnings remain unrelated.
 
 No fast-math, parallel reduction, epsilon change, adjacency-policy merge,
-geometry mutation, `third_party/` edit, or external source was introduced.
+geometry mutation, `vendor/dependencies/` edit, or external source was introduced.
 The C++ functions are independently derived from the existing project Python
 oracles and verified against them.
 
@@ -562,7 +562,7 @@ suite reports `54 passed`.
 Non-finite native ABI input now raises a validation error instead of allowing
 NaNs to flow through the geometric predicate.  No direction normalization,
 epsilon change, fast-math, parallel reduction, geometry mutation, external
-code, or `third_party/` change was introduced.  A following production card
+code, or `vendor/dependencies/` change was introduced.  A following production card
 will replace the still-quadratic incident-face mask and the legacy
 `20,000`-triangle fail-open cap with an indexed conservative broad phase; that
 semantic change is intentionally not mixed into this parity card.
@@ -605,7 +605,7 @@ routing pass `98`; representative native-BL and numerical-quality tests pass
 `81` with one known baseline poly-hybrid checker defect deselected.
 
 No input coordinate, face, patch, physical-group meaning, requested layer
-count, geometric epsilon, external dependency, or `third_party/` file changed.
+count, geometric epsilon, external dependency, or `vendor/dependencies/` file changed.
 No fast-math or parallel reduction is used.
 
 ## Native checker oriented-volume evidence card
@@ -678,7 +678,7 @@ routing, and checker tests report `26 passed, 3 skipped`; the wider boundary-
 layer batch reports `143 passed` plus eight failures reproduced unchanged on the
 pre-card master (three persistence defects and five tet-subdivision contract
 defects).  No geometry threshold, topology contract, dependency, external code,
-or `third_party/` file changed.
+or `vendor/dependencies/` file changed.
 
 ## Native boundary-layer final-state persistence card
 
@@ -704,7 +704,7 @@ and joint-on/off matrix keeps maximum displacement at or below the injected
 `1e-3` bound in all four modes.  Focused persistence/provenance/transition tests
 report `40 passed, 3 skipped`; the wider native BL regression reports `172
 passed`.  No topology, wall coordinate, quality threshold, dependency, external
-source, or `third_party/` file changed.
+source, or `vendor/dependencies/` file changed.
 
 ## Boundary-layer compact front-summary card
 
@@ -744,7 +744,7 @@ GCC 13.3 builds the target warning-free in strict C++23 mode with compiler
 extensions disabled.
 
 No surface coordinate, topology threshold, feature cosine threshold, ordering,
-dependency, external implementation, or `third_party/` file changed.  The code
+dependency, external implementation, or `vendor/dependencies/` file changed.  The code
 is independently derived from the existing first-party Python oracle.
 
 ## Boundary-layer fused edge-adjacency card
@@ -775,7 +775,7 @@ writer validation passes `125`.  Generated points, faces, owner, neighbour, and
 boundary files retain byte identity against the fallback.
 
 No geometry, face order, wall patch, topology threshold, dependency, external
-source, or `third_party/` file changed.  GCC 13.3 strict C++23 builds warning-
+source, or `vendor/dependencies/` file changed.  GCC 13.3 strict C++23 builds warning-
 free without fast-math or compiler extensions.
 
 ## Tet CDT audit card
@@ -815,7 +815,7 @@ card must use an isolated first-party-only build profile: eight native modules
 ON, four external adapters forced OFF, strict C++23 targets, explicit top-level
 extension install destinations, and fresh-environment kernel smoke tests on
 Linux and Windows.  Current GPL metadata and matching source-distribution duties
-remain unchanged; no external adapter or `third_party/` source belongs in this
+remain unchanged; no external adapter or `vendor/dependencies/` source belongs in this
 wheel profile.
 
 ## First-party native wheel card
@@ -827,7 +827,7 @@ the eight declared modules, and fails the build on compiler warnings.  A fresh
 environment outside the repository imports and calls every kernel successfully.
 
 The matching source archive contains the exact C++/C/Python sources and build
-configuration needed for those modules, while excluding adapters, `third_party`,
+configuration needed for those modules, while excluding adapters, `vendor/dependencies`,
 binaries, caches, and worktree snapshots.  GPL-3.0-or-later metadata uses PEP 639
 and restricts license files to the root `LICENSE` and `NOTICE`.  Boost headers are
 declared as a BSL-1.0 build-only dependency for the exact Tet predicate module;

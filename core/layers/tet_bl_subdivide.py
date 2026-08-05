@@ -22,8 +22,9 @@ into Tetrahedra"* 의 규칙을 따른다: **각 quad face 의 대각선을 그 
 """
 from __future__ import annotations
 
+import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,7 @@ class TetSubdivResult:
     # callers that depend on the all-tet contract should treat that case
     # as a partial success.
     subdivision_applied: bool = False
+    direct_id_map: dict[str, Any] = field(default_factory=dict)
 
 
 def _identify_prism_cells(
@@ -303,6 +305,13 @@ def subdivide_prism_layers_to_tet(
     owner = np.array(parse_foam_labels(poly_dir / "owner"), dtype=np.int64)
     neighbour = np.array(parse_foam_labels(poly_dir / "neighbour"), dtype=np.int64)
     boundary = parse_foam_boundary(poly_dir / "boundary")
+    _lineage: dict[str, Any] = {}
+    _lineage_path = case_dir / "native_bl_lineage.json"
+    if _lineage_path.is_file():
+        try:
+            _lineage = json.loads(_lineage_path.read_text())
+        except Exception as _lineage_exc:
+            log.warning("native_tet_direct_id_lineage_read_failed", reason=str(_lineage_exc)[:160])
 
     points = np.array(raw_points, dtype=np.float64)
     faces = [list(f) for f in raw_faces]
@@ -784,6 +793,35 @@ def subdivide_prism_layers_to_tet(
     )
     _write_boundary(poly_dir / "boundary", final_boundary_entries)
 
+    _direct_id_map: dict[str, Any] = {
+        "schema": "native-tet-bl-direct-id-map/v1",
+        "records": [],
+    }
+    if _lineage.get("records"):
+        _final_face_by_key = {
+            tuple(sorted(int(v) for v in _face)): int(_fi)
+            for _fi, _face in enumerate(final_faces)
+        }
+        for _rec in _lineage["records"]:
+            _layer_ids = _rec.get("layer_point_ids", [])
+            _wall_key = tuple(sorted(int(v) for v in _layer_ids[0])) if _layer_ids else ()
+            _front_key = tuple(sorted(int(v) for v in _layer_ids[-1])) if _layer_ids else ()
+            _final_cells = []
+            for _pid in _rec.get("prism_cell_ids", []):
+                _mapped = prism_tets.get(int(_pid), ())
+                if _mapped:
+                    _final_cells.extend(int(v) for v in _mapped)
+            _direct_id_map["records"].append({
+                "source_face": int(_rec["source_face"]),
+                "source_vertices": [int(v) for v in _rec.get("source_vertices", [])],
+                "patch_index": int(_rec.get("patch_index", -1)),
+                "owner_cell": int(_rec.get("owner_cell", -1)),
+                "wall_face_ids": [_final_face_by_key[_wall_key]] if _wall_key in _final_face_by_key else [],
+                "front_face_ids": [_final_face_by_key[_front_key]] if _front_key in _final_face_by_key else [],
+                "final_cell_ids": sorted(set(_final_cells)),
+                "layer_count": len(_layer_ids) - 1,
+            })
+
     return TetSubdivResult(
         True,
         time.perf_counter() - t0,
@@ -794,4 +832,5 @@ def subdivide_prism_layers_to_tet(
             f"(total cells={total_cells})"
         ),
         subdivision_applied=True,
+        direct_id_map=_direct_id_map,
     )

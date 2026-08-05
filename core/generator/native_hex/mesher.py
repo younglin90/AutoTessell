@@ -2361,6 +2361,7 @@ def generate_native_hex(
         from core.generator.native_hex.output_source_binding import (
             make_boundary_patch_classifier,
             measure_hex_source_binding,
+            write_hex_source_face_map,
         )
 
         _prov = getattr(source_provenance, "provenance", source_provenance)
@@ -2412,6 +2413,22 @@ def generate_native_hex(
             message=f"polyMesh 쓰기 실패: {exc}",
             n_self_intersect_pre=_pre_mesh_si_count,
         )
+
+    if _source_output_binding is not None:
+        try:
+            _source_map_result = write_hex_source_face_map(
+                case_dir, final_hexes, _source_output_binding
+            )
+            if not _source_map_result.get("accepted"):
+                log.warning(
+                    "native_hex_source_face_map_not_written",
+                    reason=str(_source_map_result.get("reason", "unknown")),
+                )
+        except Exception as _source_map_exc:
+            log.warning(
+                "native_hex_source_face_map_write_failed",
+                reason=str(_source_map_exc)[:240],
+            )
 
     _n_kept = int(stats["num_cells"])
     _phase0_fields = _native_hex_phase0_metrics(

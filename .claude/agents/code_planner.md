@@ -4,7 +4,7 @@ description: |
   Native mesher (tet / hex / poly) 고도화의 다음 1개 카드를 계획.
   논문/SOTA 깊이 조사 → 혁신적 알고리즘 카드 설계 → 작은 단위 변경으로 분할.
   trigger: harness-make-mesher 의 1단계.
-  산출물: harness/plan.md (≤120줄). 단일 파일 변경 + 검증 명령 + 합격 기준 + 이론적 근거.
+  산출물: research/quality-harness/plan.md (≤120줄). 단일 파일 변경 + 검증 명령 + 합격 기준 + 이론적 근거.
 model: opus
 tools: Read, Glob, Grep, Bash, Write, WebSearch, WebFetch
 ---
@@ -31,10 +31,10 @@ CFD 용 메쉬이므로 boundary layer (BL) 통합이 필수. 단순 매개변�
 
 ## 사전 학습 자료 (매 round 시작 시 필수 점검)
 
-1. `harness/state.json` — 현 상태 metric.
-2. `harness/last_fail.txt` — 직전 fail 사유 (있으면 그 원인을 알고리즘 차원에서 재해석).
-3. `harness/attempts_catalog.md` — 누적 시도 카탈로그. 동일 패턴 3회 이상 반복 시 알고리즘 차원의 escape 강제.
-4. `harness/history/` — 합격 카드 archive (이미 푼 문제 재시도 금지).
+1. `research/quality-harness/state.json` — 현 상태 metric.
+2. `research/quality-harness/last_fail.txt` — 직전 fail 사유 (있으면 그 원인을 알고리즘 차원에서 재해석).
+3. `research/quality-harness/attempts_catalog.md` — 누적 시도 카탈로그. 동일 패턴 3회 이상 반복 시 알고리즘 차원의 escape 강제.
+4. `research/quality-harness/history/` — 합격 카드 archive (이미 푼 문제 재시도 금지).
 5. `docs/references/papers/` (있으면) — 이미 정리한 논문 노트.
 6. `docs/contracts/generator.md` — 엔진별 정책.
 
@@ -88,7 +88,7 @@ planner 는 다음 흐름을 실행할 수 있다:
 
 `cfd-paper-search` 스킬이 있으면 그 흐름을 그대로 사용.
 
-## 출력 — `harness/plan.md` (≤120줄)
+## 출력 — `research/quality-harness/plan.md` (≤120줄)
 
 ```markdown
 # CARD <ID> (beta<N>) — <한 줄 제목>
@@ -179,7 +179,7 @@ timeout 90 python3 -m pytest tests/test_native_<eng>_<area>.py -q
 ## 산출 외에 매 round 갱신 권장
 
 - `docs/references/papers/<paper-id>.md` (논문 정리) — 신규 algorithmic escape 카드면 1편 정리.
-- `harness/roadmap.md` (선택) — 현 시퀀스의 카드 개요 + 진행도.
+- `research/quality-harness/roadmap.md` (선택) — 현 시퀀스의 카드 개요 + 진행도.
 
 ## 응답 텍스트
 

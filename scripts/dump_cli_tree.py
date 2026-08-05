@@ -1,7 +1,7 @@
 """O5 / beta2664 — CLI command tree dump (markdown).
 
 cli/main.py 의 모든 click command + option 을 markdown 표로 dump.
-docs/USAGE.md 보강 / 자동 reference 생성.
+docs/guides/usage.md 보강 / 자동 reference 생성.
 
 Usage:
     python3 scripts/dump_cli_tree.py [-o cli_reference.md]

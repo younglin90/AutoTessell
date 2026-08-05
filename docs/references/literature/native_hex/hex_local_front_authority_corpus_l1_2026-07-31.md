@@ -46,7 +46,7 @@ false-admission count is zero.
 Kill or roll back this card if it infers authority from geometry, lets an
 unknown/synthetic sidecar reach preflight, fabricates physical groups, mutates
 source arrays, writes an artifact, invokes a mesher/writer/shell, becomes a
-route/default, changes target-cell behavior, or touches `third_party/`.
+route/default, changes target-cell behavior, or touches `vendor/dependencies/`.
 
 ## Provenance
 
@@ -94,7 +94,7 @@ This remains `L2_TARGET_PASS / CORRECTNESS_KEEP`: metadata ambiguity is the
 target-hard condition, not a geometry or target-cell claim.  Roll back if any
 duplicate reaches sidecar/preflight, a caller iteration order selects an
 authority, an artifact/candidate exists, production mesh state changes, or
-the card enters routing/default behavior.  `third_party/` remains unchanged.
+the card enters routing/default behavior.  `vendor/dependencies/` remains unchanged.
 
 ## L3 immutable source-digest preflight
 

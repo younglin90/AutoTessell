@@ -73,6 +73,70 @@ def _group_hash(value: Sequence[str]) -> str:
     ).hexdigest()
 
 
+
+_HEX_POLYMESH_FILES: tuple[str, ...] = ("points", "faces", "owner", "neighbour", "boundary")
+
+
+def _canonical_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return sha256(payload).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def native_hex_polymesh_digest(
+    poly_dir: str | Path,
+) -> tuple[str, dict[str, str]]:
+    """Return a canonical digest for the five pre-BL polyMesh files."""
+    root = Path(poly_dir)
+    file_hashes: dict[str, str] = {}
+    for name in _HEX_POLYMESH_FILES:
+        path = root / name
+        if not path.is_file() or path.is_symlink():
+            raise FileNotFoundError(f"native Hex polyMesh file missing: {path}")
+        file_hashes[name] = _sha256_file(path)
+    return _canonical_sha256({"files": file_hashes}), file_hashes
+
+
+def _source_binding_digest(
+    evidence: HexMeasuredSourceBinding,
+    writer_order_source_face_sha256: str,
+    ingress_certificate_sha256: str | None = None,
+    semantic_ledger_sha256: str | None = None,
+    provisioning_manifest_sha256: str | None = None,
+) -> str:
+    return _canonical_sha256(
+        {
+            "contract": evidence.contract,
+            "source_file_sha256": evidence.source_file_sha256,
+            "source_brep_authoritative": bool(evidence.source_brep_authoritative),
+            "physical_groups_authoritative": bool(
+                evidence.physical_groups_authoritative
+            ),
+            "output_boundary_face_count": int(evidence.output_boundary_face_count),
+            "output_to_source_face_sha256": evidence.output_to_source_face_sha256,
+            "output_physical_group_sha256": evidence.output_physical_group_sha256,
+            "writer_order_source_face_sha256": writer_order_source_face_sha256,
+            "ingress_certificate_sha256": ingress_certificate_sha256,
+            "semantic_ledger_sha256": semantic_ledger_sha256,
+            "provisioning_manifest_sha256": provisioning_manifest_sha256,
+            "max_source_plane_distance": evidence.max_source_plane_distance,
+            "tolerance": evidence.tolerance,
+        }
+    )
+
+
 def _point_triangle_distances(point: np.ndarray, triangles: np.ndarray) -> np.ndarray:
     """Return true Euclidean distances from one point to source triangles."""
     p = np.asarray(point, dtype=np.float64)
@@ -312,6 +376,276 @@ def measure_hex_source_binding(
         output_physical_groups=tuple(output_groups),
         missing_evidence=() if mapping_complete and groups_complete else ("output_boundary_face_to_source_brep",),
     )
+
+
+def write_hex_source_face_map(
+    case_dir: str | Path,
+    hexes: np.ndarray,
+    evidence: HexMeasuredSourceBinding,
+    *,
+    ingress_certificate: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Persist the base writer-order face map for a later BL writer.
+
+    The map is keyed by the actual baseline polyMesh face index. It is a
+    lineage handoff, not a geometric reclassification: a later boundary-layer
+    writer may only reuse these source owners through its own explicit output
+    order records.
+    """
+    if not evidence.strict_binding_complete:
+        return {"accepted": False, "reason": "source_binding_not_strict"}
+    try:
+        from core.utils.polymesh_reader import parse_foam_faces, parse_foam_labels
+
+        root = Path(case_dir) / "constant" / "polyMesh"
+        written_faces = parse_foam_faces(root / "faces")
+        internal_count = len(parse_foam_labels(root / "neighbour"))
+        boundary = extract_hex_boundary_faces(np.asarray(hexes, dtype=np.int64))
+        mapping = tuple(int(value) for value in evidence.output_face_to_source_face)
+        if len(mapping) != len(boundary):
+            return {
+                "accepted": False,
+                "reason": "source_binding_boundary_count_mismatch",
+            }
+        by_key = {
+            tuple(sorted(int(value) for value in face)): mapping[index]
+            for index, face in enumerate(boundary)
+        }
+        records: list[dict[str, int]] = []
+        for mesh_face, face in enumerate(written_faces[internal_count:], internal_count):
+            source_face = by_key.get(tuple(sorted(int(value) for value in face)))
+            if source_face is None:
+                return {
+                    "accepted": False,
+                    "reason": "baseline_writer_face_not_bound",
+                }
+            records.append({
+                "writer_order": len(records),
+                "source_mesh_face": int(mesh_face),
+                "source_face": int(source_face),
+            })
+        if len(records) != len(boundary):
+            return {
+                "accepted": False,
+                "reason": "baseline_writer_boundary_count_mismatch",
+            }
+        writer_mapping = [int(row["source_face"]) for row in records]
+        writer_order_source_face_sha256 = _array_hash(
+            np.asarray(writer_mapping, dtype=np.int64)
+        )
+        ingress_certificate_sha256: str | None = None
+        semantic_ledger_sha256: str | None = None
+        provisioning_manifest_sha256: str | None = None
+        ingress_fields: dict[str, object] = {}
+        if ingress_certificate is not None:
+            if ingress_certificate.get("accepted") is not True:
+                return {
+                    "accepted": False,
+                    "reason": "ingress_certificate_not_authoritative",
+                }
+            ingress_certificate_sha256 = str(
+                ingress_certificate.get("certificate_sha256", "")
+            )
+            if len(ingress_certificate_sha256) != 64:
+                return {
+                    "accepted": False,
+                    "reason": "ingress_certificate_digest_missing",
+                }
+            for key in (
+                "face_stream_sha256",
+                "triangulation_stream_sha256",
+                "semantic_ledger_sha256",
+                "occt_provisioning_manifest_sha256",
+                "occt_version",
+                "occt_abi",
+            ):
+                value = ingress_certificate.get(key)
+                if value is None or not str(value):
+                    return {
+                        "accepted": False,
+                        "reason": f"ingress_certificate_field_missing:{key}",
+                    }
+                ingress_fields[f"ingress_{key}"] = str(value)
+            ingress_fields["ingress_certificate_sha256"] = ingress_certificate_sha256
+            semantic_ledger_sha256 = str(
+                ingress_certificate.get("semantic_ledger_sha256", "")
+            )
+            ingress_fields["ingress_semantic_ledger_sha256"] = semantic_ledger_sha256
+            provisioning_manifest_sha256 = str(
+                ingress_certificate.get("occt_provisioning_manifest_sha256", "")
+            )
+            if len(provisioning_manifest_sha256) != 64:
+                return {
+                    "accepted": False,
+                    "reason": "provisioning_manifest_digest_missing",
+                }
+            ingress_fields["ingress_occt_provisioning_manifest_sha256"] = (
+                provisioning_manifest_sha256
+            )
+        baseline_sha256, baseline_file_sha256 = native_hex_polymesh_digest(root)
+        source_binding_sha256 = _source_binding_digest(
+            evidence,
+            writer_order_source_face_sha256,
+            ingress_certificate_sha256,
+            semantic_ledger_sha256,
+            provisioning_manifest_sha256,
+        )
+        payload = {
+            "schema": (
+                "autotessell/native-hex-source-face-map/v3"
+                if ingress_certificate_sha256 is not None
+                else "autotessell/native-hex-source-face-map/v2"
+            ),
+            "baseline_polymesh_sha256": baseline_sha256,
+            "baseline_file_sha256": baseline_file_sha256,
+            "source_binding_sha256": source_binding_sha256,
+            "source_face_count": int(max(mapping) + 1) if mapping else 0,
+            "records": records,
+            "output_to_source_face_sha256": _array_hash(
+                np.asarray(mapping, dtype=np.int64)
+            ),
+            "writer_order_source_face_sha256": writer_order_source_face_sha256,
+            **ingress_fields,
+        }
+        payload["map_sha256"] = _canonical_sha256(payload)
+        path = Path(case_dir) / "native_hex_source_face_map.json"
+        path.write_text(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")) + chr(10)
+        )
+        return {
+            "accepted": True,
+            "path": str(path),
+            "record_count": len(records),
+            "source_face_count": payload["source_face_count"],
+            "baseline_polymesh_sha256": baseline_sha256,
+            "source_binding_sha256": source_binding_sha256,
+            "map_sha256": payload["map_sha256"],
+            "ingress_certificate_sha256": ingress_certificate_sha256,
+            "semantic_ledger_sha256": semantic_ledger_sha256,
+            "provisioning_manifest_sha256": provisioning_manifest_sha256,
+        }
+    except Exception as exc:
+        return {
+            "accepted": False,
+            "reason": f"source_face_map_write_failed:{type(exc).__name__}",
+        }
+
+
+
+def validate_native_hex_source_face_map(
+    case_dir: str | Path,
+) -> dict[str, object]:
+    """Validate a v2 source map against the current pre-BL polyMesh."""
+    path = Path(case_dir) / "native_hex_source_face_map.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("source_map_root_invalid")
+        schema = payload.get("schema")
+        if schema not in (
+            "autotessell/native-hex-source-face-map/v2",
+            "autotessell/native-hex-source-face-map/v3",
+        ):
+            raise ValueError("source_map_schema_unsupported")
+        if schema == "autotessell/native-hex-source-face-map/v3":
+            for key in (
+                "ingress_certificate_sha256",
+                "ingress_face_stream_sha256",
+                "ingress_triangulation_stream_sha256",
+                "ingress_semantic_ledger_sha256",
+                "ingress_occt_provisioning_manifest_sha256",
+                "ingress_occt_version",
+                "ingress_occt_abi",
+            ):
+                value = payload.get(key)
+                if not isinstance(value, str) or not value:
+                    raise ValueError(f"source_map_ingress_field_missing:{key}")
+            if len(str(payload["ingress_certificate_sha256"])) != 64:
+                raise ValueError("source_map_ingress_digest_invalid")
+            if len(str(payload["ingress_semantic_ledger_sha256"])) != 64:
+                raise ValueError("source_map_semantic_ledger_digest_invalid")
+            if len(str(payload["ingress_occt_provisioning_manifest_sha256"])) != 64:
+                raise ValueError("source_map_provisioning_manifest_digest_invalid")
+        baseline_sha256, baseline_file_sha256 = native_hex_polymesh_digest(
+            Path(case_dir) / "constant" / "polyMesh"
+        )
+        if payload.get("baseline_polymesh_sha256") != baseline_sha256:
+            raise ValueError("source_map_baseline_digest_mismatch")
+        if payload.get("baseline_file_sha256") != baseline_file_sha256:
+            raise ValueError("source_map_baseline_file_digest_mismatch")
+        supplied_map_sha256 = payload.get("map_sha256")
+        if not isinstance(supplied_map_sha256, str) or len(supplied_map_sha256) != 64:
+            raise ValueError("source_map_digest_missing")
+        unsigned_payload = dict(payload)
+        unsigned_payload.pop("map_sha256", None)
+        if supplied_map_sha256 != _canonical_sha256(unsigned_payload):
+            raise ValueError("source_map_digest_mismatch")
+
+        from core.utils.polymesh_reader import parse_foam_faces, parse_foam_labels
+
+        root = Path(case_dir) / "constant" / "polyMesh"
+        written_faces = parse_foam_faces(root / "faces")
+        internal_count = len(parse_foam_labels(root / "neighbour"))
+        boundary_count = len(written_faces) - internal_count
+        records = payload.get("records")
+        if not isinstance(records, list) or len(records) != boundary_count:
+            raise ValueError("source_map_boundary_count_mismatch")
+        source_face_count = int(payload.get("source_face_count", -1))
+        if source_face_count <= 0:
+            raise ValueError("source_map_source_face_count_invalid")
+        writer_mapping: list[int] = []
+        seen_mesh_faces: set[int] = set()
+        for index, row in enumerate(records):
+            if not isinstance(row, dict):
+                raise ValueError("source_map_record_invalid")
+            if int(row.get("writer_order", -1)) != index:
+                raise ValueError("source_map_writer_order_invalid")
+            source_mesh_face = int(row.get("source_mesh_face", -1))
+            if source_mesh_face != internal_count + index:
+                raise ValueError("source_map_mesh_face_order_invalid")
+            if source_mesh_face in seen_mesh_faces:
+                raise ValueError("source_map_mesh_face_duplicate")
+            seen_mesh_faces.add(source_mesh_face)
+            source_face = int(row.get("source_face", -1))
+            if source_face < 0 or source_face >= source_face_count:
+                raise ValueError("source_map_source_face_invalid")
+            writer_mapping.append(source_face)
+        if set(writer_mapping) != set(range(source_face_count)):
+            raise ValueError("source_map_source_face_coverage_incomplete")
+        writer_hash = _array_hash(np.asarray(writer_mapping, dtype=np.int64))
+        if payload.get("writer_order_source_face_sha256") != writer_hash:
+            raise ValueError("source_map_writer_mapping_digest_mismatch")
+        source_binding_sha256 = payload.get("source_binding_sha256")
+        if not isinstance(source_binding_sha256, str) or len(source_binding_sha256) != 64:
+            raise ValueError("source_map_binding_digest_missing")
+        return {
+            "accepted": True,
+            "path": str(path),
+            "schema": schema,
+            "records": records,
+            "source_face_count": source_face_count,
+            "baseline_polymesh_sha256": baseline_sha256,
+            "baseline_file_sha256": baseline_file_sha256,
+            "source_binding_sha256": source_binding_sha256,
+            "map_sha256": supplied_map_sha256,
+            "writer_order_source_face_sha256": writer_hash,
+            "ingress_certificate_sha256": payload.get(
+                "ingress_certificate_sha256"
+            ),
+            "semantic_ledger_sha256": payload.get(
+                "ingress_semantic_ledger_sha256"
+            ),
+            "provisioning_manifest_sha256": payload.get(
+                "ingress_occt_provisioning_manifest_sha256"
+            ),
+        }
+    except Exception as exc:
+        return {
+            "accepted": False,
+            "path": str(path),
+            "reason": f"{type(exc).__name__}:{exc}",
+        }
+
 
 
 def make_boundary_patch_classifier(

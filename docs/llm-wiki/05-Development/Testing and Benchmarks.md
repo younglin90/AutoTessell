@@ -25,7 +25,7 @@ tags: [tests, benchmarks, gates]
 
 `tests/stl/verify_autoresearch_mesh_matrix.py`는 문헌 캠페인의 cross-shape volume verifier다. Native-tet에는 hard-shape와 thin-sliver lane이 있고, native-hex는 cube/cylinder와 curved/transition 사례, native-poly는 cube/sphere/cylinder와 multi-patch/non-manifold fixture를 쓴다. `tests/stl/bench_native_tri.py`는 legacy L2 surface 기준선을 만든다.
 
-`harness/`와 `tests/stl/*.json/tsv`의 결과는 근거지만 많은 파일이 mutable WIP다. 결과에는 정확한 script, shape, quality, cell target, BL, timeout, commit/worktree, checker 정의를 함께 적어야 한다.
+`research/quality-harness/`와 `tests/stl/*.json/tsv`의 결과는 근거지만 많은 파일이 mutable WIP다. 결과에는 정확한 script, shape, quality, cell target, BL, timeout, commit/worktree, checker 정의를 함께 적어야 한다.
 
 ## 실행 제약
 

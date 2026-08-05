@@ -50,7 +50,7 @@ Read local evidence before implementation:
 No external code, dependency, generated output, or threshold was used.  This
 is an independent representation contract; future performance-sensitive
 classification can move to a C++23 kernel only after parity tests.  No paper
-was required by this narrowly scoped contract card, and `third_party/` is
+was required by this narrowly scoped contract card, and `vendor/dependencies/` is
 unchanged.
 
 The strict-topology target for later surface products is component count,

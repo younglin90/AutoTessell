@@ -19,6 +19,9 @@ Phase 2 확장 (향후):
 
 from __future__ import annotations
 
+import hashlib
+import os
+import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,6 +33,22 @@ from core.layers.native_bl import (
     _refresh_native_bl_state_output,
     generate_native_bl,
 )
+from core.evaluator.native_canonical_quality_witness import (
+    build_canonical_volume_quality_witness,
+)
+from core.evaluator.native_volume_transaction_adapter import (
+    evaluate_and_publish_native_volume_artifact,
+)
+from core.utils.native_extensions import (
+    load_native_poly_quality_relocation,
+    load_native_polymesh,
+)
+from core.utils.polymesh_reader import (
+    parse_foam_faces,
+    parse_foam_labels_array,
+    parse_foam_points_array,
+)
+from core.layers.native_bl import _write_faces, _write_points
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -42,6 +61,400 @@ class PolyBLResult:
     n_prism_cells: int = 0
     bulk_dual_applied: bool = False
     message: str = ""
+    quality_relocation: dict[str, object] | None = None
+
+
+def _sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def _poly_quality_relocation_enabled() -> bool:
+    return os.environ.get("AUTO_TESSELL_POLY_NATIVE_QUALITY_RELOCATE", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _quality_tuple(witness: dict[str, object]) -> tuple[float, float, float]:
+    quality = witness.get("quality", {})
+    if not isinstance(quality, dict):
+        return (float("inf"), float("inf"), float("inf"))
+    values: list[float] = []
+    for key in ("internal_non_orthogonality", "release_skew", "aspect_ratio"):
+        metric = quality.get(key, {})
+        value = metric.get("max") if isinstance(metric, dict) else None
+        values.append(float(value) if isinstance(value, (int, float)) else float("inf"))
+    return tuple(values)  # type: ignore[return-value]
+
+
+def _write_poly_quality_relocation_report(case_dir: Path, report: dict[str, object]) -> None:
+    (Path(case_dir) / "native_poly_quality_relocation.json").write_text(
+        json.dumps(report, indent=2, sort_keys=True, default=str) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _apply_native_poly_quality_relocation(case_dir: Path) -> dict[str, object]:
+    """Run one opt-in, coordinate-only Poly quality transaction.
+
+    The native kernel proposes a bounded Laplacian move.  This adapter is the
+    authority boundary: it locks the current boundary vertex bit patterns,
+    leaves face/owner/neighbour arrays untouched, re-runs strict topology and
+    the canonical C++ quality witness, and restores the original points bytes
+    on every rejection.
+    """
+    import numpy as np
+
+    case = Path(case_dir)
+    poly = case / "constant" / "polyMesh"
+    points_path = poly / "points"
+    if not poly.is_dir() or not points_path.is_file():
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "polymesh_missing",
+            "destination_unchanged": True,
+        }
+    kernel = load_native_poly_quality_relocation()
+    if kernel is None:
+        report = {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "native_poly_quality_relocation_unavailable",
+            "destination_unchanged": True,
+        }
+        _write_poly_quality_relocation_report(case, report)
+        return report
+
+    try:
+        points_before = np.asarray(parse_foam_points_array(points_path), dtype=np.float64)
+        faces_before = parse_foam_faces(poly / "faces")
+        owner_before = np.asarray(parse_foam_labels_array(poly / "owner"), dtype=np.int64)
+        neighbour_before = np.asarray(parse_foam_labels_array(poly / "neighbour"), dtype=np.int64)
+        before_witness = build_canonical_volume_quality_witness(case)
+        if before_witness.get("accepted") is not True:
+            raise RuntimeError(f"baseline_quality_unavailable:{before_witness.get('reason')}")
+        flat = np.asarray([int(vertex) for face in faces_before for vertex in face], dtype=np.int64)
+        offsets = np.zeros(len(faces_before) + 1, dtype=np.int64)
+        offsets[1:] = np.cumsum([len(face) for face in faces_before], dtype=np.int64)
+        boundary_ids = np.asarray(
+            sorted({int(vertex) for face in faces_before[len(neighbour_before):] for vertex in face}),
+            dtype=np.int64,
+        )
+        iterations = int(os.environ.get("AUTO_TESSELL_POLY_NATIVE_QUALITY_ITER", "3"))
+        relax = float(os.environ.get("AUTO_TESSELL_POLY_NATIVE_QUALITY_RELAX", "0.001"))
+        diagonal = float(np.linalg.norm(points_before.max(axis=0) - points_before.min(axis=0)))
+        max_move_ratio = float(os.environ.get("AUTO_TESSELL_POLY_NATIVE_QUALITY_MAX_MOVE_RATIO", "0.02"))
+        cpp_result = dict(kernel.relocate_poly_quality(
+            points_before,
+            flat,
+            offsets,
+            owner_before,
+            neighbour_before,
+            boundary_ids,
+            iterations,
+            relax,
+            max(0.0, diagonal * max_move_ratio),
+        ))
+        candidate = np.asarray(cpp_result["points"], dtype=np.float64)
+        if candidate.shape != points_before.shape or not np.isfinite(candidate).all():
+            raise RuntimeError("native_candidate_shape_or_finite_gate")
+        if not np.array_equal(
+            np.ascontiguousarray(points_before[boundary_ids]).view(np.uint64),
+            np.ascontiguousarray(candidate[boundary_ids]).view(np.uint64),
+        ):
+            raise RuntimeError("boundary_vertex_bits_changed")
+        if (
+            cpp_result.get("topology_input_valid") is not True
+            or cpp_result.get("boundary_vertices_locked") is not True
+            or cpp_result.get("accepted") is not True
+        ):
+            raise RuntimeError(f"native_candidate_rejected:{cpp_result.get('reason')}")
+        original_bytes = points_path.read_bytes()
+        _write_points(points_path, candidate, precision=17)
+        try:
+            points_after = np.asarray(parse_foam_points_array(points_path), dtype=np.float64)
+            if not np.array_equal(
+                np.ascontiguousarray(points_before[boundary_ids]).view(np.uint64),
+                np.ascontiguousarray(points_after[boundary_ids]).view(np.uint64),
+            ):
+                raise RuntimeError("serialized_boundary_vertex_bits_changed")
+            if parse_foam_faces(poly / "faces") != faces_before:
+                raise RuntimeError("faces_changed")
+            if not np.array_equal(parse_foam_labels_array(poly / "owner"), owner_before):
+                raise RuntimeError("owner_changed")
+            if not np.array_equal(parse_foam_labels_array(poly / "neighbour"), neighbour_before):
+                raise RuntimeError("neighbour_changed")
+            strict = audit_strict_volume_topology(case)
+            after_witness = build_canonical_volume_quality_witness(case)
+            if not strict.valid:
+                raise RuntimeError("strict_topology_failed")
+            if after_witness.get("accepted") is not True:
+                raise RuntimeError(f"post_quality_unavailable:{after_witness.get('reason')}")
+            before_tuple = _quality_tuple(before_witness)
+            after_tuple = _quality_tuple(after_witness)
+            if not after_tuple < before_tuple:
+                raise RuntimeError("authoritative_quality_tuple_not_improved")
+        except Exception:
+            points_path.write_bytes(original_bytes)
+            raise
+        report: dict[str, object] = {
+            "accepted": True,
+            "status": "accepted",
+            "reason": "strict_quality_improvement",
+            "destination_unchanged": False,
+            "strict_topology": strict.as_dict(),
+            "quality_before": before_witness.get("quality", {}),
+            "quality_after": after_witness.get("quality", {}),
+            "quality_tuple_before": list(before_tuple),
+            "quality_tuple_after": list(after_tuple),
+            "cpp": {key: value for key, value in cpp_result.items() if key != "points"},
+            "boundary_vertex_count": int(len(boundary_ids)),
+            "face_count": int(len(faces_before)),
+            "cell_count": int(max(
+                owner_before.max(initial=-1),
+                neighbour_before.max(initial=-1),
+            ) + 1),
+        }
+        _write_poly_quality_relocation_report(case, report)
+        return report
+    except Exception as exc:  # noqa: BLE001
+        report = {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": str(exc),
+            "destination_unchanged": True,
+        }
+        _write_poly_quality_relocation_report(case, report)
+        return report
+
+
+def canonicalize_staged_poly_bl_candidate(
+    stage_dir: Path,
+    *,
+    tolerance: float = 1e-12,
+) -> dict[str, object]:
+    """Canonicalize only a fresh staged Poly BL candidate.
+
+    BL0 is observation-only. BL>=1 may change only internal face cycle order;
+    the destination is never touched by this function.
+    """
+    stage = Path(stage_dir)
+    poly = stage / "constant" / "polyMesh"
+    faces_path = poly / "faces"
+    state_path = stage / "native_bl_state.json"
+    quality_path = stage / "native_bl_quality.json"
+    if not poly.is_dir() or not faces_path.is_file():
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "staged_polymesh_missing",
+            "destination_unchanged": True,
+        }
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "bl_state_missing",
+            "destination_unchanged": True,
+        }
+    if not isinstance(state, dict):
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "bl_state_invalid",
+            "destination_unchanged": True,
+        }
+    requested = state.get("requested_layers")
+    actual = state.get("actual_layers")
+    if requested == 0 and actual == 0:
+        return {
+            "accepted": True,
+            "status": "observation_only",
+            "reason": "bl0_cycle_correction_forbidden",
+            "reversed_indices": [],
+            "destination_unchanged": True,
+            "faces_sha256": _sha256_bytes(faces_path.read_bytes()),
+        }
+    if (
+        not isinstance(requested, int)
+        or isinstance(requested, bool)
+        or requested < 1
+        or actual != requested
+        or state.get("state") != "completed"
+    ):
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "bl_positive_count_or_state_invalid",
+            "destination_unchanged": True,
+        }
+    try:
+        quality = json.loads(quality_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "bl_quality_missing",
+            "destination_unchanged": True,
+        }
+    if (
+        not isinstance(quality, dict)
+        or not isinstance(quality.get("total_thickness"), (int, float))
+        or quality["total_thickness"] <= 0.0
+        or not isinstance(quality.get("n_prism_cells"), int)
+        or quality["n_prism_cells"] <= 0
+        or not isinstance(quality.get("bad_internal_faces"), dict)
+        or quality["bad_internal_faces"].get("n_bad_faces") != 0
+    ):
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "bl_quality_gate",
+            "destination_unchanged": True,
+        }
+    provenance_path = stage / "native_bl_provenance.json"
+    try:
+        provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "bl_lineage_missing",
+            "destination_unchanged": True,
+        }
+    required_lineage = (
+        "wall_edge_layer_sha256",
+        "source_face_preservation_sha256",
+        "outer_front_sha256",
+        "source_sha256",
+        "candidate_source_sha256",
+    )
+    if (
+        not isinstance(provenance, dict)
+        or provenance.get("lineage_complete") is not True
+        or any(
+            not isinstance(provenance.get(name), str)
+            or len(provenance[name]) != 64
+            or any(char not in "0123456789abcdef" for char in provenance[name])
+            for name in required_lineage
+        )
+    ):
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": "bl_lineage_incomplete",
+            "destination_unchanged": True,
+        }
+    try:
+        import numpy as np
+
+        points = parse_foam_points_array(poly / "points")
+        faces = parse_foam_faces(faces_path)
+        owners = parse_foam_labels_array(poly / "owner")
+        neighbours = parse_foam_labels_array(poly / "neighbour")
+        native = load_native_polymesh()
+        if native is None:
+            raise RuntimeError("native_polymesh_unavailable")
+        result = native.canonicalize_internal_winding_or_refuse(
+            np.asarray(points, dtype=np.float64),
+            faces,
+            np.asarray(owners, dtype=np.int64),
+            np.asarray(neighbours, dtype=np.int64),
+            float(tolerance),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": f"orientation_kernel_unavailable:{type(exc).__name__}",
+            "destination_unchanged": True,
+        }
+    if result.get("accepted") is not True:
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": str(result.get("reason", "orientation_refused")),
+            "destination_unchanged": True,
+            "orientation_ledger": list(result.get("orientation_ledger", [])),
+        }
+
+    before = faces_path.read_bytes()
+    corrected = [list(face) for face in result["faces"]]
+    _write_faces(faces_path, corrected)
+    try:
+        strict = audit_strict_volume_topology(stage)
+        witness = build_canonical_volume_quality_witness(stage)
+        if not strict.valid:
+            raise RuntimeError("strict_topology_failed")
+        if witness.get("accepted") is not True:
+            raise RuntimeError(str(witness.get("reason", "quality_witness_failed")))
+        metrics = witness.get("quality", {})
+        no = metrics.get("internal_non_orthogonality", {})
+        sk = metrics.get("release_skew", {})
+        ar = metrics.get("aspect_ratio", {})
+        if (
+            no.get("p95") is not None and no.get("p95") > 35.0
+            or no.get("max") is not None and no.get("max") > 50.0
+            or sk.get("p95") is not None and sk.get("p95") > 0.25
+            or sk.get("max") is not None and sk.get("max") > 0.50
+            or ar.get("max") is not None and ar.get("max") > 3.0
+        ):
+            raise RuntimeError("quality_threshold_failed")
+    except Exception as exc:  # noqa: BLE001
+        faces_path.write_bytes(before)
+        return {
+            "accepted": False,
+            "status": "refused_rollback",
+            "reason": f"post_canonicalization_gate:{type(exc).__name__}",
+            "destination_unchanged": True,
+            "orientation_ledger": list(result.get("orientation_ledger", [])),
+        }
+    return {
+        "accepted": True,
+        "status": "staged_measured",
+        "reason": "internal_orientation_canonicalized",
+        "reversed_indices": list(result.get("reversed_indices", [])),
+        "orientation_ledger": list(result.get("orientation_ledger", [])),
+        "faces_sha256_before": _sha256_bytes(before),
+        "faces_sha256_after": _sha256_bytes(faces_path.read_bytes()),
+        "strict_topology": strict.as_dict(),
+        "quality_witness_sha256": witness.get("witness_sha256"),
+        "destination_unchanged": True,
+    }
+
+
+def finalize_staged_poly_bl_candidate(
+    destination: Path,
+    staged_artifact: Path,
+    baseline: dict,
+    candidate: dict,
+    *,
+    requested_layers: int,
+    actual_layers: int,
+    evidence: dict,
+) -> dict[str, object]:
+    """Run staged orientation/readback then the existing atomic authority gate."""
+    orientation = canonicalize_staged_poly_bl_candidate(staged_artifact)
+    if orientation.get("accepted") is not True:
+        return {"orientation": orientation, "published": False}
+    publication = evaluate_and_publish_native_volume_artifact(
+        destination,
+        staged_artifact,
+        baseline,
+        candidate,
+        requested_layers=requested_layers,
+        actual_layers=actual_layers,
+        evidence=evidence,
+    )
+    return {
+        "orientation": orientation,
+        "publication": publication.as_dict(),
+        "published": publication.published,
+    }
 
 
 def _classify_cells_by_vertex_count(
@@ -497,7 +910,17 @@ def run_poly_bl_transition(
         backup_original=backup_original,
         max_total_ratio=float(max_total_ratio),
     )
-    bl_res = generate_native_bl(case_dir, cfg)
+    local_front_key = "AUTO_TESSELL_NATIVE_BL_LOCAL_FRONT_QOPT"
+    previous_local_front = os.environ.get(local_front_key)
+    if _poly_quality_relocation_enabled():
+        os.environ[local_front_key] = "1"
+    try:
+        bl_res = generate_native_bl(case_dir, cfg)
+    finally:
+        if previous_local_front is None:
+            os.environ.pop(local_front_key, None)
+        else:
+            os.environ[local_front_key] = previous_local_front
     if not bl_res.success:
         return PolyBLResult(
             success=False,
@@ -519,6 +942,22 @@ def run_poly_bl_transition(
         if not ok:
             log.info("poly_bl_bulk_dual_skipped", reason=dual_msg)
 
+    quality_relocation = None
+    if _poly_quality_relocation_enabled():
+        quality_relocation = _apply_native_poly_quality_relocation(case_dir)
+        if quality_relocation.get("accepted") is not True:
+            return PolyBLResult(
+                success=False,
+                elapsed=time.perf_counter() - t0,
+                n_prism_cells=int(bl_res.n_prism_cells),
+                bulk_dual_applied=bulk_dual_applied,
+                message=(
+                    "native Poly quality relocation refused with rollback: "
+                    f"{quality_relocation.get('reason')}"
+                ),
+                quality_relocation=quality_relocation,
+            )
+
     state_error = _refresh_native_bl_state_output(
         case_dir,
         last_transform=("poly_bl_transition_dual" if bulk_dual_applied else "poly_bl_transition"),
@@ -530,6 +969,7 @@ def run_poly_bl_transition(
             n_prism_cells=int(bl_res.n_prism_cells),
             bulk_dual_applied=bulk_dual_applied,
             message=state_error,
+            quality_relocation=quality_relocation,
         )
 
     strict = audit_strict_volume_topology(case_dir)

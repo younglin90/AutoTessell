@@ -34,8 +34,8 @@ python3 scripts/collect_bl_dataset.py
 python3 scripts/train_bl_predictor.py --epochs 50
 
 # 5. 활성화
-export AUTO_TESSELL_ML_SMOOTH_MODEL=models/ml_smooth_model.pt
-export AUTO_TESSELL_BL_PREDICT_MODEL=models/bl_predictor.pt
+export AUTO_TESSELL_ML_SMOOTH_MODEL=assets/models/ml_smooth_model.pt
+export AUTO_TESSELL_BL_PREDICT_MODEL=assets/models/bl_predictor.pt
 auto-tessell run input.stl --mesh-type tet --quality fine ...
 ```
 

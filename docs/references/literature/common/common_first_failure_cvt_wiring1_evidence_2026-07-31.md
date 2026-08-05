@@ -6,7 +6,7 @@ Card: `COMMON-FIRST-FAILURE-CVT-WIRING-1`
 
 Promotion state: `CORRECTNESS_KEEP`. This card changes one stale test only. It
 does not change production code, mesh output, thresholds, routing, dependencies,
-or `third_party/`.
+or `vendor/dependencies/`.
 
 ## Bounded baseline
 
@@ -53,7 +53,7 @@ the tier log. It no longer depends on whitespace or line wrapping.
 - changed-region Ruff: no finding; the file retains unrelated legacy import
   ordering findings outside this function;
 - `git diff --check`: PASS;
-- production and `third_party/` diffs: empty.
+- production and `vendor/dependencies/` diffs: empty.
 
 Rollback conditions: any production or threshold change, deletion or skipping
 of the original test, loss of source/topology/cell/quality wiring assertions,

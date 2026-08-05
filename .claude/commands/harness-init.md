@@ -68,7 +68,7 @@ trimesh로 sphere, cylinder 생성 → `tests/benchmarks/`
 testpaths = ["tests"]
 ```
 
-`backend/tests`가 존재하면 root `tests/`와 충돌하므로 `testpaths`로 명시적 격리 필수.
+`products/web/api/tests`가 존재하면 root `tests/`와 충돌하므로 `testpaths`로 명시적 격리 필수.
 `tests/test_desktop_server.py` 상단에 `pytest.importorskip("fastapi")` 추가.
 
 ### 7. 검증

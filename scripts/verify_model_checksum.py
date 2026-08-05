@@ -4,7 +4,7 @@ trained .pt 파일의 metadata (sha256, dataset_path) 추출 → 학습 일관�
 L4 (BETA2643) 의 metadata 활용.
 
 Usage:
-    python3 scripts/verify_model_checksum.py models/ml_smooth_model.pt
+    python3 scripts/verify_model_checksum.py assets/models/ml_smooth_model.pt
 """
 from __future__ import annotations
 

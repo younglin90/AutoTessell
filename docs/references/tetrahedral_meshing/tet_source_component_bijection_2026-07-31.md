@@ -56,7 +56,7 @@ faces, `1,000` tetrahedra), warm process:
 
 The dominant bound is `O((F + T) log(F + T) + V log V)` time from sorting and
 `O(F + T + V)` auxiliary storage. Flat vectors avoid per-face hash-node
-allocation and improve locality. No `third_party/` file or dependency changed.
+allocation and improve locality. No `vendor/dependencies/` file or dependency changed.
 
 ## Research and provenance
 

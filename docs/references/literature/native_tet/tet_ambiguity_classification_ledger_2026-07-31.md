@@ -101,4 +101,4 @@ Geometric Predicates*, 1997, DOI `10.1007/PL00009321`, supports separating
 robust sign classification from floating-point magnitude diagnostics.  The
 project's existing strict sidedness card also cites TetGen and uses the
 first-party robust-predicate wrapper.  No external source code was copied;
-`third_party/` is unchanged.
+`vendor/dependencies/` is unchanged.

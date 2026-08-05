@@ -235,7 +235,7 @@ Under the native-first policy the LPI/TPI predicates and the prism
 construction are portable — the predicate polynomials, filter constants,
 and the algorithm are fully printed in the paper (Section 4), and the
 indirect-predicate machinery is independently specified in Attene 2020,
-which we already hold. Vendoring `fast-envelope` under `third_party/` as a
+which we already hold. Vendoring `fast-envelope` under `vendor/dependencies/` as a
 reference oracle for differential testing of a native port fits existing
 repo practice.
 

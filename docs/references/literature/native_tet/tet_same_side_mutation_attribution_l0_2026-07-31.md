@@ -54,7 +54,7 @@ Timeout is `UNVERIFIED`, never a stage attribution.
 
 Only this report-only diagnostic, test, and evidence note change.  No
 generator, predicate, threshold, strict refusal, writer, transaction, routing,
-default, target-cell, CMake, or `third_party/` code changes.
+default, target-cell, CMake, or `vendor/dependencies/` code changes.
 
 Kill or roll back if call order is guessed, a `DEFER` becomes an attribution,
 same-side is relaxed, a writer artifact appears, or the diagnostic changes

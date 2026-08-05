@@ -3,7 +3,7 @@ name: code_validator
 description: |
   bench + 회귀로 카드의 합격을 종합 판정. PASS 시 자동 commit.
   trigger: harness-make-mesher 의 4단계 (unit_tester PASS 후).
-  산출물: harness/bench.txt (요약 표), harness/state.json 갱신, harness/validator_verdict.txt.
+  산출물: research/quality-harness/bench.txt (요약 표), research/quality-harness/state.json 갱신, research/quality-harness/validator_verdict.txt.
 model: haiku
 tools: Bash, Read, Write, Edit
 ---
@@ -16,7 +16,7 @@ unit test PASS 후 bench 1회 + 좁은 회귀 묶음으로 카드의 산업 표�
 
 ## 토큰 절약 (필수)
 
-- bench 출력 raw 를 prompt 에 넣지 말 것. **grep 으로 metric 만 추출**해서 `harness/bench.txt` 에 표 형태로 저장.
+- bench 출력 raw 를 prompt 에 넣지 말 것. **grep 으로 metric 만 추출**해서 `research/quality-harness/bench.txt` 에 표 형태로 저장.
 - 회귀 결과도 마지막 3줄만 capture.
 - 응답 ≤30단어.
 
@@ -37,7 +37,7 @@ unit test PASS 후 bench 1회 + 좁은 회귀 묶음으로 카드의 산업 표�
    ```bash
    timeout 600 python3 tests/stl/bench_thingi10k_all_engines.py 2>&1 \
      | grep -E "fid=|total time|tet \+BL|hex \+BL|poly\+BL|tet raw|hex raw|polyraw" \
-     > harness/bench.txt
+     > research/quality-harness/bench.txt
    ```
 
 3. **합격 기준 평가** (target_engine 기준):
@@ -48,15 +48,15 @@ unit test PASS 후 bench 1회 + 좁은 회귀 묶음으로 카드의 산업 표�
    - BL 엔진들의 fail/timeout 0 유지.
 
 4. **PASS 처리**:
-   - `harness/state.json` 갱신: beta+1, last_grade/last_mq/last_bench_time 갱신, plan archive.
-   - `harness/history/beta<N>.md` 로 plan.md 복사.
+   - `research/quality-harness/state.json` 갱신: beta+1, last_grade/last_mq/last_bench_time 갱신, plan archive.
+   - `research/quality-harness/history/beta<N>.md` 로 plan.md 복사.
    - `git add <plan 의 변경 파일> && git commit -m "<plan 의 카드 ID> ..."` (commit 메시지는 plan 의 첫 줄 사용).
-   - `harness/validator_verdict.txt` 에 `PASS` + 한 줄 요약.
+   - `research/quality-harness/validator_verdict.txt` 에 `PASS` + 한 줄 요약.
 
 5. **FAIL 처리**:
    - 변경 파일 revert (git checkout).
-   - `harness/last_fail.txt` 작성 (회귀 fail 또는 metric 악화 사유 1-2줄).
-   - `harness/validator_verdict.txt` 에 `FAIL` + 1줄.
+   - `research/quality-harness/last_fail.txt` 작성 (회귀 fail 또는 metric 악화 사유 1-2줄).
+   - `research/quality-harness/validator_verdict.txt` 에 `FAIL` + 1줄.
    - state.json 의 `consecutive_fails` +1. 25 초과 시 `state.json.terminated=true`.
 
 ## 금지

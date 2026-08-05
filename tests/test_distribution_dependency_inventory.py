@@ -134,9 +134,9 @@ def test_legacy_metadata_cannot_be_promoted_to_guessed_spdx() -> None:
 def test_missing_local_evidence_is_reported() -> None:
     manifest = load_manifest(_MANIFEST)
     assertion = _dependency(manifest, "cmake-native-direct", "source:fTetWild")["license_assertion"]
-    assertion["local_evidence"] = ["third_party/fTetWild/MISSING-LICENSE"]
+    assertion["local_evidence"] = ["vendor/dependencies/fTetWild/MISSING-LICENSE"]
     errors = validate(manifest, _ROOT)
-    assert "source:fTetWild: local evidence missing: third_party/fTetWild/MISSING-LICENSE" in errors
+    assert "source:fTetWild: local evidence missing: vendor/dependencies/fTetWild/MISSING-LICENSE" in errors
 
 
 def test_external_cmake_source_cannot_cross_native_core_boundary() -> None:

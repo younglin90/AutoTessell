@@ -28,7 +28,7 @@ assembly, routing, and target-cell behavior are unchanged.
   `5c6c586f2c32935e1a8282c6846f3f4a8eb3c317` on 2026-07-31. It remains a
   reference-only GPL/LGPL/commercial project outside the native-core boundary.
 
-No paper required by this card was inaccessible. `third_party/` was not changed.
+No paper required by this card was inaccessible. `vendor/dependencies/` was not changed.
 
 ## Frozen baseline and acceptance
 

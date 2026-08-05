@@ -72,7 +72,7 @@ remain reference-only (MIT, https://github.com/wildmeshing/wildmeshing-toolkit).
 CGAL's tetrahedral-remeshing validity requirements remain reference-only
 (GPL, https://doc.cgal.org/latest/Tetrahedral_remeshing/index.html).  The
 implementation is a project-local composition of the existing internal-face
-audit; no external code or dependency was copied, and `third_party/` is
+audit; no external code or dependency was copied, and `vendor/dependencies/` is
 unchanged.
 
 ## Promotion and remaining blocker

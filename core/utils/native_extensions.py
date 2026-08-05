@@ -15,6 +15,11 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any
 
+from core.utils.native_extension_manifest import (
+    release_manifest_path,
+    verify_native_extension_manifest,
+)
+
 _NATIVE_EXTENSIONS: dict[str, Any | None] = {}
 _NATIVE_ATTEMPTED: set[str] = set()
 
@@ -30,7 +35,11 @@ def _add_native_extension_paths() -> None:
     if explicit_dir is not None:
         candidate_dirs.append(explicit_dir)
     repo_root = Path(__file__).resolve().parents[2]
-    candidate_dirs.append(repo_root / "auto_tessell_core" / "build")
+    build_root = repo_root / "auto_tessell_core" / "build"
+    candidate_dirs.append(build_root)
+    # The optional surface BL product is staged below its own package output.
+    # This developer-mode path is never consulted by release manifest mode.
+    candidate_dirs.append(build_root / "surface_bl_package" / "native_extensions")
 
     # Insert defaults first and the explicit override last so repeated
     # ``insert(0, ...)`` leaves AUTOTESSELL_EXT_BUILD_DIR at highest priority.
@@ -74,11 +83,27 @@ def _load_explicit_native_extension(module_name: str, candidate: Path) -> Any:
 def import_native_extension(module_name: str) -> Any:
     """Import one first-party native module with explicit-build precedence.
 
+    Release mode is deliberately manifest-only. Developer/test mode retains
+    the historical explicit build-directory behavior.
+
     A candidate present under ``AUTOTESSELL_EXT_BUILD_DIR`` wins even when an
     older module with the same top-level name is cached in ``sys.modules``.
     When the explicit directory does not contain the requested module, normal
     repository/PYTHONPATH fallback behavior remains available.
     """
+    if os.environ.get("AUTOTESSELL_NATIVE_RELEASE_MODE", "").strip().lower() in {
+        "1", "true", "yes"
+    }:
+        manifest = release_manifest_path()
+        if manifest is None:
+            raise ImportError("native_extension_manifest_refused:manifest_not_configured")
+        candidate, reason = verify_native_extension_manifest(
+            manifest, module_name=module_name
+        )
+        if candidate is None:
+            raise ImportError(f"native_extension_manifest_refused:{reason}")
+        return _load_explicit_native_extension(module_name, candidate)
+
     _add_native_extension_paths()
     importlib.invalidate_caches()
 
@@ -126,6 +151,21 @@ def load_native_polymesh() -> Any | None:
     return load_native_extension("native_polymesh")
 
 
+def load_native_poly_quality_relocation() -> Any | None:
+    """Return the optional C++23 Native Poly quality relocation kernel."""
+    return load_native_extension("native_poly_quality_relocation")
+
+
+def load_native_poly_bl_local_front_qopt() -> Any | None:
+    """Return the optional C++23 Native Poly local BL front optimizer."""
+    return load_native_extension("native_poly_bl_local_front_qopt")
+
+
+def load_native_surface_bl_quality() -> Any | None:
+    """Return the optional native wall-edge surface BL quality kernel."""
+    return load_native_extension("native_surface_bl_quality")
+
+
 def load_native_snap() -> Any | None:
     """Return the optional ``native_snap`` pybind11 module if available."""
     return load_native_extension("native_snap")
@@ -139,3 +179,8 @@ def load_native_tet_predicates() -> Any | None:
 def load_native_tet_qopt() -> Any | None:
     """Return the optional guarded tetrahedral optimizer module."""
     return load_native_extension("native_tet_qopt")
+
+
+def load_native_tri_quality_repair() -> Any | None:
+    """Return the optional C++23 Native Tri constrained quality repair kernel."""
+    return load_native_extension("native_tri_quality_repair")

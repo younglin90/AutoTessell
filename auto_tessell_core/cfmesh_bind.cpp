@@ -1,4 +1,4 @@
-// pybind11 binding for vendored cfMesh + OpenFOAM (third_party/cfmesh, GPL-3).
+// pybind11 binding for vendored cfMesh + OpenFOAM (vendor/dependencies/cfmesh, GPL-3).
 // Authored for AutoTessell.
 //
 // Approach: instead of binding the cfMesh class API in-process (which requires
@@ -31,7 +31,7 @@ std::string vendor_bin_dir()
         return std::string(env);
     }
     fs::path here = fs::canonical("/proc/self/exe").parent_path();
-    fs::path cand = here.parent_path() / "third_party" / "cfmesh" / "build";
+    fs::path cand = here.parent_path() / "vendor/dependencies" / "cfmesh" / "build";
     if (fs::exists(cand)) return cand.string();
     return std::string();
 }
@@ -43,7 +43,7 @@ std::string find_exe(const std::string& name)
         if (fs::exists(p)) return p.string();
     }
     fs::path src_root = fs::path(__FILE__).parent_path().parent_path();
-    fs::path cand = src_root / "third_party" / "cfmesh" / "build" / name;
+    fs::path cand = src_root / "vendor/dependencies" / "cfmesh" / "build" / name;
     if (fs::exists(cand)) return cand.string();
     return name;  // hope it's in PATH
 }

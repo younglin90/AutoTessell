@@ -71,4 +71,4 @@ return to PASS without changing their assertions.
 Rollback conditions: writer invocation for an invalid candidate, artifact or
 existing-case drift, validity bypass, nonterminal invalid escalation, valid
 writer-byte drift, shape/topology/provenance change, timeout, nondeterminism,
-or any `third_party/` change.
+or any `vendor/dependencies/` change.

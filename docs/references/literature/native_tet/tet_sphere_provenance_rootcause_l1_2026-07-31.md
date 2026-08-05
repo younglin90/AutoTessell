@@ -43,5 +43,5 @@ require adding production stage instrumentation or inventing a stage label.
 Both are outside this report-only card.  Result: `DEFER`.
 
 No generator, predicate, threshold, refusal, writer, transaction, routing,
-fallback, target, boundary-layer, dependency, or `third_party/` behavior is
+fallback, target, boundary-layer, dependency, or `vendor/dependencies/` behavior is
 changed.  No repair, rollback, or relaxation is authorized by this evidence.

@@ -34,14 +34,17 @@ import os
 import shutil
 import struct
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from core.utils.logging import get_logger
-from core.utils.native_extensions import load_native_bl
+from core.utils.native_extensions import (
+    load_native_bl,
+    load_native_poly_bl_local_front_qopt,
+)
 from core.utils.polymesh_reader import (
     parse_foam_boundary,
     parse_foam_faces,
@@ -155,6 +158,12 @@ def _begin_native_bl_state(
             "collision_safety_factor": float(cfg.collision_safety_factor),
             "feature_lock": bool(cfg.feature_lock),
             "feature_angle_deg": float(cfg.feature_angle_deg),
+            "max_skewness": cfg.max_skewness,
+            "max_non_orthogonality": cfg.max_non_orthogonality,
+            "max_quality_aspect_ratio": cfg.max_quality_aspect_ratio,
+            "min_face_weight": cfg.min_face_weight,
+            "min_scaled_jacobian": cfg.min_scaled_jacobian,
+            "min_first_layer_height": cfg.min_first_layer_height,
             "feature_reduction_ratio": float(cfg.feature_reduction_ratio),
         },
     }
@@ -594,6 +603,125 @@ def _bl_extrusion_metrics(
         return _BLExtrusionMetrics(tuple(), 0.0, 0.0, 1.0)
 
 
+def _run_local_front_qopt(
+    original_points: np.ndarray,
+    candidate_points: np.ndarray,
+    faces: list[list[int]],
+    owner: list[int] | np.ndarray,
+    neighbour: list[int] | np.ndarray,
+    layer_point_ids: list[dict[int, int]],
+    wall_vertices: list[int],
+    *,
+    base_n_cells: int,
+) -> tuple[np.ndarray, dict[str, Any], bool]:
+    """Propose local layer scales for failing Poly front stars.
+
+    The C++ kernel is intentionally a proposal-only operation.  It receives
+    explicit index maps and returns a candidate; this function validates the
+    returned shape and leaves strict topology/source/provenance admission to
+    the existing Python transaction.
+    """
+    if os.environ.get("AUTO_TESSELL_NATIVE_BL_LOCAL_FRONT_QOPT", "0") != "1":
+        return np.asarray(candidate_points, dtype=np.float64).copy(), {}, False
+    kernel = load_native_poly_bl_local_front_qopt()
+    if kernel is None or not layer_point_ids:
+        return (
+            np.asarray(candidate_points, dtype=np.float64).copy(),
+            {"local_front_mode": "unavailable"},
+            False,
+        )
+    mappings = sorted(
+        (
+            (int(vertex), int(point_id))
+            for mapping in layer_point_ids
+            for vertex, point_id in mapping.items()
+        ),
+        key=lambda item: (item[1], item[0]),
+    )
+    if not mappings:
+        return (
+            np.asarray(candidate_points, dtype=np.float64).copy(),
+            {"local_front_mode": "empty"},
+            False,
+        )
+    flat = np.asarray(
+        [int(vertex) for face in faces for vertex in face],
+        dtype=np.int64,
+    )
+    offsets = np.zeros(len(faces) + 1, dtype=np.int64)
+    offsets[1:] = np.cumsum(
+        np.asarray([len(face) for face in faces], dtype=np.int64),
+        dtype=np.int64,
+    )
+    try:
+        result = dict(
+            kernel.optimize_local_front(
+                np.asarray(original_points, dtype=np.float64),
+                np.asarray(candidate_points, dtype=np.float64),
+                flat,
+                offsets,
+                np.asarray(owner, dtype=np.int64),
+                np.asarray(neighbour, dtype=np.int64),
+                np.asarray([item[0] for item in mappings], dtype=np.int64),
+                np.asarray([item[1] for item in mappings], dtype=np.int64),
+                int(base_n_cells),
+                int(os.environ.get("AUTO_TESSELL_NATIVE_BL_LOCAL_FRONT_MAX_ROUNDS", "8")),
+                float(os.environ.get("AUTO_TESSELL_NATIVE_BL_LOCAL_FRONT_ALPHA_MIN", "0.03125")),
+            )
+        )
+        proposed = np.asarray(result.get("candidate_points"), dtype=np.float64)
+        if proposed.shape != np.asarray(candidate_points).shape or not np.isfinite(proposed).all():
+            raise ValueError("local_front_candidate_shape_or_finite_gate")
+        wall_point_ids = {
+            int(mapping[int(vertex)])
+            for mapping in layer_point_ids[:1]
+            for vertex in wall_vertices
+            if int(vertex) in mapping
+        }
+        for point_id in sorted(wall_point_ids):
+            if not np.array_equal(
+                np.asarray(candidate_points, dtype=np.float64)[point_id].view(np.uint64),
+                proposed[point_id].view(np.uint64),
+            ):
+                raise ValueError("local_front_boundary_wall_bits_changed")
+        alpha_values = np.asarray(result.get("alpha"), dtype=np.float64)
+        if alpha_values.ndim != 1 or len(alpha_values) != len(mappings):
+            raise ValueError("local_front_alpha_shape_gate")
+        diag: dict[str, Any] = {
+            "local_front_mode": "local_front",
+            "local_front_accepted": bool(result.get("accepted") is True),
+            "local_front_boundary_wall_bits_locked": True,
+            "local_front_alpha_min_observed": float(alpha_values.min(initial=1.0)),
+            "local_front_alpha_max_observed": float(alpha_values.max(initial=0.0)),
+            "local_front_reason": str(result.get("reason", "")),
+            "local_front_n_input_inverted": int(result.get("n_input_inverted_cells", 0)),
+            "local_front_n_remaining_inverted": int(result.get("n_remaining_inverted_cells", 0)),
+            "local_front_n_affected_cells": int(result.get("n_affected_cells", 0)),
+            "local_front_n_scaled_vertices": int(result.get("n_scaled_points", 0)),
+            "local_front_iterations": int(result.get("iterations", 0)),
+            "local_front_alpha_min": float(result.get("alpha_min", 0.03125)),
+            "local_front_topology_untouched": bool(result.get("topology_untouched") is True),
+            "local_front_source_points_untouched": bool(
+                result.get("source_points_untouched") is True
+            ),
+        }
+        if result.get("accepted") is True:
+            return proposed, diag, True
+        diag["local_front_candidate_discarded"] = True
+        return np.asarray(candidate_points, dtype=np.float64).copy(), diag, False
+    except Exception as exc:  # noqa: BLE001
+        return (
+            np.asarray(candidate_points, dtype=np.float64).copy(),
+            {
+                "local_front_mode": "refused",
+                "local_front_accepted": False,
+                "local_front_reason": str(exc),
+                "local_front_candidate_discarded": True,
+            },
+            False,
+        )
+
+
 def _bounded_bl_extrusion_line_search(
     original_points: np.ndarray,
     candidate_points: np.ndarray,
@@ -608,7 +736,6 @@ def _bounded_bl_extrusion_line_search(
     allow_quality_expansion: bool = False,
     restore_identity: bool = True,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    del wall_vertices
     candidate = np.asarray(candidate_points, dtype=np.float64).copy()
     pre = _bl_extrusion_metrics(
         candidate, original_points, faces, owner, neighbour,
@@ -628,6 +755,7 @@ def _bounded_bl_extrusion_line_search(
         'max_scale': 1.0,
     }
     identity_restored = False
+    local_front_accepted = False
     if restore_identity and layer_point_ids:
         mapped_original = {
             int(vertex): int(point_id)
@@ -660,6 +788,27 @@ def _bounded_bl_extrusion_line_search(
             )
 
     if pre.inverted_cells and layer_point_ids and not identity_restored:
+        local_candidate, local_diag, local_front_accepted = _run_local_front_qopt(
+            original_points,
+            candidate,
+            faces,
+            owner,
+            neighbour,
+            layer_point_ids,
+            wall_vertices,
+            base_n_cells=base_n_cells,
+        )
+        if local_diag:
+            diag.update(local_diag)
+        if local_front_accepted:
+            candidate = local_candidate
+            pre = _bl_extrusion_metrics(
+                candidate, original_points, faces, owner, neighbour,
+                base_n_cells=base_n_cells,
+            )
+        else:
+            local_front_accepted = False
+    if pre.inverted_cells and layer_point_ids and not identity_restored and not local_front_accepted:
         base = candidate.copy()
         for step in range(1, max(1, int(max_rounds)) + 1):
             scale = 0.5 ** step
@@ -832,6 +981,13 @@ class BLConfig:
     feature_reduction_ratio: float = 0.5
     # Keep collision-derived first-layer caps local, then bound the jump to
     # adjacent open-wall vertices.  Disabled by default to preserve legacy
+    # Round 031: independent quality limits are supplied by the input contract.
+    max_skewness: float | None = None
+    max_non_orthogonality: float | None = None
+    max_quality_aspect_ratio: float | None = None
+    min_face_weight: float | None = None
+    min_scaled_jacobian: float | None = None
+    min_first_layer_height: float | None = None
     # thickness selection exactly.
     feature_size_smoothing: bool = False
     feature_size_gradient_limit: float = 0.0
@@ -847,14 +1003,18 @@ class BLConfig:
         # C-VAL-8 / beta2409 — fast-fail validation. quick_validator 발견:
         # first_thickness=0.0 → "list index out of range" exception (배열
         # 빈 list 로 layer indexing 실패). 명확한 오류로 변환.
+        if self.num_layers < 0:
+            raise ValueError(
+                f"BLConfig.num_layers >= 0 필수 (got {self.num_layers})."
+            )
+        if self.num_layers == 0:
+            # BL=0 is a strict identity/no-op request; layer-size values are
+            # intentionally ignored because no layer candidate is constructed.
+            return
         if self.first_thickness <= 0:
             raise ValueError(
                 f"BLConfig.first_thickness 는 양수여야 합니다 "
                 f"(got {self.first_thickness}). bbox * 0.001 권장."
-            )
-        if self.num_layers < 1:
-            raise ValueError(
-                f"BLConfig.num_layers >= 1 필수 (got {self.num_layers})."
             )
         if self.growth_ratio < 1.0:
             raise ValueError(
@@ -935,6 +1095,22 @@ class NativeBLResult:
     aniso_split_n_examined: int = 0
     aniso_split_n_would_split: int = 0
     aniso_split_max_aspect_in: float = 0.0
+    # Round 030: durable request/effective/quality receipt for BL=0 and BL>=1.
+    requested_layers: int = 0
+    actual_layers: int = 0
+    first_layer_height: float = 0.0
+    min_first_layer_height: float = 0.0
+    max_first_layer_height: float = 0.0
+    positive_thickness: bool = False
+    max_skewness: float | None = None
+    max_non_orthogonality: float | None = None
+    min_face_weight: float | None = None
+    min_scaled_jacobian: float | None = None
+    negative_volumes: int = 0
+    quality_readback_status: str = "not_measured"
+    wall_selector: dict[str, Any] = field(default_factory=dict)
+    termination_reason: str = "not_started"
+    transaction_status: str = "not_started"
 
 
 # ---------------------------------------------------------------------------
@@ -6188,10 +6364,70 @@ def generate_native_bl(
     cfg = config or BLConfig()
     requested_layers = int(cfg.num_layers)
     poly_dir = case_dir / "constant" / "polyMesh"
+    if requested_layers > 0 and not engine_tag.startswith("__native_bl_stage__:") and not _vd_should_activate(case_dir):
+        from core.layers.native_bl_transaction import (
+            run_private_native_bl_transaction,
+        )
+        return run_private_native_bl_transaction(
+            case_dir,
+            cfg,
+            engine_tag=engine_tag,
+            generate_fn=generate_native_bl,
+            result_cls=NativeBLResult,
+        )
     if not (poly_dir / "faces").exists():
         return NativeBLResult(
             success=False, elapsed=time.perf_counter() - t_start,
             message=f"polyMesh 없음: {poly_dir}",
+        )
+
+    # C107: an explicit source-map sidecar opts into Hex authority mode only
+    # after it has been checked against the current pre-BL polyMesh. This
+    # preflight intentionally precedes the pending transaction state and every
+    # mesh mutation, so stale lineage cannot leave a publishable candidate.
+    native_hex_source_map_path = case_dir / "native_hex_source_face_map.json"
+    native_hex_authority_mode = False
+    native_hex_source_map_info: dict[str, Any] = {}
+    if native_hex_source_map_path.is_file():
+        try:
+            from core.generator.native_hex.output_source_binding import (
+                validate_native_hex_source_face_map,
+            )
+            native_hex_source_map_info = validate_native_hex_source_face_map(case_dir)
+        except Exception as _source_map_import_exc:
+            native_hex_source_map_info = {
+                "accepted": False,
+                "reason": f"{type(_source_map_import_exc).__name__}:{_source_map_import_exc}",
+            }
+        if native_hex_source_map_info.get("accepted") is not True:
+            return NativeBLResult(
+                success=False,
+                elapsed=time.perf_counter() - t_start,
+                message=(
+                    "native_hex_source_map_refused:"
+                    + str(native_hex_source_map_info.get("reason", "invalid"))
+                ),
+            )
+        native_hex_authority_mode = True
+
+    if requested_layers == 0:
+        zero_blocker = _native_bl_zero_request_blocker(case_dir)
+        if zero_blocker is not None:
+            return NativeBLResult(
+                success=False,
+                elapsed=time.perf_counter() - t_start,
+                message=zero_blocker,
+            )
+        return NativeBLResult(
+            success=True,
+            elapsed=time.perf_counter() - t_start,
+            message="native_bl BL=0 identity; polyMesh unchanged",
+            requested_layers=0,
+            actual_layers=0,
+            positive_thickness=False,
+            quality_readback_status="identity_not_evaluated",
+            wall_selector={"patch_names": cfg.wall_patch_names, "set_faces": cfg.set_faces},
+            termination_reason="disabled_identity",
         )
 
     input_hashes, state_error = _begin_native_bl_state(
@@ -6211,6 +6447,12 @@ def generate_native_bl(
     owner_list = parse_foam_labels(poly_dir / "owner")
     neighbour_list = parse_foam_labels(poly_dir / "neighbour")
     boundary = parse_foam_boundary(poly_dir / "boundary")
+    _native_hex_source_face_by_mesh_face: dict[int, int] = {}
+    if native_hex_authority_mode:
+        _native_hex_source_face_by_mesh_face = {
+            int(row["source_mesh_face"]): int(row["source_face"])
+            for row in native_hex_source_map_info.get("records", [])
+        }
 
     points = np.array(raw_points, dtype=np.float64)
     owner = np.array(owner_list, dtype=np.int64)
@@ -6266,6 +6508,9 @@ def generate_native_bl(
         )
         wall_face_indices = [fi for fi in wall_face_indices if 0 <= fi < _n_faces]
     replaced_polygon_wall_faces: set[int] = set()
+    _wall_source_mesh_face_by_wall_face = {
+        int(fi): int(fi) for fi in wall_face_indices
+    }
     non_tri = [fi for fi in wall_face_indices if len(faces[fi]) != 3]
     if non_tri:
         log.info(
@@ -6284,6 +6529,7 @@ def generate_native_bl(
                 tri = [int(f[0]), int(f[k]), int(f[k + 1])]
                 new_fi = len(faces)
                 faces.append(tri)
+                _wall_source_mesh_face_by_wall_face[int(new_fi)] = int(fi)
                 # owner 배열 확장 (numpy → list 로 처리)
                 owner = np.concatenate([owner, [own]])
                 if patch_info is not None:
@@ -7218,8 +7464,9 @@ def generate_native_bl(
         list[list[int]],         # final_faces
         list[int],               # final_owner
         list[int],               # final_nbr
-        list[dict[str, Any]],    # final_boundary_entries (bl_side 포함)
-        list[dict[int, int]],    # layer_point_ids (quality check 용)
+        list[dict[str, Any]],    # final_boundary_entries (bl_side)
+        list[int],                # final_boundary_source_mesh_faces
+        list[dict[int, int]],    # layer_point_ids (quality check)
     ]:
         """단일 prism insertion pass. vertex_scale_pass / cum_pass 로 layer 생성.
 
@@ -7869,7 +8116,11 @@ def generate_native_bl(
         p_bnd_owner_by_patch: dict[int, list[int]] = {
             pi: [] for pi in range(len(boundary))
         }
+        p_bnd_source_by_patch: dict[int, list[int]] = {
+            pi: [] for pi in range(len(boundary))
+        }
         p_bl_side_faces: list[list[int]] = []
+        p_bl_side_source_faces: list[int] = []
         p_bl_side_owner: list[int] = []
 
         def _face_parts(face_: list[int], *, force_quad_split: bool = False) -> list[list[int]]:
@@ -7949,6 +8200,7 @@ def generate_native_bl(
                 for part_p in _face_parts(list(faces[fi_p])):
                     p_bnd_faces_by_patch[pi_p].append(part_p)
                     p_bnd_owner_by_patch[pi_p].append(int(owner[fi_p]))
+                    p_bnd_source_by_patch[pi_p].append(int(fi_p))
 
         def _ltri(fi_: int, layer_: int) -> tuple[int, int, int]:
             v0_, v1_, v2_ = wall_tri_verts[fi_]
@@ -7982,6 +8234,9 @@ def generate_native_bl(
                 if k_p == 0:
                     p_bnd_faces_by_patch[patch_idx_p].append(list(outer_tri_p))
                     p_bnd_owner_by_patch[patch_idx_p].append(prism_cell_p)
+                    p_bnd_source_by_patch[patch_idx_p].append(
+                        int(_wall_source_mesh_face_by_wall_face.get(fi_p, fi_p))
+                    )
 
                 if k_p == cfg.num_layers - 1:
                     p_int_faces.append(list(inner_tri_p))
@@ -8014,6 +8269,9 @@ def generate_native_bl(
                         for side_p in _side_face_parts(quad_p):
                             p_bl_side_faces.append(side_p)
                             p_bl_side_owner.append(prism_cell_p)
+                            p_bl_side_source_faces.append(
+                                int(_wall_source_mesh_face_by_wall_face.get(fi_p, fi_p))
+                            )
                     else:
                         other_fi_p = other_p[0]
                         other_wi_p = wall_fi_to_wi.get(other_fi_p, -1)
@@ -8021,6 +8279,9 @@ def generate_native_bl(
                             for side_p in _side_face_parts(quad_p):
                                 p_bl_side_faces.append(side_p)
                                 p_bl_side_owner.append(prism_cell_p)
+                                p_bl_side_source_faces.append(
+                                    int(_wall_source_mesh_face_by_wall_face.get(fi_p, fi_p))
+                                )
                             continue
                         nbr_prism_p = _pcid(other_wi_p, k_p)
                         if prism_cell_p < nbr_prism_p:
@@ -8038,14 +8299,17 @@ def generate_native_bl(
         out_nbr.extend(p_int_nbr)
 
         out_bnd_entries: list[dict[str, Any]] = []
+        out_bnd_source_faces: list[int] = []
         fc_p = len(out_faces)
         for pi_p, patch_p in enumerate(boundary):
             pf_p = p_bnd_faces_by_patch.get(pi_p, [])
             po_p = p_bnd_owner_by_patch.get(pi_p, [])
+            ps_p = p_bnd_source_by_patch.get(pi_p, [])
             sf_p = fc_p
             for f_p, o_p in zip(pf_p, po_p, strict=False):
                 out_faces.append(f_p)
                 out_owner.append(o_p)
+            out_bnd_source_faces.extend(int(v) for v in ps_p)
             fc_p += len(pf_p)
             out_bnd_entries.append({
                 "name": patch_p.get("name", f"patch_{pi_p}"),
@@ -8059,6 +8323,7 @@ def generate_native_bl(
             for f_p, o_p in zip(p_bl_side_faces, p_bl_side_owner, strict=False):
                 out_faces.append(f_p)
                 out_owner.append(o_p)
+            out_bnd_source_faces.extend(int(v) for v in p_bl_side_source_faces)
             fc_p += len(p_bl_side_faces)
             # BETA2879 — patch 이름에 'domain' 토큰 포함 → 평가자의 fidelity
             # selector 가 이 patch 를 도메인 경계로 간주해 형상 비교에서 제외
@@ -8070,7 +8335,15 @@ def generate_native_bl(
                 "startFace": sf_bl,
             })
 
-        return fp, out_faces, out_owner, out_nbr, out_bnd_entries, lp_ids
+        return (
+            fp,
+            out_faces,
+            out_owner,
+            out_nbr,
+            out_bnd_entries,
+            out_bnd_source_faces,
+            lp_ids,
+        )
 
     # --------------------------------------------------------------------------
     # beta93: shrink iteration 루프
@@ -8084,13 +8357,22 @@ def generate_native_bl(
     final_owner: list[int] = []
     final_nbr: list[int] = []
     final_boundary_entries: list[dict[str, Any]] = []
+    final_boundary_source_faces: list[int] = []
     layer_point_ids: list[dict[int, int]] = []
     n_new_points = 0
     bl_side_count = 0
     n_feature_edge_merged = 0
 
     for iteration in range(n_iterations):
-        fp, out_faces, out_owner, out_nbr, out_bnd_entries, lp_ids = _run_prism_pass(
+        (
+            fp,
+            out_faces,
+            out_owner,
+            out_nbr,
+            out_bnd_entries,
+            out_bnd_source_faces,
+            lp_ids,
+        ) = _run_prism_pass(
             current_vertex_scale, current_cum,
             vertex_cum_map_pass=vertex_cum_map if use_per_vertex_cum else None,
             use_per_v_cum_pass=use_per_vertex_cum,
@@ -8100,6 +8382,7 @@ def generate_native_bl(
         final_owner = out_owner
         final_nbr = out_nbr
         final_boundary_entries = out_bnd_entries
+        final_boundary_source_faces = list(out_bnd_source_faces)
         layer_point_ids = lp_ids
         n_new_points = len(fp) - len(points)
         # bl_side face 수 추적
@@ -8262,12 +8545,42 @@ def generate_native_bl(
             _glt_thicknesses = _geometric_layer_thickness(
                 cfg.first_thickness, _HEX_LAYERS_N, growth_ratio=cfg.growth_ratio,
             )
-            # Build wall face centroid list for collision check (bounding-sphere approx).
+            # Build wall face centroids and query each advancing layer against
+            # the immutable wall-front source, preserving the legacy predicate.
             _wf_centroids: list[np.ndarray] = []
             for _hfi in wall_face_indices:
                 _hvs = faces[_hfi]
                 if len(_hvs) >= 3:
                     _wf_centroids.append(final_points[list(wall_tri_verts[_hfi])].mean(axis=0))
+            from core.layers.native_bl_collision import query_centroid_overlap_mask
+            _hex_collision_by_layer_face: dict[tuple[int, int], bool] = {}
+            for _li_h in range(min(_HEX_LAYERS_N, len(layer_point_ids) - 1)):
+                _query_points: list[np.ndarray] = []
+                _query_radii: list[float] = []
+                _query_face_ids: list[int] = []
+                for _hfi in wall_face_indices:
+                    if _hfi not in wall_tri_verts:
+                        continue
+                    _v0q, _v1q, _v2q = wall_tri_verts[_hfi]
+                    _qmap = layer_point_ids[_li_h + 1]
+                    if not all(v in _qmap for v in (_v0q, _v1q, _v2q)):
+                        continue
+                    _qtop = final_points[[_qmap[_v0q], _qmap[_v1q], _qmap[_v2q]]]
+                    _qedges = [
+                        float(np.linalg.norm(_qtop[(_qk + 1) % 3] - _qtop[_qk]))
+                        for _qk in range(3)
+                    ]
+                    _query_points.append(_qtop.mean(axis=0))
+                    _query_radii.append(max(max(_qedges) * 0.5, 1.0e-6))
+                    _query_face_ids.append(int(_hfi))
+                if _query_points:
+                    _blocked = query_centroid_overlap_mask(
+                        _query_points, _query_radii, _wf_centroids,
+                    )
+                    _hex_collision_by_layer_face.update({
+                        (int(_li_h), face_id): bool(blocked)
+                        for face_id, blocked in zip(_query_face_ids, _blocked, strict=True)
+                    })
 
             for _fi_h in wall_face_indices:
                 if _fi_h not in wall_tri_verts:
@@ -8308,11 +8621,9 @@ def generate_native_bl(
                     # Guard 2 — collision (bounding-sphere)
                     _top_c_h = _top_h.mean(axis=0)
                     _r_h = (_max_e_h * 0.5) if _max_e_h > 0 else 1e-6
-                    _col_h = any(
-                        bool(np.linalg.norm(_top_c_h - _tc_h) < _r_h and
-                             not np.allclose(_top_c_h, _tc_h))
-                        for _tc_h in _wf_centroids
-                    )
+                    _col_h = bool(_hex_collision_by_layer_face.get(
+                        (int(_li_h), int(_fi_h)), False,
+                    ))
                     if _col_h:
                         _hex_layers_n_rej_col += 1
                         log.debug("hex_layers_prism_rejected_collision",
@@ -8681,6 +8992,162 @@ def generate_native_bl(
     )
     _write_boundary(poly_dir / "boundary", final_boundary_entries)
 
+    # Round 030: read first-layer height and quality from the persisted candidate.
+    _first_layer_heights: list[float] = []
+    if final_points is not None and len(layer_point_ids) > 1:
+        _outer_layer = layer_point_ids[0]
+        _first_inner_layer = layer_point_ids[1]
+        for _v in wall_vert_indices:
+            _p0 = _outer_layer.get(int(_v))
+            _p1 = _first_inner_layer.get(int(_v))
+            if _p0 is None or _p1 is None:
+                continue
+            _h = float(np.linalg.norm(final_points[int(_p1)] - final_points[int(_p0)]))
+            if np.isfinite(_h):
+                _first_layer_heights.append(_h)
+    _first_layer_height_min = (
+        float(min(_first_layer_heights)) if _first_layer_heights else 0.0
+    )
+    _positive_thickness = bool(
+        n_prism_total > 0 and _first_layer_height_min > 0.0 and total > 0.0
+    )
+    # pre-write arrays. This catches writer/topology changes before receipt.
+    _quality_readback: dict[str, Any] = {
+        "status": "not_measured",
+        "max_skewness": None,
+        "max_non_orthogonality": None,
+        "max_aspect_ratio": None,
+        "min_scaled_jacobian": None,
+        "negative_volumes": None,
+        "min_face_weight": None,
+    }
+    try:
+        from core.evaluator.native_checker import NativeMeshChecker
+        _disk_quality = NativeMeshChecker().run(case_dir)
+        _quality_readback = {
+            "status": "measured",
+            "max_skewness": float(_disk_quality.max_skewness),
+            "max_non_orthogonality": float(_disk_quality.max_non_orthogonality),
+            "max_aspect_ratio": float(_disk_quality.max_aspect_ratio),
+            "min_scaled_jacobian": float(_disk_quality.min_determinant),
+            "negative_volumes": int(_disk_quality.negative_volumes),
+            "min_face_weight": float(
+                _disk_quality.min_face_weight
+                if _disk_quality.min_face_weight is not None else 1.0
+            ),
+        }
+
+    except Exception as _quality_exc:
+        _quality_readback["reason"] = f"{type(_quality_exc).__name__}:{_quality_exc}"
+        log.warning("native_bl_quality_readback_failed", reason=str(_quality_exc)[:200])
+    # C106: preserve the actual writer boundary order and its source mesh-face
+    # owner. The later Hex receipt may bind CAD ordinals only through this
+    # explicit ledger; it must never reconstruct them from geometry.
+    if native_hex_authority_mode or engine_tag == "native_hex":
+        try:
+            writer_records: list[dict[str, Any]] = []
+            boundary_cursor = 0
+            for entry in final_boundary_entries:
+                start_face = int(entry.get("startFace", -1))
+                face_count = int(entry.get("nFaces", 0))
+                patch_name = str(entry.get("name", ""))
+                is_lateral = patch_name == "bl_internal_domain"
+                for offset in range(face_count):
+                    if boundary_cursor >= len(final_boundary_source_faces):
+                        raise ValueError("writer_order_source_face_count_mismatch")
+                    source_mesh_face = int(final_boundary_source_faces[boundary_cursor])
+                    source_face = (
+                        None
+                        if is_lateral
+                        else _native_hex_source_face_by_mesh_face.get(source_mesh_face)
+                    )
+                    writer_records.append({
+                        "writer_order": int(boundary_cursor),
+                        "output_face_id": int(start_face + offset),
+                        "source_mesh_face": source_mesh_face,
+                        "source_face": int(source_face) if source_face is not None else -1,
+                        "patch": patch_name,
+                        "direct": source_face is not None,
+                        "lineage_role": (
+                            "layer_lateral" if is_lateral else "source_boundary"
+                        ),
+                    })
+                    boundary_cursor += 1
+            if boundary_cursor != len(final_faces) - len(final_nbr):
+                raise ValueError("writer_order_boundary_count_mismatch")
+            writer_payload = {
+                "schema": (
+                    "autotessell/native-hex-writer-order/v2"
+                    if native_hex_authority_mode
+                    else "autotessell/native-hex-writer-order/v1"
+                ),
+                "requested_layers": int(requested_layers),
+                "actual_layers": int(cfg.num_layers),
+                "source_map_present": native_hex_source_map_path.is_file(),
+                "source_map_valid": native_hex_authority_mode,
+                "source_map_sha256": native_hex_source_map_info.get("map_sha256"),
+                "source_binding_sha256": native_hex_source_map_info.get(
+                    "source_binding_sha256"
+                ),
+                "ingress_certificate_sha256": native_hex_source_map_info.get(
+                    "ingress_certificate_sha256"
+                ),
+                "semantic_ledger_sha256": native_hex_source_map_info.get(
+                    "semantic_ledger_sha256"
+                ),
+                "provisioning_manifest_sha256": native_hex_source_map_info.get(
+                    "provisioning_manifest_sha256"
+                ),
+                "records": writer_records,
+            }
+            writer_path = case_dir / "native_hex_writer_order.json"
+            writer_tmp = case_dir / (
+                f".native_hex_writer_order.{os.getpid()}.{time.time_ns()}.tmp"
+            )
+            writer_tmp.write_text(
+                json.dumps(writer_payload, sort_keys=True, separators=(",", ":"))
+                + chr(10)
+            )
+            os.replace(writer_tmp, writer_path)
+        except Exception as _writer_order_exc:
+            log.warning(
+                "native_hex_writer_order_not_written",
+                reason=str(_writer_order_exc)[:240],
+            )
+
+    # Native Tet actual-contract path: preserve source-to-layer lineage before
+    # the subsequent prism-to-Tet rebuild changes cell/face IDs.
+    if engine_tag == "native_tet_actual_contract" and int(cfg.num_layers) > 0:
+        try:
+            _lineage_records = []
+            for _wi, _source_face in enumerate(wall_face_indices):
+                _layers = [
+                    [int(layer_point_ids[_li][int(_v)]) for _v in wall_tri_verts[_source_face]]
+                    for _li in range(len(layer_point_ids))
+                ]
+                _lineage_records.append({
+                    "source_face": int(_source_face),
+                    "source_vertices": [int(_v) for _v in wall_tri_verts[_source_face]],
+                    "patch_index": int(wall_orig_patch[_source_face]),
+                    "owner_cell": int(wall_orig_owner[_source_face]),
+                    "layer_point_ids": _layers,
+                    "prism_cell_ids": [
+                        int(prism_cell_id_start + _wi * int(cfg.num_layers) + _li)
+                        for _li in range(int(cfg.num_layers))
+                    ],
+                })
+            (case_dir / "native_bl_lineage.json").write_text(
+                json.dumps({
+                    "schema": "native-tet-bl-direct-lineage/v1",
+                    "requested_layers": int(cfg.num_layers),
+                    "first_thickness": float(cfg.first_thickness),
+                    "growth_ratio": float(cfg.growth_ratio),
+                    "records": _lineage_records,
+                }, sort_keys=True, separators=(",", ":")) + "\n"
+            )
+        except Exception as _lineage_exc:
+            log.warning("native_tet_direct_id_lineage_write_failed", reason=str(_lineage_exc)[:160])
+
     # beta2273 — commercial-grade mesh quality summary JSON.
     # cfMesh / Pointwise / Star-CCM+ 의 mesh quality report 동등.
     # case_dir/native_bl_quality.json 에 모든 메트릭 저장.
@@ -8711,6 +9178,17 @@ def generate_native_bl(
             "bbox_diag": float(bbox_diag),
             "thickness_to_bbox_ratio": float(total / max(bbox_diag, 1e-30)),
             "n_degenerate_prisms": int(n_degen),
+            "boundary_layer": {
+                "requested_layers": int(requested_layers),
+                "actual_layers": int(cfg.num_layers),
+                "positive_first_layer_height": float(_first_layer_height_min),
+                "positive_cell_count": int(n_prism_total),
+                "positive_thickness": bool(_positive_thickness),
+                "termination_reason": (
+                    "committed_with_local_termination"
+                    if int(lcr_n_reduced) > 0 else "committed_full_schedule"
+                ),
+            },
             "max_aspect_ratio": float(max_ar),
             "wall_preserve": {
                 "max_diff": float(wall_preserve_max_diff),
@@ -8719,6 +9197,7 @@ def generate_native_bl(
                 "within_envelope": bool(wall_within_env),
                 "envelope_eps_rel": 1e-6,
             },
+            "quality_readback": _quality_readback,
             "force_snap": {
                 "n_applied": int(n_snap),
                 "max_diff": float(snap_max_diff),
@@ -8760,6 +9239,12 @@ def generate_native_bl(
                 "ignore_patch_prefixes": cfg.ignore_patch_prefixes,
                 "target_y_plus": cfg.target_y_plus,
                 "flow_fluid_preset": cfg.flow_fluid_preset,
+                "max_skewness": cfg.max_skewness,
+                "max_non_orthogonality": cfg.max_non_orthogonality,
+                "max_quality_aspect_ratio": cfg.max_quality_aspect_ratio,
+                "min_face_weight": cfg.min_face_weight,
+                "min_scaled_jacobian": cfg.min_scaled_jacobian,
+                "min_first_layer_height": cfg.min_first_layer_height,
             },
         }
         (case_dir / "native_bl_quality.json").write_text(
@@ -8785,6 +9270,7 @@ def generate_native_bl(
         wall_preserve_max_diff_rel=float(wall_preserve_rel),
         wall_preserve_n_drift=int(n_wall_drift),
         wall_preserve_within_envelope=bool(wall_within_env),
+        min_scaled_jacobian=_quality_readback.get("min_scaled_jacobian"),
         n_snap_applied=int(n_snap),
         snap_max_diff=float(snap_max_diff),
         lcr_n_reduced_verts=int(lcr_n_reduced),
@@ -8794,6 +9280,21 @@ def generate_native_bl(
         aniso_split_n_examined=int(aniso_split_n_examined),
         aniso_split_n_would_split=int(aniso_split_n_would),
         aniso_split_max_aspect_in=float(aniso_split_max_asp_in),
+        requested_layers=int(requested_layers),
+        actual_layers=int(cfg.num_layers),
+        first_layer_height=float(_first_layer_height_min),
+        min_first_layer_height=float(_first_layer_height_min),
+        positive_thickness=bool(_positive_thickness),
+        max_skewness=_quality_readback.get("max_skewness"),
+        max_non_orthogonality=_quality_readback.get("max_non_orthogonality"),
+        min_face_weight=_quality_readback.get("min_face_weight"),
+        negative_volumes=int(_quality_readback.get("negative_volumes") or 0),
+        quality_readback_status=str(_quality_readback.get("status", "not_measured")),
+        wall_selector={"patch_names": cfg.wall_patch_names, "set_faces": cfg.set_faces},
+        termination_reason=(
+            "committed_with_local_termination"
+            if int(lcr_n_reduced) > 0 else "committed_full_schedule"
+        ),
         message=(
             f"native_bl Phase 2 OK — {n_prism_total} prism cells inserted "
             f"({cfg.num_layers} layers × {n_wall_faces} wall triangles). "

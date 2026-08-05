@@ -41,7 +41,7 @@ IDs and invalid product classes fail closed.
 
 Rollback this card if it grants a product acceptance, infers any missing
 evidence, changes a mesh, calls a native evaluator, or enters routing/default
-behavior.  `third_party/` is unchanged.
+behavior.  `vendor/dependencies/` is unchanged.
 
 ## Provenance
 

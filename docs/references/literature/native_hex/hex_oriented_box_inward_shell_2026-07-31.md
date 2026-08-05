@@ -62,7 +62,7 @@ face connectivity, patch identity, and provenance remain exact source values.
   DOI `10.1016/j.jcp.2025.113744`, remains a positive-layer validity reference.
   Its global nonlinear solve is outside this card.
 
-No new dependency was added. `third_party/` is unchanged. No DOI was
+No new dependency was added. `vendor/dependencies/` is unchanged. No DOI was
 inaccessible.
 
 ## Implementation
@@ -114,7 +114,7 @@ behavior remain unchanged.
 - full `tests/test_native_hex*.py` group: `241 passed` in `167.48 s`;
 - Ruff on both changed test files: PASS;
 - source coordinates and all five authoritative files are deterministic;
-- `third_party/` diff: empty.
+- `vendor/dependencies/` diff: empty.
 
 The repository-wide exact native ABI contract test has one unrelated base
 failure: `native_polymesh` exports `assemble_dual_hull_faces`, while its current

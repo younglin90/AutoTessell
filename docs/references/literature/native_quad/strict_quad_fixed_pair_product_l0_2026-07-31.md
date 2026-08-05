@@ -79,7 +79,7 @@ Only the disconnected `native_quad` product module and export, its L0/L1 test,
 and this evidence note change.  No pipeline, `native_quad_dominant`, product
 classification policy, evaluator volume checker, tier selector, schema,
 CLI/UI, writer, CMake, target-cell policy, boundary-layer logic, or
-`third_party/` code changes.
+`vendor/dependencies/` code changes.
 
 Kill/revert the card for any false strict product, mutable returned arrays,
 source/hash/payload mismatch, nonempty product triangles, route/output
@@ -90,4 +90,4 @@ surface-product/preflight behavior.
 
 This card composes first-party contracts only.  It relies on the local
 fixed-pair preflight evidence and its Zhu DOI notes; it copies no paper or
-open-source implementation.  `third_party/` remains unchanged.
+open-source implementation.  `vendor/dependencies/` remains unchanged.

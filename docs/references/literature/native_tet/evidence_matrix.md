@@ -422,7 +422,7 @@ used for this conclusion.
 
 ### 2026-07-27 — FSL wave-1 lazy-removal recheck (`TET-LAZY-1` + `TET-SHAPE-3(a)`)
 
-The current fixed FSL mesh (`harness/_fsl4_mesh.npz`, input point digest
+The current fixed FSL mesh (`research/quality-harness/_fsl4_mesh.npz`, input point digest
 `698e6fd3eca2982d88ef590ba04f2d29dbbcd7d2f78ff83e3405a2e9eb6bcff3`, tet
 digest `1c5c190f596395339df5a9a5c9a2ae5ce9c24832299c58c6004b64ce68e1cc8f`)
 was reclassified with the existing diagnostic-only wave-1 runner. It contains
@@ -527,7 +527,7 @@ returned `603–670` points and `2436–2743` cells. With optimization disabled,
 `num_threads=1` still returned `2587–2646` points and `7808–7948` cells.
 
 The source-level cause is explicit in the bundled fTetWild source:
-`third_party/fTetWild/src/TriangleInsertion.cpp` uses `std::random_device` to
+`vendor/dependencies/fTetWild/src/TriangleInsertion.cpp` uses `std::random_device` to
 seed `std::mt19937` before shuffling input faces. A diagnostic rebuild replacing
 that one seed with `42` was compiled and tested, but fresh processes still
 returned different outputs. Other fTetWild paths use unordered-container

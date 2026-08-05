@@ -2,7 +2,7 @@
 
 Primary backend for polyhedral mesh generation. Calls
 auto_tessell_core/build/cfmesh_native.so which runs
-third_party/cfmesh/build/pMesh on a prepared OpenFOAM case.
+vendor/dependencies/cfmesh/build/pMesh on a prepared OpenFOAM case.
 """
 from __future__ import annotations
 

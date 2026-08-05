@@ -290,7 +290,7 @@
             "status": "LOCAL_EVIDENCE_RECORDED_NOT_RESOLVED",
             "spdx_expression": null,
             "local_evidence": [
-              "third_party/fTetWild/LICENSE.MPL2"
+              "vendor/dependencies/fTetWild/LICENSE.MPL2"
             ]
           },
           "core_boundary": "external_adapter_excluded"
@@ -305,7 +305,7 @@
             "status": "LOCAL_EVIDENCE_RECORDED_NOT_RESOLVED",
             "spdx_expression": null,
             "local_evidence": [
-              "third_party/cfmesh/LICENSE.GPL3"
+              "vendor/dependencies/cfmesh/LICENSE.GPL3"
             ]
           },
           "core_boundary": "external_adapter_excluded"

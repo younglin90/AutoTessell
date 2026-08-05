@@ -1,6 +1,6 @@
 """CARD BOOLMERGE2 — tet centroid union-filter 격리 헬퍼.
 
-fTetWild §3.6(``papers/md/02_hu_2020_ftetwild.md:487-491``)은 각 tracked input
+fTetWild §3.6(``docs/references/papers/source/text/02_hu_2020_ftetwild.md:487-491``)은 각 tracked input
 surface 의 winding number 를 tet centroid 에서 **독립적으로** 계산한 뒤 boolean
 결합으로 keep 여부를 정한다 — "e.g. intersecting -> keep tets inside both".
 즉 union=OR, intersection=AND, difference=AND-NOT 은 동일한 per-surface bool

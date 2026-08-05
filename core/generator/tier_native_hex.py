@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from collections.abc import Mapping
 import numpy as np
 from numpy.typing import NDArray
 
@@ -24,6 +25,8 @@ def _runner(
     *,
     target_edge_length: float | None = None,
     seed_density: int = 16,
+    input_config: Mapping[str, Any] | None = None,
+    input_parameter_report: Mapping[str, Any] | None = None,
     **kwargs: Any,
 ) -> NativeHexResult:
     """Run the native uniform-grid engine and label its actual route.

@@ -4,7 +4,7 @@
 
 First-party clean-room C++23 implementation. It computes only the existing
 wall-fit local edge-scale definition. No external source code, generated code,
-mesh output, or implementation-derived constants were copied. `third_party/`
+mesh output, or implementation-derived constants were copied. `vendor/dependencies/`
 is unchanged. Current project GPL terms remain unchanged; the implementation
 has no new dependency and remains separable for a future MIT native core.
 

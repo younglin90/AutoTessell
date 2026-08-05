@@ -125,6 +125,9 @@ class TetHarnessResult:
     message: str = ""
     # beta840: harness 가 들고 있는 최종 quality snapshot.
     quality: "Any" = None
+    # 042: retain the actual candidate arrays for receipt read-back.
+    tet_points: np.ndarray | None = None
+    tets: np.ndarray | None = None
 
 
 def _evaluate_tet_mesh(case_dir: Path) -> tuple[bool, dict]:
@@ -618,6 +621,8 @@ def run_native_tet_harness(
                         f"non_ortho={metrics['max_non_orthogonality']:.1f}°"
                     ),
                     quality=latest_quality,
+                    tet_points=res.tet_points,
+                    tets=res.tets,
                 )
             # 실패 → seed density 늘려 재시도 (surface 보존 개선)
             current_seed = int(current_seed * 1.3)

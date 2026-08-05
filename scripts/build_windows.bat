@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 echo [1/3] Installing Python dependencies...
-pip install -r backend/requirements.txt
+pip install -r products/web/api/requirements.txt
 pip install pyinstaller
 
 echo [2/3] Building Python Backend (Server)...

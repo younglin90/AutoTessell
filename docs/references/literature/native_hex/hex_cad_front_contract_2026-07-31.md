@@ -11,7 +11,7 @@
   legacy `(vertices, faces)` bytes and order.
 - Rollback: any inferred label, incomplete edge polygon, traversal mismatch,
   geometry movement, silent fallback, physical-group fabrication, production
-  routing, writer change, or `third_party/` change.
+  routing, writer change, or `vendor/dependencies/` change.
 
 ## Evidence and provenance
 

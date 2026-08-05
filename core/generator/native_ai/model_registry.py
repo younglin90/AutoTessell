@@ -1,6 +1,6 @@
 """T5 / beta2699 — ML model registry.
 
-models/ 디렉터리의 trained .pt 파일을 자동 검색 + metadata 등록.
+assets/models/ 디렉터리의 trained .pt 파일을 자동 검색 + metadata 등록.
 multi-version 모델 관리 + 자동 best-of-N 선택.
 """
 from __future__ import annotations
@@ -28,7 +28,7 @@ def discover_models(
     *,
     pattern: str = "*.pt",
 ) -> list[RegisteredModel]:
-    """models/ 디렉터리의 .pt 파일 → RegisteredModel list.
+    """assets/models/ 디렉터리의 .pt 파일 → RegisteredModel list.
 
     각 .pt 파일을 torch.load 로 metadata 추출.
 

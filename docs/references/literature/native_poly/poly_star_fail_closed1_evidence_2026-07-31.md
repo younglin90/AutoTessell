@@ -7,7 +7,7 @@ Pre-card baseline: `764cb4bc748a99ae8dc48e81428a3e3da28469d0`
 Integration base after rebase: `364d0b68cf671227394f86f627680f311294cb1f`
 
 Scope: residual star-validity refusal only; no geometry, topology, tolerance,
-target-cell, primal-floor, routing, or `third_party/` change.
+target-cell, primal-floor, routing, or `vendor/dependencies/` change.
 
 ## Hypothesis and acceptance
 

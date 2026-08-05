@@ -6,7 +6,7 @@ Baseline: `68c3bfd184852d26fe9308617511ca4a9bd2a852`
 
 Scope: generator tier-order policy for multi-input Boolean strategies only. No
 meshing algorithm, geometry, tolerance, target-cell, boundary-layer,
-orchestrator, dependency, or `third_party/` change.
+orchestrator, dependency, or `vendor/dependencies/` change.
 
 ## Hypothesis and acceptance
 
@@ -24,7 +24,7 @@ Primary metric: provenance-incompatible fallback attempts after a forced
   returned truthfully; output artifacts remain zero.
 - Rollback: any single-input fallback-order change, successful selected native
   Boolean result change, provenance loss, generic fallback invocation, or
-  `third_party/` change.
+  `vendor/dependencies/` change.
 
 ## Result
 

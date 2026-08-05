@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import os
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from core.generator._tier_native_common import run_native_tier
@@ -79,10 +79,16 @@ def _runner(
     auto_escalate_max=4,
     target_cells=None,
     max_cells=None,
+    max_tet_cells=30000,
+    smooth_iters=0,
+    smooth_relax=0.3,
     bl_layers=0,
     post_layers_num_layers=0,
     release_route=False,
     source_path: str | Path | None = None,
+    native_poly_source_certificate: Mapping[str, object] | None = None,
+    input_config: Mapping[str, object] | None = None,
+    input_parameter_report: Mapping[str, object] | None = None,
     boolean_input_paths: Sequence[str] | None = None,
     boolean_union_input_paths: Sequence[str] | None = None,
     **_unused,
@@ -95,6 +101,22 @@ def _runner(
     파라미터를 명시 forward (이전엔 **_unused 로 silently dropped).
     """
     _release_requested = bool(release_route) or os.environ.get("AUTO_TESSELL_NATIVE_POLY_RELEASE") == "1"
+    _execution = (
+        input_config.get("execution", {})
+        if isinstance(input_config, Mapping)
+        else {}
+    )
+    if not isinstance(_execution, Mapping):
+        _execution = {}
+    _allow_external_fallback: bool | None = None
+    if _release_requested:
+        _allow_external_fallback = bool(_execution.get("allow_algorithm_fallback", False))
+    try:
+        _timeout_seconds = float(_execution.get("timeout_seconds", 0.0))
+    except (TypeError, ValueError):
+        _timeout_seconds = 0.0
+    if _release_requested and _timeout_seconds <= 0.0:
+        _timeout_seconds = 120.0
     _cell_budget = int(max_cells or target_cells or 0)
     _n_layers = int(post_layers_num_layers or bl_layers or 0)
     if _cell_budget > 0 and _n_layers > 0:
@@ -160,8 +182,15 @@ def _runner(
         target_cells=target_cells,
         seed_density=int(seed_density),
         max_iter=int(max_iter),
+        max_tet_cells=int(max_tet_cells),
+        smooth_iters=int(smooth_iters),
+        smooth_relax=float(smooth_relax),
         boundary_face_classifier=boundary_face_classifier,
         release_route=_release_requested,
+        boundary_layer=_n_layers > 0,
+        source_certificate=native_poly_source_certificate,
+        allow_external_fallback=_allow_external_fallback,
+        timeout_seconds=_timeout_seconds,
     )
     if hres.success:
         return _attach_metadata(

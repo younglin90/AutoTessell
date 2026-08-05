@@ -23,18 +23,35 @@ class _StaticAudit:
 
 
 _EXPECTED: dict[str, _StaticAudit] = {
-    "native_metrics": _StaticAudit("native_metrics_bind.cpp", 4861, 69, 89, 0, 5),
-    "native_bl": _StaticAudit("native_bl_bind.cpp", 907, 13, 18, 0, 3),
-    "native_polymesh": _StaticAudit("native_polymesh_bind.cpp", 1985, 11, 49, 0, 4),
+    "native_metrics": _StaticAudit("native_metrics_bind.cpp", 4866, 69, 89, 0, 5),
+    "native_bl": _StaticAudit("native_bl_bind.cpp", 909, 13, 18, 0, 3),
+    "native_polymesh": _StaticAudit("native_polymesh_bind.cpp", 2127, 14, 51, 0, 4),
+    "native_poly_quality_relocation": _StaticAudit("native_poly_quality_relocation_bind.cpp", 509, 14, 27, 0, 0),
+    "native_poly_bl_local_front_qopt": _StaticAudit("native_poly_bl_local_front_qopt_bind.cpp", 485, 16, 36, 0, 0),
     "native_snap": _StaticAudit("native_snap_bind.cpp", 512, 9, 3, 0, 0),
     "native_surface_padding": _StaticAudit(
         "native_surface_padding_bind.cpp", 271, 1, 14, 1, 0
     ),
-    "native_hex_quality": _StaticAudit("native_hex_quality_bind.cpp", 1132, 12, 19, 1, 1),
+    "native_hex_quality": _StaticAudit("native_hex_quality_bind.cpp", 1134, 12, 19, 1, 1),
     "native_tet_predicates": _StaticAudit(
         "native_tet_predicates_bind.cpp", 2886, 20, 71, 8, 0
     ),
-    "native_tet_qopt": _StaticAudit("native_tet_qopt_bind.cpp", 807, 22, 38, 0, 0),
+    "native_tet_qopt": _StaticAudit("native_tet_qopt_bind.cpp", 810, 22, 38, 0, 0),
+    "native_tri_quality_repair": _StaticAudit(
+        "native_tri_quality_repair_bind.cpp", 487, 13, 55, 0, 0
+    ),
+    "native_hex_boundary_receipt": _StaticAudit(
+        "native_hex_boundary_receipt_bind.cpp", 472, 4, 5, 0, 0
+    ),
+    "native_atomic_publish": _StaticAudit(
+        "native_atomic_publish_bind.cpp", 154, 0, 1, 0, 0
+    ),
+    "native_bl_identity": _StaticAudit(
+        "native_bl_identity_bind.cpp", 510, 0, 13, 0, 0
+    ),
+    "native_artifact_fingerprint": _StaticAudit(
+        "native_artifact_fingerprint_bind.cpp", 139, 0, 6, 0, 0
+    ),
 }
 
 

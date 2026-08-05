@@ -213,7 +213,7 @@ AUTOTESSELL_POLYMESH_DIRECT_PREVIEW=1 python3 -m desktop.qt_app
 기존부터 작업트리에 남아 있던 별도 변경:
 
 - `.claude/scheduled_tasks.lock` 삭제
-- `b_aYczSLScZNH/next-env.d.ts` 수정
+- `products/web/reference-ui/next-env.d.ts` 수정
 
 이 두 항목은 이번 GUI/WildMesh crash 대응과 무관하므로 건드리지 않았다.
 

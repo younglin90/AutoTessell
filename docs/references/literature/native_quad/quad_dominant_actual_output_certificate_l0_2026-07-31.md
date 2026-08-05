@@ -35,7 +35,7 @@ adapter result has `accepted=false`, `product_claimed=false`, and
 
 No mesh, threshold, source coordinate, feature, boundary, topology, patch,
 physical group, evaluator, UI, routing, writer, target-cell, or boundary-layer
-behavior changes.  `third_party/` is unchanged.
+behavior changes.  `vendor/dependencies/` is unchanged.
 
 ## Evidence
 

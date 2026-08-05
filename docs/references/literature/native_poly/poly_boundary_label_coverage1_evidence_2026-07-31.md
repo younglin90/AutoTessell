@@ -6,7 +6,7 @@ Base: `68c3bfd184852d26fe9308617511ca4a9bd2a852`
 
 Scope: explicit primal-boundary mapping coverage only.  No point, face,
 owner, neighbour, patch, topology, geometry, tolerance, target-cell,
-boundary-layer, routing, native ABI, or `third_party/` change.
+boundary-layer, routing, native ABI, or `vendor/dependencies/` change.
 
 ## Hypothesis and fixed acceptance
 
@@ -106,7 +106,7 @@ the project manifests and local PDF repository.  It is recorded, not used as
 an implementation source.
 
 The guard and tests are independently authored.  No external code, generated
-artifact, dependency, or `third_party/` file was copied or modified.
+artifact, dependency, or `vendor/dependencies/` file was copied or modified.
 
 ## Verification
 

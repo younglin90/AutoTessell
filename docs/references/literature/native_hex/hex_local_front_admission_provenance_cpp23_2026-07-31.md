@@ -30,7 +30,7 @@ candidate construction.  Native absence uses the independent Python oracle.
 
 Only `native_hex_quality_local_front.hpp`, its pybind binding, this disconnected
 Python authority, and L0/L1 tests change.  No mesher, routing, layer engine,
-writer, default, CMake, target-cell policy, or `third_party/` changes.
+writer, default, CMake, target-cell policy, or `vendor/dependencies/` changes.
 
 ## Local evidence
 

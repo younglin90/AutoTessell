@@ -36,12 +36,12 @@ Predeclared acceptance:
 - fused public-route median remains at most `0.02116 s`, a 15% cap over the
   frozen `0.018399720 s` baseline;
 - GCC 13.3 Release C++23 `-Wall -Wextra -Wpedantic -Werror` builds cleanly;
-- `third_party/` remains unchanged.
+- `vendor/dependencies/` remains unchanged.
 
 Rollback conditions were any source mutation, ordinary-scale output or metric
 change, topology/provenance mismatch, invalid acceptance, native/oracle
 disagreement, nondeterminism, build warning, performance-cap miss, or
-`third_party/` edit.
+`vendor/dependencies/` edit.
 
 ## Research and provenance
 
@@ -138,7 +138,7 @@ boundary-layer, or feature/wall threshold.
 - strict MyPy remains blocked by pre-existing project/import typing errors; no
   new helper-level MyPy error was introduced under `--follow-imports=skip`;
 - `git diff --check`: pass;
-- `third_party/` diff: empty.
+- `vendor/dependencies/` diff: empty.
 
 Status: `L2_TARGET_PASS / RUNTIME_READY`.  Full campaign L3 and post-merge
 validation remain integration-lane work; this is not a release-ready claim.

@@ -4,7 +4,7 @@
 backend: torch CUDA 우선, CPU fallback.
 
 API:
-    runner = BatchInferenceRunner(model_path="models/ml_smooth_model.pt")
+    runner = BatchInferenceRunner(model_path="assets/models/ml_smooth_model.pt")
     quality_pred = runner.predict_meshes(mesh_pts_list, mesh_tets_list, batch_size=4096)
 """
 from __future__ import annotations

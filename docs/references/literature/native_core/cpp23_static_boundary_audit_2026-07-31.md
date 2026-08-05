@@ -3,7 +3,7 @@
 ## Scope and status
 
 `CORRECTNESS_KEEP / static evidence only`.  This card changes no C++ source,
-algorithm, mesh output, Python routing, dependency, or `third_party/` file.
+algorithm, mesh output, Python routing, dependency, or `vendor/dependencies/` file.
 The inventory covers the eight shipped first-party extensions named in
 `auto_tessell_core/native_build_contract.json`.
 

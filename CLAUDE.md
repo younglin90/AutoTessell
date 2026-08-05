@@ -31,7 +31,7 @@ wholesale rewrite.
 - `core/utils/`: predicates, geometry, export
 - `tests/`: tests and benchmark fixtures
 - `docs/references/literature/<engine>/`: plans, evidence matrices, paper notes
-- `agents/specs/`: detailed contracts
+- `docs/contracts/`: detailed contracts
 
 ## Non-negotiable rules
 

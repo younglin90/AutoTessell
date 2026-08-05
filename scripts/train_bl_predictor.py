@@ -1,7 +1,7 @@
 """D6 / beta2596 — BL collision predictor train + 배포.
 
-D5 (collect_bl_dataset.py) 가 만든 npz 로 학습 → models/bl_predictor.pt.
-이후 AUTO_TESSELL_BL_PREDICT_MODEL=models/bl_predictor.pt 로 활성화 (native_bl 의 _compute_collision_distance fast-path).
+D5 (collect_bl_dataset.py) 가 만든 npz 로 학습 → assets/models/bl_predictor.pt.
+이후 AUTO_TESSELL_BL_PREDICT_MODEL=assets/models/bl_predictor.pt 로 활성화 (native_bl 의 _compute_collision_distance fast-path).
 
 Usage:
     python3 scripts/train_bl_predictor.py
@@ -16,8 +16,8 @@ from pathlib import Path
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", default="models/bl_dataset.npz")
-    ap.add_argument("--output", default="models/bl_predictor.pt")
+    ap.add_argument("--dataset", default="assets/models/bl_dataset.npz")
+    ap.add_argument("--output", default="assets/models/bl_predictor.pt")
     ap.add_argument("--epochs", type=int, default=50)
     ap.add_argument("--batch-size", type=int, default=64)
     ap.add_argument("--lr", type=float, default=1e-3)

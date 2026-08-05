@@ -92,4 +92,4 @@ Shewchuk, *Adaptive Precision Floating-Point Arithmetic and Fast Robust
 Geometric Predicates*, 1997, DOI `10.1007/PL00009321`, supports recording
 exact-sign classification separately from floating-point magnitude bands.
 This card independently calls the project's existing first-party audit only.
-No external implementation was copied and `third_party/` is unchanged.
+No external implementation was copied and `vendor/dependencies/` is unchanged.

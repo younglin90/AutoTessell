@@ -22,6 +22,7 @@ REQUIRED_RELEASE_CASES: Final[frozenset[str]] = frozenset(
         "native-hex-sphere",
         "native-hex-naca",
         "native-hex-gear",
+        "native-hex-anisotropic-xde",
         "native-poly-cube",
         "native-poly-sphere",
         "native-poly-naca",

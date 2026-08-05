@@ -21,6 +21,10 @@ from core.evaluator.gate4_fidelity_substrate import (
     evaluate_gate4_fidelity_evidence,
     prepare_immutable_source,
 )
+from core.evaluator.native_poly_source_transaction import (
+    build_certificate as build_native_poly_source_certificate,
+    write_certificate_atomic as write_native_poly_source_certificate_atomic,
+)
 from core.evaluator.metrics import AdditionalMetricsComputer
 from core.evaluator.quality_checker import MeshQualityChecker
 from core.evaluator.report import EvaluationReporter
@@ -98,6 +102,9 @@ class PipelineOrchestrator:
         dry_run: bool = False,
         element_size: float | None = None,
         max_cells: int | None = None,
+        input_config: dict[str, Any] | None = None,
+        source_authority_ledger: dict[str, Any] | None = None,
+        input_parameter_resolution: dict[str, Any] | None = None,
         tier_specific_params: dict[str, Any] | None = None,
         no_repair: bool = False,
         surface_remesh: bool = False,
@@ -131,6 +138,9 @@ class PipelineOrchestrator:
             dry_run: True이면 전략 수립까지만 수행.
             element_size: 셀 크기 override.
             max_cells: 최대 셀 수 제한 (초과 시 base_cell_size 자동 확대).
+            input_config: Versioned quality-first user input envelope. When
+                provided, it is normalized before strategy projection and is
+                persisted with its applied/pending/unsupported report.
             tier_specific_params: Tier별 사용자 파라미터 override.
             no_repair: 표면 수리 건너뛰기.
             surface_remesh: 강제 리메쉬.
@@ -149,6 +159,44 @@ class PipelineOrchestrator:
         stage = "init"
         # Internal pipeline metadata must never mutate the caller-owned mapping.
         tier_specific_params = dict(tier_specific_params or {})
+        if input_config is not None:
+            from core.input_contract import (
+                normalize_input_contract,
+                project_legacy_parameters,
+            )
+
+            _contract_engine = str(tier_hint or "").lower()
+            if _contract_engine not in {
+                "native_tet", "tier_native_tet", "native_hex",
+                "tier_native_hex", "native_poly", "tier_native_poly",
+            }:
+                _contract_engine = {
+                    "tet": "native_tet",
+                    "hex_dominant": "native_hex",
+                    "poly": "native_poly",
+                }.get(str(mesh_type).lower(), "native_tet")
+            if _contract_engine.startswith("tier_"):
+                _contract_engine = _contract_engine[5:]
+            _normalized_input = normalize_input_contract(
+                input_config,
+                engine=_contract_engine,
+                strict="_compatibility" not in input_config,
+            )
+            input_config = _normalized_input.config
+            tier_specific_params["input_config"] = input_config
+            tier_specific_params["input_parameter_report"] = _normalized_input.report
+            tier_specific_params.update(
+                project_legacy_parameters(input_config, _contract_engine)
+            )
+            output_dir.mkdir(parents=True, exist_ok=True)
+            self._save_json(
+                output_dir / "input_parameter_report.json",
+                _normalized_input.report,
+            )
+            if source_authority_ledger is not None:
+                self._save_json(output_dir / "source_authority_ledger.json", source_authority_ledger)
+            if input_parameter_resolution is not None:
+                self._save_json(output_dir / "input_parameter_resolution.json", input_parameter_resolution)
         boolean_operation = str(boolean_operation or "union").strip().lower()
 
         # Tier 5 엔진 선택 (v0.4 native-first):
@@ -196,6 +244,45 @@ class PipelineOrchestrator:
                     f"unsupported boolean operation: {boolean_operation!r}; "
                     f"expected one of {sorted(supported_boolean_operations)}"
                 )
+            if pending_gate4_source is not None:
+                try:
+                    gate4_source = pending_gate4_source.materialize(
+                        output_dir / "_evidence" / "gate4-source"
+                    )
+                    _bl_profile: dict[str, Any] = {}
+                    if isinstance(input_config, dict):
+                        _bl_entries = input_config.get("boundary_layers", [])
+                        if (
+                            isinstance(_bl_entries, list)
+                            and _bl_entries
+                            and isinstance(_bl_entries[0], dict)
+                        ):
+                            _bl_profile = dict(_bl_entries[0])
+                    if "bl_layers" in tier_specific_params:
+                        _bl_profile["layers"] = int(tier_specific_params["bl_layers"])
+                    native_poly_source_certificate = build_native_poly_source_certificate(
+                        gate4_source,
+                        source_authority_ledger=source_authority_ledger,
+                        input_config=input_config if isinstance(input_config, dict) else None,
+                        boundary_layer_profile=_bl_profile,
+                    )
+                    write_native_poly_source_certificate_atomic(
+                        output_dir / "_evidence" / "native-poly-source-transaction.json",
+                        native_poly_source_certificate,
+                    )
+                    tier_specific_params["native_poly_source_certificate"] = (
+                        native_poly_source_certificate
+                    )
+                    log.info(
+                        "native_poly_source_transaction_certificate_ready",
+                        certificate_sha256=native_poly_source_certificate["certificate_sha256"],
+                        authority_chain_complete=native_poly_source_certificate[
+                            "authority_chain_complete"
+                        ],
+                    )
+                except (OSError, ValueError, TypeError) as exc:
+                    gate4_source_status = "unverified_native_poly_source_certificate"
+                    log.warning("native_poly_source_transaction_certificate_failed", error=str(exc))
             if boolean_operation != "union" and not additional_input_paths:
                 raise ValueError(
                     f"boolean {boolean_operation} requires at least two input surfaces"
@@ -477,6 +564,21 @@ class PipelineOrchestrator:
                 )
                 result.generator_log = generator_log
                 self._save_json(output_dir / "generator_log.json", generator_log)
+                # Native routes may emit a post-run parameter receipt. Keep it
+                # separate from the pre-run request/projection report.
+                try:
+                    _receipts = [
+                        attempt.parameter_receipt
+                        for attempt in (generator_log.execution_summary.tiers_attempted or [])
+                        if getattr(attempt, "parameter_receipt", None)
+                    ]
+                    if _receipts:
+                        self._save_json(
+                            output_dir / "input_parameter_receipt.json",
+                            {"receipts": _receipts},
+                        )
+                except Exception as exc:
+                    log.warning("input_parameter_receipt_save_failed", error=str(exc)[:160])
                 emit_progress(loop_generate_done, f"Generate 완료 {iteration}/{max_iterations}")
 
                 # 모든 Tier 실패 시 — 최후의 재구성 안전망 (web-QA rank 3).
@@ -1247,6 +1349,54 @@ class PipelineOrchestrator:
             strategy.domain.base_cell_size = element_size * 4
             log.info("element_size_override", element_size=element_size)
         PipelineOrchestrator._apply_max_cells_limit(strategy, max_cells)
+
+        # Versioned input contract projection. The full envelope remains in
+        # tier_specific_params for provenance/reporting while verified common
+        # controls update the legacy strategy fields used by current engines.
+        if tier_specific_params and isinstance(tier_specific_params.get("input_config"), dict):
+            _ic = tier_specific_params["input_config"]
+            _sz = _ic.get("sizing", {})
+            if isinstance(_sz, dict):
+                if _sz.get("base_size") is not None:
+                    strategy.domain.base_cell_size = float(_sz["base_size"])
+                if _sz.get("min_size") is not None:
+                    strategy.surface_mesh.min_cell_size = float(_sz["min_size"])
+                if _sz.get("max_size") is not None:
+                    tier_specific_params["max_cell_size"] = float(_sz["max_size"])
+            _qt = _ic.get("quality", {})
+            if isinstance(_qt, dict):
+                for _source, _destination in (
+                    ("max_skewness", "max_skewness"),
+                    ("max_non_orthogonality_deg", "max_non_orthogonality"),
+                    ("max_core_aspect_ratio", "max_aspect_ratio"),
+                    ("min_determinant", "min_determinant"),
+                    ("target_y_plus", "target_y_plus"),
+                ):
+                    if _source in _qt and hasattr(strategy.quality_targets, _destination):
+                        setattr(strategy.quality_targets, _destination, _qt[_source])
+            _surface = _ic.get("surface", {})
+            if isinstance(_surface, dict):
+                for _source, _destination in (
+                    ("feature_angle_deg", "feature_angle"),
+                    ("feature_angle", "feature_angle"),
+                ):
+                    if _source in _surface:
+                        strategy.surface_mesh.feature_angle = float(_surface[_source])
+                        break
+            _bl_entries = _ic.get("boundary_layers", [])
+            if isinstance(_bl_entries, list) and _bl_entries and isinstance(_bl_entries[0], dict):
+                _bl0 = _bl_entries[0]
+                if "layers" in _bl0:
+                    tier_specific_params["bl_layers"] = int(_bl0["layers"])
+                for _source, _destination in (
+                    ("first_height", "bl_first_height"),
+                    ("last_height", "bl_last_height"),
+                    ("total_thickness", "bl_total_thickness"),
+                    ("growth_rate", "bl_growth_ratio"),
+                    ("spacing_mode", "bl_spacing_mode"),
+                ):
+                    if _source in _bl0:
+                        tier_specific_params[_destination] = _bl0[_source]
 
         # BL, 표면 메쉬 파라미터 처리 (tier_specific_params에서 추출)
         if tier_specific_params:

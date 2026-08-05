@@ -4424,7 +4424,7 @@ def test_gui_engine_spec_native_tet_exposes_tetwild_lite_knobs() -> None:
 
 
 def test_native_tet_kwargs_forwarded_to_harness() -> None:
-    """beta2295 — _runner 가 **kwargs 를 harness/mesher 에 forward.
+    """beta2295 — _runner 가 **kwargs 를 research/quality-harness/mesher 에 forward.
 
     이전엔 **_unused 로 흡수돼 GUI/CLI 입력 무력화."""
     from core.generator import tier_native_tet as tnt
